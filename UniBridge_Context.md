@@ -5,6 +5,55 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-09: Roslyn 5.3.0 dependency experiment
+
+Перед експериментом створено локальний Git checkpoint:
+
+- `ec6ed0d Checkpoint UniBridge 0.2.9 stable`;
+- GitHub repo `Cidonix/UniBridge` наразі public і його `README.md` каже, що
+  package source/relay binaries не публікуються, тому source не пушився в
+  public GitHub без окремого підтвердження.
+
+Зміна:
+
+- `Plugins/CodeAnalysis/Microsoft.CodeAnalysis.dll` оновлено з 3.11.x до
+  5.3.0;
+- `Plugins/CodeAnalysis/Microsoft.CodeAnalysis.CSharp.dll` оновлено з 3.11.x
+  до 5.3.0;
+- `.meta` GUID-и DLL збережено;
+- `System.Collections.Immutable.dll` і `System.Reflection.Metadata.dll` не
+  чіпались, бо в пакеті вже лежать 10.0.x, а Roslyn 5.3.0 restore просив
+  9.0.0;
+- changelog і `_upm.changelog` оновлено як dependency hotfix.
+
+Перевірка після оновлення:
+
+- package синхронізовано в:
+  `H:/Repos/UnityRepos/Domovyk/Packages/com.cidonix.unibridge`,
+  `H:/Repos/UnityRepos/DomovykPrototype/Packages/com.cidonix.unibridge`,
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`;
+- Domovyk live MCP smoke:
+  - `RefreshAssets Force=true WaitForCompletion=true`: success;
+  - `GetCompilationDiagnostics IncludeWarnings=true`: retained errors 0,
+    warnings 0;
+  - `ValidateScript Uri=Assets/Ed/Scripts/FPSCounter.cs`: success,
+    `diagnostics=[]`;
+  - `UniBridge_Discover Action=Ping`: success, package `0.2.9`;
+- DomovykPrototype live MCP smoke:
+  - `RefreshAssets Force=true WaitForCompletion=true`: success;
+  - `GetCompilationDiagnostics IncludeWarnings=true`: retained errors 0,
+    warnings 0;
+  - positive probe з `"Frame " + Time.frameCount` усередині `Update()`:
+    warning повернувся з точним `line=7`, `col=19` і expression snippet;
+  - temp probe script видалено, повторна compilation diagnostics чиста;
+- UniBridge_Test_Project package фізично синхронізовано, але live MCP bridge
+  connection для нього не був знайдений у discovery на момент перевірки, тому
+  саме live smoke там не виконувався.
+
+Висновок: Roslyn 5.3.0 у двох live Unity проектах не погіршив роботу
+`ValidateScript` і не дав compile diagnostics. Якщо з'являться regressions,
+відкат можливий до checkpoint `ec6ed0d`.
+
 ## 2026-06-09: ValidateScript Update string-allocation false-positive hotfix
 
 Виправлено false positive у `UniBridge_ValidateScript` для Domovyk repro:

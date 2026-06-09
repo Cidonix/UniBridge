@@ -25,6 +25,9 @@ All notable UniBridge package changes will be documented in this file.
 
 ### Changed
 
+- Updated bundled Roslyn compiler assemblies
+  `Microsoft.CodeAnalysis.dll` and `Microsoft.CodeAnalysis.CSharp.dll` from
+  3.11.x to 5.3.0 for newer C# syntax parsing and diagnostics coverage.
 - `UniBridge_BatchActions` now allows `UniBridge_Discover` and
   `UniBridge_ValidateAdditiveSceneRegistration` as read-only steps.
 - Added batch aliases for additive scene validation:
