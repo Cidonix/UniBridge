@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.14";
+    public const string Version = "1.1.0-build.15";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -477,6 +477,12 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
                 return await RecoverPlayModeAfterReloadAsync(name, playModeArgs, ex, targetPlaying, ct).ConfigureAwait(false);
             }
 
+            if (TryGetRefreshAssetsRecoveryArgs(name, scopedArgs, out var refreshArgs))
+            {
+                logger.Warn($"Unity connection lost during AssetDatabase refresh; attempting reload-safe recovery: {ex.Message}");
+                return await RecoverRefreshAssetsAfterReloadAsync(name, refreshArgs, ex, ct).ConfigureAwait(false);
+            }
+
             logger.Warn($"Unity connection lost while calling {name}; reconnecting once: {ex.Message}");
             await ReconnectUnityAsync(ct).ConfigureAwait(false);
             return await unity.SendCommandAsync(name, scopedArgs, ct).ConfigureAwait(false);
@@ -546,6 +552,62 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
                action.Equals("request_script_compilation", StringComparison.OrdinalIgnoreCase) ||
                action.Equals("request_script_compilation_no_wait", StringComparison.OrdinalIgnoreCase) ||
                action.Equals("compile", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool TryGetRefreshAssetsRecoveryArgs(string name, JsonObject args, out JsonObject refreshArgs)
+    {
+        refreshArgs = args;
+
+        if (string.Equals(name, "UniBridge_ManageEditor", StringComparison.Ordinal))
+            return IsRefreshAssetsAction(args);
+
+        if (!string.Equals(name, "UniBridge_BatchActions", StringComparison.Ordinal))
+            return false;
+
+        var steps = args["Steps"] as JsonArray
+                    ?? args["steps"] as JsonArray
+                    ?? args["Actions"] as JsonArray
+                    ?? args["actions"] as JsonArray;
+        if (steps == null)
+            return false;
+
+        foreach (var node in steps)
+        {
+            if (node is not JsonObject step)
+                continue;
+
+            var tool = ReadString(step, "tool", "Tool", "toolName", "ToolName");
+            if (!IsManageEditorToolAlias(tool))
+                continue;
+
+            var stepArgs = step["parameters"] as JsonObject
+                           ?? step["Parameters"] as JsonObject
+                           ?? step["params"] as JsonObject
+                           ?? step["Params"] as JsonObject
+                           ?? step["args"] as JsonObject
+                           ?? step["Args"] as JsonObject
+                           ?? step;
+
+            if (!IsRefreshAssetsAction(stepArgs))
+                continue;
+
+            refreshArgs = stepArgs;
+            return true;
+        }
+
+        return false;
+    }
+
+    static bool IsRefreshAssetsAction(JsonObject args)
+    {
+        var action = ReadString(args, "Action", "action");
+        if (string.IsNullOrWhiteSpace(action))
+            return false;
+
+        var normalized = action.Replace("_", string.Empty).Replace("-", string.Empty).Replace(" ", string.Empty);
+        return normalized.Equals("RefreshAssets", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("RefreshAssetDatabase", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("AssetDatabaseRefresh", StringComparison.OrdinalIgnoreCase);
     }
 
     static bool TryGetPlayModeRecoveryArgs(string name, JsonObject args, out JsonObject playModeArgs, out bool targetPlaying)
@@ -744,6 +806,73 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         {
             data["batchInterruptedByReload"] = true;
             data["batchResumeNote"] = "Steps before the Play Mode transition may have completed, but Unity domain reload interrupted the in-process BatchActions result. Run the suggested post-reconnect verification calls before continuing.";
+        }
+
+        return new JsonObject
+        {
+            ["status"] = "success",
+            ["result"] = result
+        };
+    }
+
+    async Task<JsonObject> RecoverRefreshAssetsAfterReloadAsync(string originalTool, JsonObject refreshArgs, Exception failure, CancellationToken ct)
+    {
+        var started = DateTime.UtcNow;
+        var timeoutMs = ReadInt(refreshArgs, 120000, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
+        timeoutMs = Math.Clamp(timeoutMs, 5000, 300000);
+        var pollIntervalMs = ReadInt(refreshArgs, 500, "PollIntervalMs", "pollIntervalMs", "poll_interval_ms", "poll");
+        pollIntervalMs = Math.Clamp(pollIntervalMs, 50, 5000);
+        var requireNotPlaying = ReadBool(refreshArgs, false, "RequireNotPlaying", "requireNotPlaying", "require_not_playing");
+
+        await ReconnectUnityUntilAsync(timeoutMs, ct).ConfigureAwait(false);
+
+        var remainingMs = RemainingTimeoutMs(started, timeoutMs);
+        var waitResponse = await CallManageEditorWithFallbackAsync(
+            primaryAction: "WaitForReadyAfterReload",
+            fallbackAction: "WaitForReady",
+            timeoutMs: remainingMs,
+            pollIntervalMs: pollIntervalMs,
+            requireNotPlaying: requireNotPlaying,
+            ct: ct).ConfigureAwait(false);
+
+        var diagnosticsResponse = await TryCallManageEditorAsync(new JsonObject
+        {
+            ["Action"] = "GetCompilationDiagnostics"
+        }, ct).ConfigureAwait(false);
+
+        var elapsedMs = (int)(DateTime.UtcNow - started).TotalMilliseconds;
+        var data = new JsonObject
+        {
+            ["recoveredAfterRefreshReload"] = true,
+            ["reloadBoundary"] = true,
+            ["reconnectRequired"] = true,
+            ["reloadSafe"] = true,
+            ["originalTool"] = originalTool,
+            ["originalAction"] = ReadString(refreshArgs, "Action", "action"),
+            ["connectionFailure"] = failure.Message,
+            ["elapsedMs"] = elapsedMs,
+            ["timeoutMs"] = timeoutMs,
+            ["waitResult"] = ExtractUnityResult(waitResponse),
+            ["compilationDiagnostics"] = diagnosticsResponse != null ? ExtractUnityResult(diagnosticsResponse) : null,
+            ["nextSuggestedCalls"] = new JsonArray(
+                "UniBridge_ManageEditor Action=WaitForReadyAfterReload",
+                "UniBridge_ManageEditor Action=GetCompilationDiagnostics",
+                "UniBridge_ReadConsole Action=DiagnosticSummary")
+        };
+
+        var result = new JsonObject
+        {
+            ["success"] = true,
+            ["message"] = originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal)
+                ? "Unity reloaded during an AssetDatabase refresh batch. Relay reconnected and confirmed the editor is ready."
+                : "AssetDatabase refresh crossed a Unity reload boundary. Relay reconnected and confirmed the editor is ready.",
+            ["data"] = data
+        };
+
+        if (originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal))
+        {
+            data["batchInterruptedByReload"] = true;
+            data["batchResumeNote"] = "Steps before RefreshAssets may have completed, but Unity reload/import interrupted the in-process BatchActions result. Run the suggested post-reconnect verification calls before continuing.";
         }
 
         return new JsonObject

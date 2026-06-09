@@ -488,7 +488,10 @@ Use `UniBridge_ManageEditor` for editor-level operations that should not require
 - `SelectAsset` selects and optionally pings a Project asset by `AssetPath`;
 - `SelectGameObject` selects and optionally pings/frames a scene object by `GameObjectPath`, `Target`, or `InstanceID`;
 - `ClearSelection`, `PingSelection`, and `FrameSelection` help an agent verify exactly what it is looking at before capture or edits;
-- `RefreshAssets` wraps `AssetDatabase.Refresh` and can `WaitForCompletion`;
+- `RefreshAssets` wraps `AssetDatabase.Refresh` and can `WaitForCompletion`.
+  If import/refresh triggers a Unity domain reload that closes the bridge,
+  relay `1.1.0-build.15` reconnects and returns structured reload-boundary
+  recovery data instead of a transport-level `Unity connection closed` error;
 - `RequestPlayModeNoWait` queues entering Play Mode without waiting through a possible Unity domain reload;
 - `WaitForPlayMode` and `WaitForEditMode` are reconnect-friendly Play Mode verification waits;
 - `Play WaitForCompletion=true` and `ExitPlayMode WaitForCompletion=true` remain accepted for old callers, but now return controlled queued boundary responses instead of waiting inline through a reload-prone bridge connection;
@@ -503,7 +506,7 @@ Use `UniBridge_ManageEditor` for editor-level operations that should not require
 
 For Play Mode smoke tests, prefer a split-phase workflow: clear/prepare console, queue `RequestPlayModeNoWait` or `Play`, then after reconnect call `WaitForPlayMode`, `WaitForReady RequireNotPlaying=false`, and `ReadConsole DiagnosticSummary`. Do not rely on a single in-process batch to span a Play Mode domain reload.
 
-For script workflows, prefer `RefreshAssets WaitForCompletion=true`, `RequestScriptCompilationNoWait`, `WaitForReadyAfterReload`, then `GetCompilationDiagnostics` / `ReadConsole DiagnosticSummary` instead of interpreting console output while Unity is still compiling/importing.
+For script workflows, prefer `RefreshAssets WaitForCompletion=true`, `RequestScriptCompilationNoWait`, `WaitForReadyAfterReload`, then `GetCompilationDiagnostics` / `ReadConsole DiagnosticSummary` instead of interpreting console output while Unity is still compiling/importing. If `RefreshAssets` crosses a reload boundary, treat the returned `nextSuggestedCalls` as the continuation plan.
 
 ### Run Batch Actions
 

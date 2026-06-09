@@ -1,8 +1,12 @@
-# UniBridge 0.2.9 Release Notes
+# UniBridge 0.2.10 Release Notes
 
 Release date: 2026-06-09
 
-This release improves Codex/tool_search discoverability and adds a read-only
+This release makes `RefreshAssets WaitForCompletion=true` reload-safe when
+Unity import/refresh closes the bridge during a domain reload. It also includes
+the 0.2.9 discoverability and additive scene validation improvements.
+
+The previous 0.2.9 release improves Codex/tool_search discoverability and adds a read-only
 additive scene registration validator for large Unity projects. It gives new
 agents an obvious `UniBridge_Discover` ping/workflow entry point, makes the
 relay `_server_info` metadata searchable by common UniBridge workflow names, and
@@ -16,8 +20,8 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.9`
-- Relay bundle version: `1.1.0-build.14`
+- Version: `0.2.10`
+- Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
 - Relay platforms:
@@ -52,6 +56,14 @@ guessing from files alone.
   VFX, shaders, resources, and external model import.
 - Script workflows: validation, safe edits, preview mode, source context,
   attached MonoBehaviour context, and script capability inspection.
+
+## 0.2.10 Polish
+
+- Relay `1.1.0-build.15` can recover `RefreshAssets` connection loss caused by
+  Unity import/domain reload, reconnect, wait for readiness, return compilation
+  diagnostics, and surface structured `reloadBoundary`, `reconnectRequired`,
+  `reloadSafe`, and `nextSuggestedCalls` data instead of a hard MCP
+  `Unity connection closed` failure.
 
 ## 0.2.9 Polish
 

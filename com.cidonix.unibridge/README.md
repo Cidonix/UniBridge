@@ -80,6 +80,14 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.10 Notes
+
+- `RefreshAssets WaitForCompletion=true` can cross a Unity import/domain-reload
+  boundary in real projects. Bundled relay `1.1.0-build.15` recovers that
+  connection loss, waits for editor readiness, and returns structured
+  `reloadBoundary` / `nextSuggestedCalls` data instead of an MCP transport
+  failure.
+
 ## Known 0.2.9 Notes
 
 - If `tool_search` returns zero UniBridge tools in Codex after adding or

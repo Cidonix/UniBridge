@@ -5,6 +5,80 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-09: UniBridge 0.2.10 RefreshAssets reload-safe recovery
+
+Виправлено Domovyk repro, де після успішного `ValidateScript` виклик
+`UniBridge_ManageEditor Action=RefreshAssets WaitForCompletion=true Force=true`
+повертав hard MCP failure:
+`Unity connection lost: Unity connection closed`.
+
+Зміна:
+
+- relay оновлено до `1.1.0-build.15`;
+- `UniBridge.Relay` тепер розпізнає `RefreshAssets` як reload recovery
+  candidate для `UniBridge_ManageEditor` і nested `UniBridge_BatchActions`;
+- якщо Unity закриває pipe під час `AssetDatabase.Refresh`, relay:
+  - reconnect-иться до нового bridge;
+  - викликає `WaitForReadyAfterReload` з fallback на `WaitForReady`;
+  - читає `GetCompilationDiagnostics`;
+  - повертає structured result з `reloadBoundary=true`,
+    `reconnectRequired=true`, `reloadSafe=true`,
+    `recoveredAfterRefreshReload=true`, `nextSuggestedCalls`;
+  - не повертає transport-level MCP error для очікуваного refresh/import
+    boundary;
+- package version піднято до `0.2.10`;
+- оновлено `CHANGELOG.md`, `RELEASE_NOTES.md`, `README.md`,
+  `Documentation~/unibridge.md`, `package.json`, `RelayApp~/relay.json`;
+- cross-platform relay binaries перепубліковано для `win-x64`, `linux-x64`,
+  `osx-x64`, `osx-arm64`.
+
+Синхронізація:
+
+- package скопійовано в:
+  `H:/Repos/UnityRepos/Domovyk/Packages/com.cidonix.unibridge`,
+  `H:/Repos/UnityRepos/DomovykPrototype/Packages/com.cidonix.unibridge`,
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`;
+- в усіх трьох проектах `package.json` показує `0.2.10`,
+  `RelayApp~/relay.json` показує `1.1.0-build.15`;
+- installed relay файл `%USERPROFILE%/.unibridge/relay/unibridge_relay_win.exe`
+  також оновлено до `1.1.0-build.15`.
+- перевірено новий installed relay шляхом прямого MCP старту з
+  `%USERPROFILE%/.unibridge/relay/unibridge_relay_win.exe --mcp --project-path H:/Repos/UnityRepos/Domovyk`:
+  server version `1.1.0-build.15`, `UniBridge_Discover Action=Ping` повертає
+  package `0.2.10`, connected true.
+- sanity ping до `UniBridge_Test_Project` через новий relay стартує server
+  version `1.1.0-build.15`, але live Unity bridge для цього project path не
+  знайдений, бо тестовий Unity project на момент перевірки не був запущений;
+  discovery показує тільки відкриті `Domovyk` і `DomovykPrototype`.
+
+Перевірка в Domovyk через новий package relay:
+
+- `initialize`: server version `1.1.0-build.15`;
+- `UniBridge_Discover Action=Ping`: package `0.2.10`, connected true;
+- `UniBridge_ValidateScript`
+  `Uri=Assets/_Domovyk/Scripts/Cinematics/DarknessDarkEntityRevealCutscene.cs`
+  `Level=standard IncludeDiagnostics=true`: success, `diagnostics=[]`;
+- `RefreshAssets WaitForCompletion=true Force=true RequireNotPlaying=true`:
+  Unity реально закрила connection, relay recover-нув відповідь:
+  `recoveredAfterRefreshReload=true`, `reloadBoundary=true`,
+  `reconnectRequired=true`, `reloadSafe=true`, `elapsedMs=8155`;
+- nested `waitResult` після reconnect:
+  `isReady=true`, `isCompiling=false`, `isUpdating=false`,
+  `isPlaying=false`;
+- `compilationDiagnostics`: errors 0, warnings 0;
+- `RequestScriptCompilationNoWait Force=true`: queued, `reloadSafe=true`;
+- `WaitForReadyAfterReload`: success, editor ready;
+- `GetCompilationDiagnostics`: retained errors 0, warnings 0;
+- `ReadConsole Action=DiagnosticSummary`: totals 0 logs/warnings/errors/
+  exceptions/asserts, no critical/warning groups.
+
+Важлива operational нотатка:
+
+- вже запущені MCP relay процеси можуть залишатися старою версією в пам'яті;
+  нові MCP server launches підхоплюють installed relay `1.1.0-build.15`.
+  Якщо агент у Domovyk продовжує бачити стару поведінку, треба перезапустити
+  MCP server/AI agent session.
+
 ## 2026-06-09: Roslyn 5.3.0 dependency experiment
 
 Перед експериментом створено локальний Git checkpoint:

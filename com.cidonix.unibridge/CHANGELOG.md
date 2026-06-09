@@ -2,6 +2,18 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.10
+
+### Changed
+
+- Bundled relay `1.1.0-build.15` now treats `RefreshAssets` connection loss
+  as an expected Unity import/domain-reload boundary. If
+  `AssetDatabase.Refresh` closes the bridge, the relay reconnects, waits for
+  editor readiness, returns compilation diagnostics, and reports
+  `reloadBoundary`, `reconnectRequired`, `reloadSafe`, and
+  `nextSuggestedCalls` instead of surfacing a transport-level
+  `Unity connection closed` MCP error.
+
 ## 0.2.9
 
 ### Added
