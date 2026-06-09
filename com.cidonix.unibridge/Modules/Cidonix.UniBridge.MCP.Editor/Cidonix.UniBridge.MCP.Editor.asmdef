@@ -1,0 +1,26 @@
+{
+    "name": "Cidonix.UniBridge.MCP.Editor",
+    "rootNamespace": "Cidonix.UniBridge.MCP.Editor",
+    "references": [
+        "Cidonix.UniBridge.MCP.Runtime",
+        "Cidonix.UniBridge.Toolkit.Async",
+        "Cidonix.UniBridge.Tracing",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Newtonsoft.Json.dll",
+        "Microsoft.CodeAnalysis.dll",
+        "Microsoft.CodeAnalysis.CSharp.dll",
+        "System.Collections.Immutable.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,63 @@
+# Source control metadata
+.plastic/
+
+# Local IDE state
+.idea/
+.vs/
+*.suo
+*.user
+*.userprefs
+*.tmp
+
+# Unity generated directories
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+UserSettings/
+MemoryCaptures/
+Logs/
+
+# Unity generated/cache files
+sysinfo.txt
+crashlytics-build.properties
+*.pidb
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Relay build outputs
+UniBridge.Relay/bin/
+UniBridge.Relay/obj/
+
+# Local recovery/scratch data
+RelayRecovery/
+
+# Local tooling caches
+node_modules/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+
+# Package/export artifacts
+*.apk
+*.aab
+*.unitypackage
+*.zip
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Plastic SCM private conflict/local files
+*.private
+*.private.meta
+*.private.*
+*.private.*.meta

@@ -1,0 +1,308 @@
+# UniBridge 0.2.9 Release Notes
+
+Release date: 2026-06-09
+
+This release improves Codex/tool_search discoverability and adds a read-only
+additive scene registration validator for large Unity projects. It gives new
+agents an obvious `UniBridge_Discover` ping/workflow entry point, makes the
+relay `_server_info` metadata searchable by common UniBridge workflow names, and
+adds `UniBridge_ValidateAdditiveSceneRegistration` for cloned/additive scene
+setup checks without modifying the project.
+
+UniBridge is a local Unity MCP bridge for AI-assisted game development. It lets
+AI coding agents work with Unity projects through real Editor tools instead of
+guessing from files alone.
+
+## What Is Included
+
+- Unity package: `com.cidonix.unibridge`
+- Version: `0.2.9`
+- Relay bundle version: `1.1.0-build.14`
+- Unity compatibility: Unity Editor 6000.0 or newer
+- Local test baseline: Unity 6000.4.10f1 on Windows
+- Relay platforms:
+  - Windows x64
+  - Linux x64
+  - macOS x64
+  - macOS arm64
+
+## Main Capabilities
+
+- Project orientation: context snapshots, domain catalog, tool guide, workflow
+  recipes, scene/object views, editor snapshots, and console diagnostics.
+- Scene and prefab editing: GameObject/component workflows, prefab inspection
+  and overrides, scoped scene/prefab edits, batch actions, and rollback support.
+- Large-scene hierarchy workflows: complete JSON/JSONL hierarchy exports,
+  stable pagination, objectId/parentObjectId/siblingIndex data, export
+  comparison, and safe objectId-based batch reparent/container edits with
+  dry-run diffs, world-transform preservation, Undo grouping, and object-count
+  validation.
+- Assets: asset intelligence, import settings, materials, ScriptableObjects,
+  generic allowlisted asset creation, dependency/reference graphs, and preview
+  captures.
+- UI: Canvas/uGUI creation, templates, ScrollViews, layout helpers, graphics,
+  button events, UI validation, repair plans, and safe auto-fixes.
+- UI Toolkit: UXML/USS authoring, PanelSettings, UIDocument wiring, element and
+  style edits, and UI Toolkit capture.
+- Visual work: Scene View/game-camera captures, object/prefab/overview captures,
+  contact sheets, visual audits, pixel stats, diff heatmaps, and animated/VFX
+  preview advance.
+- Gameplay authoring: animation clips, Animator Controllers, Physics2D,
+  Physics3D, rendering, navigation, tilemaps, input actions, timeline, audio,
+  VFX, shaders, resources, and external model import.
+- Script workflows: validation, safe edits, preview mode, source context,
+  attached MonoBehaviour context, and script capability inspection.
+
+## 0.2.9 Polish
+
+- Added `UniBridge_Discover`, a read-only status/discovery tool for new agents.
+  It returns package/version data, core workflow calls, aliases, and optionally
+  the enabled tool list.
+- `UniBridge_Discover` and relay `_server_info` descriptions now include
+  high-signal searchable aliases:
+  `UniBridge`, `Unity`, `ValidateScript`, `RefreshAssets`,
+  `RequestScriptCompilationNoWait`, `WaitForReadyAfterReload`,
+  `GetCompilationDiagnostics`, `ReadConsole`, `DiagnosticSummary`,
+  `ClearConsole`, `PlayMode`, `WaitForPlayMode`, `WaitForEditMode`, and
+  `ValidateAdditiveSceneRegistration`.
+- Added `UniBridge_ValidateAdditiveSceneRegistration` for read-only additive
+  scene validation. It checks:
+  - `.unity` file existence and scene GUID;
+  - metadata `.asset` existence and GUID;
+  - scene YAML references to metadata GUID;
+  - `ProjectSettings/EditorBuildSettings.asset` scene registration;
+  - `scenesManager.prefab` runtime entry;
+  - `SceneBoundaries`, `SceneLoadingBoundaries`,
+    `ScenePaddingBoundaries`, and `ScenePaddingWideScreenExpansion`;
+  - stale supplied template/old scene names and GUIDs;
+  - optional neighbor scene existence/metadata/boundary sanity.
+- `UniBridge_BatchActions` can run both new tools as read-only steps with
+  aliases such as `discover`, `validate_additive_scene`,
+  `additive_scene_validation`, and `scene_registration`.
+- `UniBridge_ToolGuide` and `UniBridge_DomainCatalog` now expose the compile
+  diagnostics workflow, Play Mode boundary workflow, and additive scene
+  validation workflow in agent-facing text.
+
+## 0.2.8 Polish
+
+- Added `UniBridge_ManageEditor Action=RequestPlayModeNoWait` for reload-safe
+  Play Mode entry requests.
+- Added `UniBridge_ManageEditor Action=WaitForPlayMode` and
+  `UniBridge_ManageEditor Action=WaitForEditMode` for reconnect-friendly Play
+  Mode verification.
+- `Play WaitForCompletion=true` and `ExitPlayMode WaitForCompletion=true` now
+  return controlled queued boundary responses instead of waiting inline through
+  Unity domain reload.
+- `UniBridge_BatchActions` now stops successfully at Play Mode reload
+  boundaries and returns `postReconnect.nextSuggestedCalls`, so later steps do
+  not run against stale pre-reload editor state.
+- Relay `1.1.0-build.13` can recover Play Mode domain reload connection loss,
+  reconnect, wait for the requested play/edit mode state, and return structured
+  recovery data.
+- `UniBridge_ToolGuide` and `UniBridge_DomainCatalog` now recommend split-phase
+  Play Mode smoke tests:
+  clear/prepare -> queue Play -> reconnect/wait -> diagnostics / console.
+
+## 0.2.7 Polish
+
+- Added `UniBridge_ManageEditor Action=RequestScriptCompilationNoWait` for
+  reload-safe compile requests.
+- Added `UniBridge_ManageEditor Action=WaitForReadyAfterReload`, which waits
+  for editor readiness after a compile/reload checkpoint and returns
+  compilation diagnostics.
+- `RequestScriptCompilation WaitForCompletion=true` now returns a controlled
+  queued response instead of waiting inline through Unity assembly reload.
+- Relay `1.1.0-build.12` can recover script-compilation domain reload
+  connection loss, reconnect, wait for readiness, and return structured
+  diagnostics.
+- `UniBridge_ToolGuide`, batch aliases, validation, and scheduler policy now
+  recommend the stable workflow:
+  validate scripts -> refresh assets -> `RequestScriptCompilationNoWait` ->
+  `WaitForReadyAfterReload` -> diagnostics / console.
+
+## 0.2.6 Polish
+
+- `UniBridge_BatchActions` now allows `UniBridge_ValidateScript` as a
+  read-only step.
+- Added script-validation batch aliases:
+  `validate_script`, `script_validate`, `validate_cs`, and `cs_validation`.
+- Batch step normalization accepts `Uri`, `Path`, `AssetPath`, and
+  `ScriptPath` forms for script validation.
+- Batch impact reports script validation paths as read-only references and
+  explains that rollback/Undo is not required for those steps.
+- `UniBridge_ToolGuide` and documentation now describe the batch-safe
+  validation workflow while keeping script text edits on their dedicated
+  SHA/precondition tools.
+
+## 0.2.5 Polish
+
+- `UniBridge_ManageGameObject Find` / `SearchMethod=ByComponent` now scans
+  live components in scenes and Prefab Stage by short type name, full type
+  name, assembly-qualified name, MonoScript name/path/GUID, and serialized
+  `m_EditorClassIdentifier` aliases. This makes Prefab Mode lookup much more
+  reliable after scripts move into namespaces.
+- `UniBridge_ManageGameObject GetComponents` and
+  `UniBridge_TypeSchema InspectGameObject` now expose script identity metadata
+  and namespace-migration diagnostics when an old serialized class id resolves
+  to a new runtime type.
+- `UniBridge_TypeSchema InspectGameObject` now supports `IncludeInactive` for
+  inactive scene and Prefab Stage objects.
+- Adding a uGUI `Graphic` component now returns a clear hint when another
+  `Graphic` is already present, for example removing `TextMeshProUGUI` before
+  adding `Image`.
+- `UniBridge_ContextSnapshot IncludeConsole` defaults to compact console
+  summaries with totals and grouped critical/warning/spam issues, avoiding long
+  timeline dumps unless `ConsoleSummaryMode=Detailed` is requested.
+- `UniBridge_ReadConsole` now has clearer aliases:
+  `CreateMarker`, `ReadSinceMarker`, and `ClearConsole`.
+- `UniBridge_ManagePrefab save_stage` and `close_stage` responses now include
+  before/current Prefab Stage state and explain when Unity has already closed
+  or reloaded a stage.
+
+## 0.2.4 Polish
+
+- `UniBridge_ManageGameObject` now uses the shared scene-object resolver for
+  `Modify`, `Delete`, `AddComponent`, `RemoveComponent`,
+  `SetComponentProperty`, component inspection, parent lookup, and sibling
+  lookup. Passing `IncludeInactive=true` or `SearchInactive=true` now finds
+  inactive scene objects consistently with `UnitySearch` and `SceneObjectView`.
+- `UniBridge_BatchActions` impact and rollback diagnostics now normalize
+  project-relative `/Assets`, `/Packages`, `/ProjectSettings`, and `project:/`
+  path forms before checking file existence from the Unity project root.
+- `UniBridge_ManageScene` and batch scene-step validation now accept full scene
+  asset paths in `Path`, including `/Assets/...` and `project:/Assets/...`
+  forms, so scene diagnostics and execution paths agree.
+- Executing batches now propagate `DryRun=false` to nested dry-run-aware tools,
+  and step reports include an execution warning if a nested tool still returns
+  `dryRun=true`.
+- Batch validation accepts `UniBridge_ManageEditor`
+  `GetCompilationDiagnostics`, matching the editor lifecycle tool surface.
+- The relay now cleans stale Unity discovery JSON files for dead editor PIDs
+  during connection discovery.
+
+## 0.2.3 Polish
+
+- `CompareExports` now keeps `left` and `right` count-only by default:
+  `totalObjects`, `duplicateGroupCount`, and `duplicateObjectCount`. Verbose
+  duplicate keys are returned only when `IncludeDuplicateKeys=true`.
+- `summary.duplicates` now uses flattened counters
+  `leftGroupCount/rightGroupCount` and `leftObjectCount/rightObjectCount`.
+  Matching duplicate samples are returned once as `sharedTopGroups`; otherwise
+  the response uses bounded `leftTopGroups` and `rightTopGroups`.
+- Added `IncludeDuplicateSummary`, default `true`. Set it to `false` for
+  count-only compare output without top duplicate group examples.
+- `ExecutionStatus` operation records now include `mode` and `changedProject`.
+  Dry-run operations report `mode=DryRun` and `changedProject=false`.
+- `ContextSnapshot Depth=Brief` now avoids expanding registered package roots
+  by default. It still returns `registeredPackageCount`; the full
+  `registeredPackages` list is returned for `Depth=Detailed` or when
+  `IncludePackageDependencies=true`.
+
+## 0.2.2 Polish
+
+- `CompareExports` no longer repeats the same duplicate group detail in
+  `left`, `right`, and `summary`. Full compact duplicate detail lives under
+  `summary.duplicates.left/right`; `left/right` now expose only object totals,
+  duplicate group/object counts, and optional `duplicateKeys`.
+- `MaxDuplicateSamples` limits sample object ids, indexed paths, and names per
+  duplicate path group. The default is `3`, which keeps large UI clone
+  hierarchies readable for agents.
+- `ManageSceneHierarchy Reparent` dry-runs now populate
+  `plannedParentObjectId`, `plannedParentPath`, and
+  `plannedParentWillBeCreated=false` when the destination parent already
+  exists.
+- Dry-run and executed hierarchy operations now include compact
+  `objectCountValidation` aliases: `mode`, `expectedDelta`, `actualDelta`,
+  `plannedDelta` where applicable, and `passed`.
+
+## 0.2.1 Polish
+
+- `UniBridge_SceneHierarchyExport` now returns a compact `summary` in every
+  export response, even when the full scene export is written to JSON or JSONL.
+  The summary includes object totals, root/inactive counts, missing scripts,
+  renderer breakdowns, `Light2D` count, prefab instance count, and top duplicate
+  hierarchy path groups.
+- `CompareExports` is quieter by default. Duplicate key rows are opt-in through
+  `IncludeDuplicateKeys`, bounded by `MaxDuplicateKeys`, while the summary keeps
+  duplicate group/object counts and top duplicate groups visible. When disabled,
+  verbose duplicate key rows are omitted from the response.
+- Export comparison prefers `indexedPath` when available, which makes sibling
+  duplicates such as repeated UI clones safer to compare.
+- `ManageSceneHierarchy CreateContainer` dry-runs now explain the planned
+  destination container on every planned move before that container exists.
+- Object-count validation results now expose the validation mode, expected
+  delta, actual delta, and pass/fail flag explicitly for both `Reparent` and
+  `CreateContainer`.
+- Package metadata now identifies the author as Cidonix in Unity Package
+  Manager.
+
+## Installation
+
+1. Extract the release archive.
+2. In Unity, open `Window > Package Manager`.
+3. Choose `+ > Add package from disk...`.
+4. Select `com.cidonix.unibridge/package.json`.
+5. Wait for Unity to compile.
+6. Open `Project Settings > UniBridge > MCP`.
+7. Confirm that the Local Bridge is running.
+8. Use the Integrations section to configure your MCP client for this project.
+9. Restart the AI agent/MCP client itself so it reloads the new MCP server
+   configuration.
+
+For day-to-day work, use the generated MCP configuration that includes
+`--project-id`. This keeps each Unity project targeted explicitly.
+
+UniBridge supports multiple open Unity projects at the same time. Configure one
+MCP server entry per Unity project, each with its own generated server key and
+`--project-id`. When you add another project to the agent configuration,
+restart the agent/MCP client, not just Unity.
+
+## Known Limitations
+
+- Windows is the primary live-tested platform in this release.
+- Linux and macOS relay binaries are included, but should be verified on target
+  systems before relying on them for production work.
+- Relay binaries are unsigned. Windows, macOS, or Linux security policy may ask
+  for additional confirmation before running them.
+- Some tools depend on optional Unity packages. When those packages are absent,
+  UniBridge reports the missing capability instead of treating the whole bridge
+  as broken.
+- UniBridge is an Editor package. It is not intended to be included in runtime
+  player builds.
+
+## Verification Summary
+
+The 0.2.3 package was smoke-tested through the MCP relay against the UniBridge
+test Unity project.
+
+- `tools/list` reported 62 callable MCP tools.
+- `RefreshAssets`, `WaitIdle`, and `GetCompilationDiagnostics` completed with
+  0 compile warnings and 0 compile errors.
+- `ContextSnapshot Depth=Brief` returned `registeredPackageCount` without
+  expanding `registeredPackages`; passing `IncludePackageDependencies=true`
+  returned the full registered package roots.
+- `SceneHierarchyExport` returned compact summary fields, wrote a JSONL export,
+  and bounded duplicate samples with `MaxDuplicateSamples=3`.
+- `ManageSceneHierarchy Reparent` dry-run against an existing parent returned
+  the correct planned parent metadata, and `ExecutionStatus Recent` reported
+  that operation as `policy=Mutating`, `mode=DryRun`,
+  `changedProject=false`.
+- `CompareExports IncludeDuplicateKeys=false IncludeDuplicateSummary=true`
+  returned `left/right` payloads with only totals and duplicate counts. The
+  duplicate summary was flattened into group/object counters and
+  `sharedTopGroups`.
+- `CompareExports IncludeDuplicateSummary=false` returned count-only duplicate
+  summary fields without top duplicate groups.
+- `CompareExports IncludeDuplicateKeys=true` returned bounded duplicate keys.
+- The test scene was restored through `UniBridge_EditorSnapshot` after the
+  smoke run.
+
+## Support
+
+For setup issues, include:
+
+- Unity version
+- Operating system
+- UniBridge version
+- MCP client name
+- The relevant Unity Console error or UniBridge diagnostic summary
