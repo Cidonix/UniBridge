@@ -1,13 +1,18 @@
-# UniBridge 0.2.13 Release Notes
+# UniBridge 0.2.14 Release Notes
 
 Release date: 2026-06-14
 
-This release makes `UniBridge_WorkSession` more useful as an agent self-review
-tool after scene work. In addition to changed-file summaries, WorkSession can
-now capture a compact loaded-scene semantic baseline at `Begin` and report what
-actually changed in the live Unity scene: created/deleted/moved/renamed
-GameObjects, component changes, renderer sorting changes, prefab-info changes,
-transform changes, and missing-script deltas.
+This release polishes `UniBridge_ContextSnapshot` as the first-call orientation
+tool for new AI agents. The snapshot now includes an `agentBrief` block by
+default: project shape, likely important folders/systems, active WorkSession
+state, risk flags, guardrails, and recommended next UniBridge calls.
+
+The previous 0.2.13 release made `UniBridge_WorkSession` more useful as an
+agent self-review tool after scene work. In addition to changed-file summaries,
+WorkSession can capture a compact loaded-scene semantic baseline at `Begin` and
+report what actually changed in the live Unity scene: created/deleted/moved/
+renamed GameObjects, component changes, renderer sorting changes, prefab-info
+changes, transform changes, and missing-script deltas.
 
 The previous 0.2.12 release made `UniBridge_WorkSession` easier for agents to
 use correctly: executing `UniBridge_BatchActions` appends active WorkSession
@@ -41,7 +46,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.13`
+- Version: `0.2.14`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
@@ -80,6 +85,27 @@ guessing from files alone.
   VFX, shaders, resources, and external model import.
 - Script workflows: validation, safe edits, preview mode, source context,
   attached MonoBehaviour context, and script capability inspection.
+
+## 0.2.14 Polish
+
+- `UniBridge_ContextSnapshot` returns `agentBrief` by default. It is a compact
+  onboarding layer for new agents, not a replacement for the raw `project`,
+  `scenes`, `hierarchy`, `assets`, or `console` sections.
+- `agentBrief.projectShape` summarizes asset counts, loaded-scene count,
+  loaded root-object count, dirty-scene count, active scene, and scene scale.
+- `agentBrief.likelyFolders` highlights probable scene/script/gameplay/UI/
+  prefab/art/audio/data folders using bounded folder-name heuristics.
+- `agentBrief.likelyImportantSystems` highlights obvious package, render
+  pipeline, asset-folder, and asmdef signals such as Input System, UGUI,
+  UI Toolkit, URP/HDRP, Timeline, TextMesh Pro, Corgi Engine, Spine, and
+  project assemblies when present.
+- `agentBrief.riskFlags` calls out compile/import/play-mode boundaries, dirty
+  scenes, open Prefab Stage, console errors/warnings, hierarchy truncation,
+  large loaded scenes, and missing active WorkSession state.
+- `agentBrief.guardrails` and `agentBrief.recommendedNextCalls` tell the agent
+  which UniBridge calls to make next before broad edits.
+- Use `IncludeAgentBrief=false` when an agent wants the old raw snapshot shape
+  without the onboarding layer.
 
 ## 0.2.13 Polish
 

@@ -376,7 +376,25 @@ The snapshot returns one structured overview with:
 - a bounded hierarchy summary;
 - console diagnostic summary;
 - project asset counts and recent asset paths;
-- enabled UniBridge tools.
+- enabled UniBridge tools;
+- `agentBrief`, a compact onboarding layer for new agents.
+
+`agentBrief` is included by default and summarizes:
+
+- project shape: asset counts, loaded-scene count, root-object count,
+  dirty-scene count, active scene, and scene scale;
+- likely important folders for scenes, scripts, gameplay, UI, prefabs, art,
+  audio, and data/config;
+- likely important systems detected from packages, render pipeline, asset
+  folders, and asmdefs;
+- active `UniBridge_WorkSession` state;
+- risk flags such as compiling/importing, Play Mode, dirty scenes, open Prefab
+  Stage, console issues, hierarchy truncation, large loaded scenes, or missing
+  WorkSession;
+- guardrails and recommended next UniBridge calls.
+
+Pass `IncludeAgentBrief=false` when an agent wants only the raw snapshot
+sections without the onboarding summary.
 
 `Depth=Brief` keeps package-root output compact: it returns
 `registeredPackageCount` but does not expand the full `registeredPackages`

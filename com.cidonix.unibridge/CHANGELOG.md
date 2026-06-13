@@ -2,6 +2,17 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.14
+
+### Changed
+
+- `UniBridge_ContextSnapshot` now includes an `agentBrief` onboarding block by
+  default. It summarizes project shape, likely important folders/systems, active
+  WorkSession state, risk flags, guardrails, and recommended next UniBridge
+  calls for new agents.
+- Added `IncludeAgentBrief` to `UniBridge_ContextSnapshot` so agents can disable
+  the onboarding brief when they need a minimal raw snapshot.
+
 ## 0.2.13
 
 ### Changed

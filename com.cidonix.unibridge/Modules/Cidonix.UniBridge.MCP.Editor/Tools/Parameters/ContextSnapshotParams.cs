@@ -70,6 +70,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Include package dependency overview from Packages/packages-lock.json or manifest.json. Defaults to Standard/Detailed only.", Required = false)]
         public bool? IncludePackageDependencies { get; set; }
 
+        [McpDescription("Include a compact new-agent onboarding brief with project shape, risk flags, guardrails, and recommended next UniBridge calls. Defaults to true.", Required = false, Default = true)]
+        public bool? IncludeAgentBrief { get; set; }
+
         [McpDescription("Hierarchy depth: 0 for roots only, 1+ for child levels. Values are clamped to 0..3.", Required = false)]
         public int? HierarchyDepth { get; set; }
 

@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Changed\n\n- UniBridge_WorkSession now captures an optional compact loaded-scene semantic baseline at Begin and includes semantic review data in Status/Review and active WorkSession auto-review blocks.\n- Semantic review reports created/deleted/moved/renamed GameObjects, component changes, renderer sorting changes, prefab-info changes, transform changes, and missing-script deltas by stable object id.\n\n### Previous Changes\n\n- UniBridge_BatchActions appends active UniBridge_WorkSession review data after executing batches by default, so agents immediately see changed-file counts, risks, and sample paths when a WorkSession is active.\n- UniBridge_ExecutionStatus Snapshot/Recent includes an active WorkSession review summary by default.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
+    "changelog": "### Changed\n\n- UniBridge_ContextSnapshot now includes an agentBrief onboarding block by default, summarizing project shape, likely folders/systems, risk flags, guardrails, active WorkSession state, and recommended next UniBridge calls.\n\n### Previous Changes\n\n- UniBridge_WorkSession captures an optional compact loaded-scene semantic baseline at Begin and includes semantic review data in Status/Review and active WorkSession auto-review blocks.\n- Semantic review reports scene-object changes by stable object id.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -20,7 +20,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
     /// <summary>
     /// Builds a compact, AI-oriented snapshot of the current Unity project and Editor state.
     /// </summary>
-    public static class ContextSnapshot
+    public static partial class ContextSnapshot
     {
         const int MaxHierarchyDepth = 3;
         const int MaxComponentNames = 14;
@@ -44,11 +44,12 @@ Args:
     IncludeProjectRoots: Include project roots and registered package count; registered package root details are Brief-safe and only expand for Detailed or IncludePackageDependencies=true.
     IncludeProjectSettings: Include render pipeline, 2D/3D mode, tags, layers, and sorting layers.
     IncludePackageDependencies: Include package dependency overview from packages-lock.json or manifest.json.
+    IncludeAgentBrief: Include a compact new-agent onboarding brief with project shape, risk flags, guardrails, and recommended next UniBridge calls.
     ConsoleSummaryMode: Compact or Detailed. Compact omits console timeline/sample dumps from ContextSnapshot.
     HierarchyDepth, MaxSceneObjects, MaxAssets, MaxConsoleIssues, MaxTools: Optional output limits.
 
 Returns:
-    success, message, and structured data with project identity, roots, render settings, package version/dependencies, editor state, scenes, optional hierarchy, selection, prefab stage, console diagnostics, assets, tools, windows, and hints.";
+    success, message, and structured data with project identity, roots, render settings, package version/dependencies, agentBrief, editor state, scenes, optional hierarchy, selection, prefab stage, console diagnostics, assets, tools, windows, and hints.";
 
         [McpTool("UniBridge_ContextSnapshot", Description, Title, Groups = new[] { "core", "editor", "scene", "debug", "resources" }, EnabledByDefault = true)]
         public static object HandleCommand(ContextSnapshotParams parameters)
@@ -60,6 +61,7 @@ Returns:
                 var projectIdentity = ProjectIdentity.GetOrCreate();
                 var hierarchy = options.IncludeHierarchy ? BuildHierarchySnapshot(options) : null;
                 var console = options.IncludeConsole ? BuildConsoleSnapshot(options) : null;
+                var agentBrief = options.IncludeAgentBrief ? BuildAgentBrief(options, hierarchy, console) : null;
 
                 var data = new
                 {
@@ -77,6 +79,7 @@ Returns:
                     },
                     project = BuildProjectSnapshot(projectIdentity, options),
                     package = BuildPackageSnapshot(options),
+                    agentBrief,
                     editor = BuildEditorSnapshot(),
                     activeTool = BuildActiveToolSnapshot(),
                     scenes = BuildScenesSnapshot(options),
@@ -1202,6 +1205,7 @@ Returns:
             public bool IncludeProjectSettings;
             public bool IncludePackageDependencies;
             public bool IncludeRegisteredPackageRoots;
+            public bool IncludeAgentBrief;
             public ContextSnapshotConsoleSummaryMode ConsoleSummaryMode;
             public int HierarchyDepth;
             public int MaxSceneObjects;
@@ -1229,6 +1233,7 @@ Returns:
                     IncludeProjectSettings = parameters.IncludeProjectSettings ?? true,
                     IncludePackageDependencies = parameters.IncludePackageDependencies ?? depth != ContextSnapshotDepth.Brief,
                     IncludeRegisteredPackageRoots = includePackageDependenciesExplicitly || depth == ContextSnapshotDepth.Detailed,
+                    IncludeAgentBrief = parameters.IncludeAgentBrief ?? true,
                     ConsoleSummaryMode = parameters.ConsoleSummaryMode,
                     HierarchyDepth = Clamp(parameters.HierarchyDepth ?? DefaultHierarchyDepth(depth), 0, MaxHierarchyDepth),
                     MaxSceneObjects = Clamp(parameters.MaxSceneObjects ?? DefaultSceneObjectLimit(depth), 1, 500),

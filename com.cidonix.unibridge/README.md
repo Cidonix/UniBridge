@@ -84,7 +84,7 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
-## Known 0.2.13 Notes
+## Known 0.2.14 Notes
 
 - `UniBridge_WorkSession Action=Begin` captures a compact loaded-scene semantic
   baseline by default. Use `IncludeSceneSemantics=false` to disable it, or
@@ -184,6 +184,11 @@ Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 - Large-scene hierarchy exports can write full JSON/JSONL files to
   `Library/UniBridge/SceneHierarchyExports`; use the compact MCP response
   `summary` for quick scene orientation before reading the full file.
+- `ContextSnapshot` includes `agentBrief` by default. Use it as the first
+  new-agent onboarding layer: project shape, likely folders/systems, risk
+  flags, guardrails, active WorkSession state, and recommended next calls.
+  Pass `IncludeAgentBrief=false` only when you want the older raw snapshot
+  shape.
 - `CompareExports` keeps duplicate examples compact by default. Use
   `IncludeDuplicateKeys=true` or `IncludeDuplicateSummary=false` only when an
   agent specifically needs verbose keys or a count-only response.
