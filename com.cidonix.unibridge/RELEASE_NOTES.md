@@ -1,10 +1,19 @@
-# UniBridge 0.2.10 Release Notes
+# UniBridge 0.2.11 Release Notes
 
-Release date: 2026-06-09
+Release date: 2026-06-13
 
-This release makes `RefreshAssets WaitForCompletion=true` reload-safe when
-Unity import/refresh closes the bridge during a domain reload. It also includes
-the 0.2.9 discoverability and additive scene validation improvements.
+This release adds `UniBridge_WorkSession`, a project-local checkpoint and
+review layer for AI agents. It lets an agent begin a session before broad Unity
+work, review changed files afterward, inspect compact text diffs, dry-run
+selected reverts, and explicitly restore/delete selected files from session
+snapshots stored under `Library/UniBridge/WorkSessions`.
+
+Relay remains `1.1.0-build.15`; this release only adds Unity-side MCP tooling.
+
+The previous 0.2.10 release makes `RefreshAssets WaitForCompletion=true`
+reload-safe when Unity import/refresh closes the bridge during a domain reload.
+It also includes the 0.2.9 discoverability and additive scene validation
+improvements.
 
 The previous 0.2.9 release improves Codex/tool_search discoverability and adds a read-only
 additive scene registration validator for large Unity projects. It gives new
@@ -20,7 +29,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.10`
+- Version: `0.2.11`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
@@ -34,6 +43,9 @@ guessing from files alone.
 
 - Project orientation: context snapshots, domain catalog, tool guide, workflow
   recipes, scene/object views, editor snapshots, and console diagnostics.
+- Work-session safety: begin project-local checkpoints, review changed files,
+  inspect compact text diffs, dry-run selected reverts, and restore/delete
+  selected files from captured session snapshots.
 - Scene and prefab editing: GameObject/component workflows, prefab inspection
   and overrides, scoped scene/prefab edits, batch actions, and rollback support.
 - Large-scene hierarchy workflows: complete JSON/JSONL hierarchy exports,
@@ -56,6 +68,21 @@ guessing from files alone.
   VFX, shaders, resources, and external model import.
 - Script workflows: validation, safe edits, preview mode, source context,
   attached MonoBehaviour context, and script capability inspection.
+
+## 0.2.11 Polish
+
+- Added `UniBridge_WorkSession` with actions:
+  - `Begin`: capture a baseline snapshot under
+    `Library/UniBridge/WorkSessions`;
+  - `Status`: summarize active session and current change counts;
+  - `Review`: list changed files, risk flags, and restore availability;
+  - `Diff`: return compact text diffs for selected changed files;
+  - `Revert`: dry-run by default, then restore/delete selected files only when
+    `DryRun=false`;
+  - `End`: close the active session.
+- `UniBridge_Discover`, `UniBridge_ToolGuide`, and
+  `UniBridge_DomainCatalog` now surface WorkSession as the recommended
+  checkpoint/review layer before and after broad AI edits.
 
 ## 0.2.10 Polish
 

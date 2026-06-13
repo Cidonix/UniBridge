@@ -2,6 +2,24 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.11
+
+### Added
+
+- Added `UniBridge_WorkSession`, a project-local AI work-session safety tool.
+  Agents can start a checkpoint, review changed files, inspect compact text
+  diffs, dry-run selected reverts, and explicitly restore/delete selected files
+  from snapshots stored under `Library/UniBridge/WorkSessions`.
+- Added WorkSession guidance to `UniBridge_Discover`, `UniBridge_ToolGuide`,
+  and `UniBridge_DomainCatalog` so new agents can discover the checkpoint /
+  review / diff / revert workflow.
+
+### Changed
+
+- `UniBridge_WorkSession` uses read-only scheduling for `Status`, `Review`,
+  `Diff`, and `List`, while `Begin`, `Revert`, and `End` run through the
+  exclusive editor execution gate.
+
 ## 0.2.10
 
 ### Changed

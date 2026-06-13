@@ -7748,3 +7748,65 @@ Targeted MCP refresh:
   - `isCompiling=false`;
   - `isUpdating=false`;
   - `isPlaying=false`.
+
+## 2026-06-13 - UniBridge 0.2.11 WorkSession safety tool
+
+Додано перший практичний крок після аналізу Locus-подібного workflow:
+`UniBridge_WorkSession`.
+
+Навіщо:
+
+- дати AI-агенту project-local checkpoint перед роботою;
+- швидко бачити, які файли змінились під час поточної сесії;
+- отримувати компактний diff без ручного `git diff`;
+- робити dry-run revert і реальний revert вибраних файлів із baseline;
+- зменшити ризик "агент щось зробив, але не перевірив власний слід".
+
+Основні дії:
+
+- `Begin` - створює baseline snapshot у `Library/UniBridge/WorkSessions`;
+- `Status` / `Review` - повертають summary і changed files;
+- `Diff` - повертає компактний text diff;
+- `Revert` - за замовчуванням dry-run, з `DryRun=false` відновлює/видаляє
+  вибрані файли;
+- `End` / `List` - завершує або показує сесії.
+
+Деталі реалізації:
+
+- baseline за замовчуванням сканує `Assets`, `ProjectSettings`,
+  `Packages/manifest.json`, `Packages/packages-lock.json`;
+- capturable text/YAML assets зберігаються під `Library`, не в git;
+- `Revert` автоматично додає `.meta` для added asset, якщо
+  `DeleteAddedMetaWithAsset=true`;
+- changed-file output зроблено camelCase (`path`, `changeType`, `riskFlags`)
+  для зручності майбутніх агентів;
+- timestamp-only Unity import noise не рахується як зміна, якщо SHA256 збігається.
+
+Docs/package:
+
+- `package.json` піднято до `0.2.11`;
+- оновлено `README.md`, `CHANGELOG.md`, `RELEASE_NOTES.md`,
+  `Documentation~/unibridge.md`;
+- `Discover`, `ToolGuide`, `DomainCatalog`, `ToolExecutionScheduler`
+  отримали WorkSession aliases/workflow/domain.
+
+Живий MCP smoke у `UniBridge_Test_Project`:
+
+- sync source package у
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`;
+- `UniBridge_ManageEditor RefreshAssets WaitForCompletion=true Force=true`
+  успішно пережив reload boundary і повернув ready;
+- `tools/list` показав `UniBridge_WorkSession`, загалом `65` tools;
+- `GetCompilationDiagnostics`: `errors=0`, `warnings=0`;
+- smoke workflow:
+  `ClearConsole -> WorkSession Begin -> CreateScript Assets/UniBridgeWorkSessionProbe.cs
+  -> WaitForReadyAfterReload -> WorkSession Review -> Diff -> Revert dry-run
+  -> Revert DryRun=false -> Review -> End`;
+- `Review` побачив рівно:
+  - `Assets/UniBridgeWorkSessionProbe.cs`;
+  - `Assets/UniBridgeWorkSessionProbe.cs.meta`;
+- `Diff` містив marker `work-session-smoke`;
+- dry-run plan показав delete для `.cs` і `.meta`;
+- після real revert `Review` повернув `post_revert_changed_paths=[]`;
+- фінальна консоль:
+  `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.

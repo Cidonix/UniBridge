@@ -226,6 +226,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             if (string.Equals(toolName, "UniBridge_WorkflowRecipes", StringComparison.Ordinal))
                 return ResolveWorkflowPolicy(parameters);
 
+            if (string.Equals(toolName, "UniBridge_WorkSession", StringComparison.Ordinal))
+                return IsAction(parameters, "Status", "Review", "Diff", "List")
+                    ? ToolExecutionPolicy.ReadOnly
+                    : ToolExecutionPolicy.Mutating;
+
             if (string.Equals(toolName, "UniBridge_EditorEvents", StringComparison.Ordinal))
                 return IsAction(parameters, "Clear") ? ToolExecutionPolicy.Mutating : ToolExecutionPolicy.ReadOnly;
 

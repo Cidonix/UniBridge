@@ -610,6 +610,39 @@ Example transactional execution:
 
 Script text editing tools are intentionally not included in batch actions. Use their dedicated SHA/precondition workflows directly. Read-only script validation is allowed in `UniBridge_BatchActions`, so an agent can validate several `.cs` files, refresh assets, request reload-safe compilation with `RequestScriptCompilationNoWait`, wait with `WaitForReadyAfterReload`, and read console diagnostics in one planned workflow.
 
+### Review AI Work Sessions
+
+Use `UniBridge_WorkSession` as a project-local safety layer around broad AI work. It complements `BatchActions`: `BatchActions` protects one planned execution, while `WorkSession` lets an agent review the whole work window before reporting completion.
+
+Typical flow:
+
+```text
+UniBridge_WorkSession Action=Begin Name="Reorganize darkness scene"
+...run normal domain-specific UniBridge tools...
+UniBridge_WorkSession Action=Review
+UniBridge_WorkSession Action=Diff Paths=[Assets/...]
+UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]
+UniBridge_WorkSession Action=End
+```
+
+Session snapshots are written under `Library/UniBridge/WorkSessions`, outside source control. `Begin` records project files under `Assets`, `ProjectSettings`, and package manifest files by default, captures restorable bytes for text/YAML Unity assets under configurable size limits, and marks the session active.
+
+Actions:
+
+- `Begin`: create a checkpoint and make it active.
+- `Status`: return active session metadata and compact current change counts.
+- `Review`: list changed files with change type, asset kind, risk flags, hashes/sizes, and whether UniBridge can revert them from the captured baseline.
+- `Diff`: return compact text diffs for selected changed files.
+- `Revert`: defaults to `DryRun=true`; repeat with `DryRun=false` only after reviewing the plan. It restores modified/deleted captured files and deletes files added after the checkpoint.
+- `End`: close the active session, optionally deleting session files.
+
+Useful controls:
+
+- `MaxFiles`, `MaxSingleCaptureBytes`, and `MaxTotalCaptureBytes`: bound scan and snapshot size.
+- `IncludeProjectSettings`, `IncludePackageManifests`, and `IncludePackageFiles`: tune scope.
+- `Paths`: selected project-relative files for `Diff` or `Revert`.
+- `RevertAll=true`: revert every detected change from the session, usually after a dry-run review.
+
 ### Read Unity Console
 
 Use `UniBridge_ReadConsole` to inspect compile errors, warnings, import issues, and runtime logs. For a quick overview, request errors and warnings without stack traces. For deeper debugging, include stack traces.

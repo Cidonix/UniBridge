@@ -26,7 +26,7 @@ public const string Description = @"Return an agent-facing catalog of Unity doma
 
 Use this as a first call when a new agent knows the task domain but not the exact UniBridge tool. It is read-only and optimized for tool discovery, workflow order, and domain-specific type hints.
 
-Search aliases: UniBridge Unity MCP DomainCatalog ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
+Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
 
 Args:
     Action: Overview, ListDomains, InspectDomain, ListTypes, or SuggestTools.
@@ -416,6 +416,20 @@ Returns:
                     TypeNames = new[] { "UnityEditor.EditorApplication", "UnityEditor.Compilation.CompilationPipeline", "UnityEditor.AssetPostprocessor", "UnityEditor.Selection" },
                     Notes = new[] { "Use RequestScriptCompilationNoWait followed by WaitForReadyAfterReload for compile workflows; Unity assembly reload can recreate the bridge during inline waits.", "Use RequestPlayModeNoWait or Play as a reload-safe boundary, then call WaitForPlayMode/WaitForReady/ReadConsole after reconnect; do not rely on one in-process batch spanning Play Mode domain reload.", "Use latestId from EditorEvents as SinceId for low-cost polling.", "Use EditorSnapshot before temporary scene/prefab/window/selection changes; it preserves active dock tabs and Prefab Mode autosave settings.", "Asset deltas are a cue to refresh AssetIntelligence reference graphs before moves/deletes.", "Compiler diagnostics include severity, assembly path, file, line, and column when Unity reports them." },
                     Aliases = new[] { "editor", "events", "diagnostics", "compile", "asset_events", "selection" }
+                },
+                new DomainDefinition
+                {
+                    Key = "Safety",
+                    Title = "AI work-session review and revert safety",
+                    When = "Use before broad AI edits and after implementation to summarize changed files, inspect text diffs, and dry-run selective reverts.",
+                    FirstCalls = new[] { "UniBridge_WorkSession Action=Begin Name=<task>", "UniBridge_WorkSession Action=Status" },
+                    AuthoringTools = new[] { "UniBridge_WorkSession" },
+                    InspectionTools = new[] { "UniBridge_WorkSession", "UniBridge_EditorEvents", "UniBridge_ExecutionStatus" },
+                    VerificationTools = new[] { "UniBridge_WorkSession", "UniBridge_ReadConsole" },
+                    CaptureTools = Array.Empty<string>(),
+                    TypeNames = new[] { "UnityEditor.AssetDatabase" },
+                    Notes = new[] { "WorkSession snapshots are stored in Library/UniBridge/WorkSessions and are not version-controlled.", "Use Review and Diff before final reporting so the agent can explain exactly what changed.", "Revert defaults to DryRun=true and only executes when the agent explicitly passes DryRun=false." },
+                    Aliases = new[] { "safety", "checkpoint", "work_session", "review", "changes", "diff", "revert", "rollback" }
                 },
                 new DomainDefinition
                 {

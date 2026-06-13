@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -65,10 +65,11 @@ This tool is read-only.";
                     new { step = 2, tool = "UniBridge_Discover", why = "Ping UniBridge and get searchable workflow aliases when a Codex thread is newly connected." },
                     new { step = 3, tool = "UniBridge_DomainCatalog", why = "Pick the Unity work domain and see its authoring/inspection tools." },
                     new { step = 4, tool = "UniBridge_ContextSnapshot", why = "Get project roots, render settings, packages, scene, console, selection, asset, and tool context in one read-only call." },
-                    new { step = 5, tool = "UniBridge_UnitySearch", why = "Resolve vague user references across scene objects, assets, scripts, shaders, and menu items." },
-                    new { step = 6, tool = "UniBridge_WorkflowRecipes", why = "Use a complete recipe when the task matches a common Unity workflow." },
-                    new { step = 7, tool = "UniBridge_ReadConsole", why = "Check Unity diagnostics before and after edits." },
-                    new { step = 8, tool = "UniBridge_ExecutionStatus", why = "Inspect active/pending UniBridge tool execution if something appears to wait or timeout." }
+                    new { step = 5, tool = "UniBridge_WorkSession", why = "Start a checkpoint before broad AI edits, then review/diff/revert selected changed files after the work." },
+                    new { step = 6, tool = "UniBridge_UnitySearch", why = "Resolve vague user references across scene objects, assets, scripts, shaders, and menu items." },
+                    new { step = 7, tool = "UniBridge_WorkflowRecipes", why = "Use a complete recipe when the task matches a common Unity workflow." },
+                    new { step = 8, tool = "UniBridge_ReadConsole", why = "Check Unity diagnostics before and after edits." },
+                    new { step = 9, tool = "UniBridge_ExecutionStatus", why = "Inspect active/pending UniBridge tool execution if something appears to wait or timeout." }
                 },
                 coreLoop = new[]
                 {
@@ -76,7 +77,8 @@ This tool is read-only.";
                     "Resolve targets with UnitySearch, SceneObjectView, TypeSchema, AssetIntelligence, or ScriptIntelligence.",
                     "Use WorkflowRecipes for common full workflows, or dry-run custom multi-step changes with BatchActions.",
                     "Apply the smallest suitable Manage* tool.",
-                    "Verify with ReadConsole and a capture/inspect tool."
+                    "Verify with ReadConsole and a capture/inspect tool.",
+                    "Review the WorkSession changed-file report before reporting completion."
                 },
                 workflowTopics = workflows.Select(ToWorkflowSummary).ToArray(),
                 batch = BuildBatchSummary(),
@@ -261,13 +263,26 @@ This tool is read-only.";
                     Key = "orientation",
                     Title = "Orient in a Unity project",
                     When = "Use at the start of an unfamiliar project or after a long pause.",
-                    FirstCalls = new[] { "UniBridge_ToolGuide Action=Overview", "UniBridge_DomainCatalog Action=Overview", "UniBridge_ContextSnapshot Depth=Standard IncludeConsole=true IncludeTools=true IncludeProjectRoots=true IncludeProjectSettings=true", "UniBridge_EditorEvents Action=Snapshot IncludeSelection=true IncludeDiagnostics=true", "UniBridge_ReadConsole Action=DiagnosticSummary" },
+                    FirstCalls = new[] { "UniBridge_ToolGuide Action=Overview", "UniBridge_DomainCatalog Action=Overview", "UniBridge_ContextSnapshot Depth=Standard IncludeConsole=true IncludeTools=true IncludeProjectRoots=true IncludeProjectSettings=true", "UniBridge_WorkSession Action=Begin Name=<task> before broad edits", "UniBridge_EditorEvents Action=Snapshot IncludeSelection=true IncludeDiagnostics=true", "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     EditCalls = Array.Empty<string>(),
                     VerifyCalls = new[] { "UniBridge_ReadConsole Action=DiagnosticSummary" },
-                    Tools = new[] { ToolName, "UniBridge_Discover", "UniBridge_DomainCatalog", "UniBridge_ContextSnapshot", "UniBridge_EditorEvents", "UniBridge_UnitySearch", "UniBridge_WorkflowRecipes", "UniBridge_ReadConsole", "UniBridge_ExecutionStatus", "UniBridge_EditorSnapshot" },
+                    Tools = new[] { ToolName, "UniBridge_Discover", "UniBridge_DomainCatalog", "UniBridge_ContextSnapshot", "UniBridge_WorkSession", "UniBridge_EditorEvents", "UniBridge_UnitySearch", "UniBridge_WorkflowRecipes", "UniBridge_ReadConsole", "UniBridge_ExecutionStatus", "UniBridge_EditorSnapshot" },
                     BatchAliases = Array.Empty<string>(),
                     Notes = new[] { "Use this before planning broad scene, asset, UI, or script edits." },
                     Aliases = new[] { "start", "overview", "project" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "work_session",
+                    Title = "Review and protect an AI work session",
+                    When = "Use before and after broad AI edits so the agent can explain changed files, inspect text diffs, and safely revert selected paths.",
+                    FirstCalls = new[] { "UniBridge_WorkSession Action=Begin Name=<task>", "Run the normal domain-specific UniBridge tools for the task" },
+                    EditCalls = new[] { "UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]", "UniBridge_WorkSession Action=Revert DryRun=false Paths=[Assets/...] only after checking the dry-run plan" },
+                    VerifyCalls = new[] { "UniBridge_WorkSession Action=Review", "UniBridge_WorkSession Action=Diff Paths=[Assets/...]", "UniBridge_ReadConsole Action=DiagnosticSummary", "UniBridge_WorkSession Action=End" },
+                    Tools = new[] { "UniBridge_WorkSession", "UniBridge_ReadConsole", "UniBridge_ExecutionStatus", "UniBridge_EditorEvents" },
+                    BatchAliases = Array.Empty<string>(),
+                    Notes = new[] { "Snapshots live under Library/UniBridge/WorkSessions and are not meant for version control.", "Revert defaults to DryRun=true and only restores files that were captured at Begin, or deletes files added after Begin.", "Use this alongside BatchActions rollback: BatchActions protects one planned execution, WorkSession reviews the whole agent work window." },
+                    Aliases = new[] { "checkpoint", "review", "changes", "diff", "revert", "rollback", "safety" }
                 },
                 new WorkflowGuide
                 {

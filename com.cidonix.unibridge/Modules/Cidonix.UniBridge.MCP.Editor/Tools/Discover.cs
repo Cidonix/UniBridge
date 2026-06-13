@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, PlayMode, WaitForPlayMode, WaitForEditMode, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, PlayMode, WaitForPlayMode, WaitForEditMode, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -102,6 +102,20 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
         {
             return new[]
             {
+                new
+                {
+                    key = "work_session_review",
+                    summary = "Start a checkpoint before AI work, review changed files, inspect text diffs, and optionally revert selected paths.",
+                    calls = new[]
+                    {
+                        "UniBridge_WorkSession Action=Begin Name=<task>",
+                        "Run normal UniBridge tools for the task",
+                        "UniBridge_WorkSession Action=Review",
+                        "UniBridge_WorkSession Action=Diff Paths=[Assets/...]",
+                        "UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]",
+                        "UniBridge_WorkSession Action=End"
+                    }
+                },
                 new
                 {
                     key = "compile_diagnostics",

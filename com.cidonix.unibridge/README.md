@@ -20,6 +20,9 @@ through an approval-based connection flow.
   tilemaps, input actions, timeline, audio, VFX, and workflow recipes.
 - `UniBridge_Discover`, a stable read-only ping/workflow entry point for new
   MCP clients and Codex sessions.
+- `UniBridge_WorkSession`, a project-local checkpoint/review/revert layer that
+  lets agents summarize changed files, inspect compact text diffs, and dry-run
+  selected reverts after broad AI work.
 - Large-scene hierarchy export, JSON/JSONL file output, export comparison, and
   safe objectId-based batch reparent/container workflows.
 - Read-only additive scene registration validation for cloned/additive scene
@@ -79,6 +82,16 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## Known 0.2.11 Notes
+
+- Use `UniBridge_WorkSession Action=Begin Name=<task>` before broad scene,
+  asset, script, UI, or prefab work.
+- After edits, call `UniBridge_WorkSession Action=Review` and, when needed,
+  `Action=Diff Paths=[...]` to see exactly what changed.
+- `Action=Revert` defaults to `DryRun=true`. Repeat with `DryRun=false` only
+  after reviewing the revert plan. Session snapshots are stored under
+  `Library/UniBridge/WorkSessions`.
 
 ## Known 0.2.10 Notes
 
