@@ -627,15 +627,24 @@ UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]
 UniBridge_WorkSession Action=End
 ```
 
-Session snapshots are written under `Library/UniBridge/WorkSessions`, outside source control. `Begin` records project files under `Assets`, `ProjectSettings`, and package manifest files by default, captures restorable bytes for text/YAML Unity assets under configurable size limits, and marks the session active.
+Session snapshots are written under `Library/UniBridge/WorkSessions`, outside source control. `Begin` records project files under `Assets`, `ProjectSettings`, and package manifest files by default, captures restorable bytes for text/YAML Unity assets under configurable size limits, captures a compact loaded-scene semantic baseline by default, and marks the session active.
 
-`UniBridge_ExecutionStatus Action=Snapshot` and `Action=Recent` include active WorkSession review data by default, so an agent can check both tool scheduling state and the current changed-file summary in one read-only call. Pass `IncludeWorkSession=false` for a scheduler-only response, or `WorkSessionMaxChanged=<n>` to limit changed-file samples.
+When a semantic baseline exists, `Status`, `Review`, `UniBridge_BatchActions`
+auto-review, and `UniBridge_ExecutionStatus` active-session summaries include a
+`semanticReview` block. It compares the current loaded scene state against the
+session baseline by stable scene object id and reports created/deleted/moved/
+renamed GameObjects, component changes, renderer sorting/material changes,
+prefab-info changes, transform changes, and missing-script deltas. This is a
+visibility/self-check layer for live scene work; file revert behavior remains
+strictly file-based.
+
+`UniBridge_ExecutionStatus Action=Snapshot` and `Action=Recent` include active WorkSession review data by default, so an agent can check both tool scheduling state and the current changed-file/semantic-scene summary in one read-only call. Pass `IncludeWorkSession=false` for a scheduler-only response, or `WorkSessionMaxChanged=<n>` to limit changed-file samples.
 
 Actions:
 
 - `Begin`: create a checkpoint and make it active.
-- `Status`: return active session metadata and compact current change counts.
-- `Review`: list changed files with change type, asset kind, risk flags, hashes/sizes, and whether UniBridge can revert them from the captured baseline.
+- `Status`: return active session metadata plus compact current file and semantic scene change counts.
+- `Review`: list changed files with change type, asset kind, risk flags, hashes/sizes, whether UniBridge can revert them from the captured baseline, and semantic scene changes when enabled.
 - `Diff`: return compact text diffs for selected changed files.
 - `Revert`: defaults to `DryRun=true`; repeat with `DryRun=false` only after reviewing the plan. It restores modified/deleted captured files and deletes files added after the checkpoint.
 - `End`: close the active session, optionally deleting session files.
@@ -643,6 +652,7 @@ Actions:
 Useful controls:
 
 - `MaxFiles`, `MaxSingleCaptureBytes`, and `MaxTotalCaptureBytes`: bound scan and snapshot size.
+- `IncludeSceneSemantics`, `MaxSemanticObjects`, `IncludeSemanticReview`, and `MaxSemanticChanges`: capture and bound loaded-scene semantic review.
 - `IncludeProjectSettings`, `IncludePackageManifests`, and `IncludePackageFiles`: tune scope.
 - `Paths`: selected project-relative files for `Diff` or `Revert`.
 - `RevertAll=true`: revert every detected change from the session, usually after a dry-run review.

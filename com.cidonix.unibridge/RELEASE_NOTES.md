@@ -1,12 +1,18 @@
-# UniBridge 0.2.12 Release Notes
+# UniBridge 0.2.13 Release Notes
 
-Release date: 2026-06-13
+Release date: 2026-06-14
 
-This release makes `UniBridge_WorkSession` easier for agents to use correctly:
-executing `UniBridge_BatchActions` now appends active WorkSession review data by
-default, and `UniBridge_ExecutionStatus` exposes the active WorkSession summary
-alongside scheduler state. Agents can see what changed without remembering a
-separate review call after every batch.
+This release makes `UniBridge_WorkSession` more useful as an agent self-review
+tool after scene work. In addition to changed-file summaries, WorkSession can
+now capture a compact loaded-scene semantic baseline at `Begin` and report what
+actually changed in the live Unity scene: created/deleted/moved/renamed
+GameObjects, component changes, renderer sorting changes, prefab-info changes,
+transform changes, and missing-script deltas.
+
+The previous 0.2.12 release made `UniBridge_WorkSession` easier for agents to
+use correctly: executing `UniBridge_BatchActions` appends active WorkSession
+review data by default, and `UniBridge_ExecutionStatus` exposes the active
+WorkSession summary alongside scheduler state.
 
 The previous 0.2.11 release added `UniBridge_WorkSession`, a project-local
 checkpoint and review layer for AI agents. It lets an agent begin a session
@@ -35,7 +41,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.12`
+- Version: `0.2.13`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
@@ -74,6 +80,22 @@ guessing from files alone.
   VFX, shaders, resources, and external model import.
 - Script workflows: validation, safe edits, preview mode, source context,
   attached MonoBehaviour context, and script capability inspection.
+
+## 0.2.13 Polish
+
+- `UniBridge_WorkSession Action=Begin` captures a compact loaded-scene
+  semantic baseline by default. Use `IncludeSceneSemantics=false` to disable it,
+  or `MaxSemanticObjects` to bound very large scenes.
+- `UniBridge_WorkSession Action=Status|Review` includes `semanticReview` when a
+  semantic baseline exists. The summary reports live-scene semantic changes by
+  stable object id, plus bounded per-object samples and per-scene counts.
+- Active WorkSession review blocks appended by `UniBridge_BatchActions` and
+  returned by `UniBridge_ExecutionStatus` now include the same semantic review
+  data, so agents can notice scene-object changes even when no file has been
+  saved yet.
+- File revert behavior is unchanged: WorkSession still restores/deletes
+  selected files from captured snapshots. Semantic review is a visibility layer
+  for loaded scenes, not an automatic live-scene revert engine.
 
 ## 0.2.12 Polish
 

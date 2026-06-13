@@ -2,6 +2,28 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.13
+
+### Changed
+
+- `UniBridge_WorkSession Action=Begin` now captures an optional compact
+  loaded-scene semantic baseline under `Library/UniBridge/WorkSessions`.
+- `UniBridge_WorkSession Action=Status|Review` now includes `semanticReview`
+  data when the session has a scene semantic baseline.
+- Active WorkSession auto-review blocks appended by `UniBridge_BatchActions`
+  and returned by `UniBridge_ExecutionStatus` now include semantic scene
+  changes in addition to changed-file summaries.
+
+### Added
+
+- Added `IncludeSceneSemantics`, `MaxSemanticObjects`,
+  `IncludeSemanticReview`, and `MaxSemanticChanges` controls to
+  `UniBridge_WorkSession`.
+- Semantic review reports created/deleted/moved/renamed GameObjects,
+  component changes, renderer sorting changes, renderer material/enablement
+  changes, prefab-info changes, transform changes, and missing-script deltas
+  by stable scene object id.
+
 ## 0.2.12
 
 ### Changed

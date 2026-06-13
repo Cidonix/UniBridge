@@ -17,11 +17,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
     /// <summary>
     /// Project work-session checkpoint/review/revert safety layer for AI agents.
     /// </summary>
-    public static class WorkSession
+    public static partial class WorkSession
     {
         const string ToolName = "UniBridge_WorkSession";
         const int DefaultMaxFiles = 12000;
         const int DefaultMaxChanged = 200;
+        const int DefaultMaxSemanticObjects = 30000;
+        const int DefaultMaxSemanticChanges = 120;
         const int DefaultMaxDiffLines = 220;
         const long DefaultMaxSingleCaptureBytes = 2L * 1024L * 1024L;
         const long DefaultMaxTotalCaptureBytes = 150L * 1024L * 1024L;
@@ -49,12 +51,12 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         public const string Description = @"Create project-local work-session checkpoints so AI agents can review and optionally revert their Unity project changes.
 
-Search aliases: UniBridge WorkSession work session checkpoint review changed files diff revert rollback safety agent changes scene prefab script meta.
+Search aliases: UniBridge WorkSession work session checkpoint review changed files diff revert rollback safety agent changes semantic scene prefab script meta renderer sorting components.
 
 Actions:
-    Begin: Capture a baseline snapshot under Library/UniBridge/WorkSessions and make it active.
-    Status: Return active session metadata plus current change summary.
-    Review: Return changed files, risk flags, and restore availability.
+    Begin: Capture a file baseline and optional loaded-scene semantic baseline under Library/UniBridge/WorkSessions and make it active.
+    Status: Return active session metadata plus current file and scene semantic change summaries.
+    Review: Return changed files, semantic scene changes, risk flags, and restore availability.
     Diff: Return compact text diffs for selected changed files.
     Revert: Dry-run or execute selected file reverts from the session snapshot.
     End: Mark the active session complete.
@@ -89,6 +91,10 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                     MaxDiffLines = new { type = "integer", @default = DefaultMaxDiffLines },
                     MaxSingleCaptureBytes = new { type = "integer", @default = DefaultMaxSingleCaptureBytes },
                     MaxTotalCaptureBytes = new { type = "integer", @default = DefaultMaxTotalCaptureBytes },
+                    IncludeSceneSemantics = new { type = "boolean", description = "For Begin, capture compact loaded-scene semantic baselines so Review can report created/deleted/moved objects, component changes, renderer sorting changes, transforms, and missing scripts.", @default = true },
+                    IncludeSemanticReview = new { type = "boolean", description = "For Status/Review, include live loaded-scene semantic change summary when the session has a semantic baseline.", @default = true },
+                    MaxSemanticObjects = new { type = "integer", description = "Maximum loaded scene objects captured in the semantic baseline.", @default = DefaultMaxSemanticObjects },
+                    MaxSemanticChanges = new { type = "integer", description = "Maximum semantic scene changes returned in Review/Status.", @default = DefaultMaxSemanticChanges },
                     DeleteAddedMetaWithAsset = new { type = "boolean", @default = true },
                     DeleteSessionFiles = new { type = "boolean", description = "For End, remove Library session files after marking ended.", @default = false }
                 },
@@ -134,6 +140,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
 
             var capture = new CaptureBudget(options.MaxSingleCaptureBytes, options.MaxTotalCaptureBytes);
             var scan = ScanProject(options, capture, sessionId);
+            var semanticBaseline = CaptureSemanticBaseline(options, sessionId, out var semanticWarnings);
             var state = new SessionState
             {
                 Version = 1,
@@ -150,8 +157,9 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                     CapturedFiles = capture.CapturedFiles,
                     CapturedBytes = capture.CapturedBytes,
                     CaptureTruncated = capture.Truncated,
-                    Warnings = scan.Warnings.Concat(capture.Warnings).Distinct().ToList()
-                }
+                    Warnings = scan.Warnings.Concat(capture.Warnings).Concat(semanticWarnings).Distinct().ToList()
+                },
+                SemanticBaseline = semanticBaseline
             };
 
             SaveState(state);
@@ -162,6 +170,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 action = "Begin",
                 session = ToSessionSummary(state),
                 baseline = state.Baseline,
+                semanticBaseline = state.SemanticBaseline,
                 storage = new
                 {
                     sessionDir = ToProjectDisplayPath(sessionDir),
@@ -185,6 +194,10 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             }
 
             var changes = BuildChanges(state, state.Options, DefaultMaxChanged);
+            var semanticReview = BuildSemanticReview(
+                state,
+                GetBool(parameters, true, "IncludeSemanticReview", "includeSemanticReview", "include_semantic_review"),
+                GetInt(parameters, DefaultMaxSemanticChanges, "MaxSemanticChanges", "maxSemanticChanges", "semanticLimit", "SemanticLimit"));
             return Response.Success("Built UniBridge work session status.", new
             {
                 action = "Status",
@@ -192,6 +205,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 session = ToSessionSummary(state),
                 baseline = state.Baseline,
                 changes = changes.Summary,
+                semanticReview,
                 storage = ToStorageSummary(state)
             });
         }
@@ -201,12 +215,17 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             var state = LoadRequestedState(parameters, required: true);
             var maxChanged = GetInt(parameters, DefaultMaxChanged, "MaxChanged", "maxChanged", "limit", "Limit");
             var changes = BuildChanges(state, state.Options, maxChanged);
+            var semanticReview = BuildSemanticReview(
+                state,
+                GetBool(parameters, true, "IncludeSemanticReview", "includeSemanticReview", "include_semantic_review"),
+                GetInt(parameters, DefaultMaxSemanticChanges, "MaxSemanticChanges", "maxSemanticChanges", "semanticLimit", "SemanticLimit"));
 
             return Response.Success("Reviewed UniBridge work session changes.", new
             {
                 action = "Review",
                 session = ToSessionSummary(state),
                 summary = changes.Summary,
+                semanticReview,
                 changedFiles = changes.Items.Select(ToFileChangeDto).ToArray(),
                 warnings = changes.Warnings,
                 note = changes.TotalChanged > changes.Items.Length
@@ -237,12 +256,14 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 var state = LoadStateById(sessionId);
                 var limit = Math.Max(1, maxChanged);
                 var changes = BuildChanges(state, state.Options, limit);
+                var semanticReview = BuildSemanticReview(state, include: true, maxChanges: Math.Max(10, limit));
                 return new
                 {
                     active = true,
                     reviewAvailable = true,
                     session = ToSessionSummary(state),
                     summary = changes.Summary,
+                    semanticReview,
                     changedFiles = includeChangedFiles ? changes.Items.Select(ToFileChangeDto).ToArray() : null,
                     truncated = changes.TotalChanged > changes.Items.Length,
                     warnings = changes.Warnings,
@@ -979,7 +1000,14 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 endedUtc = state.EndedUtc,
                 fileCount = state.Baseline?.FileCount ?? state.Files?.Count ?? 0,
                 capturedFiles = state.Baseline?.CapturedFiles ?? 0,
-                captureTruncated = state.Baseline?.CaptureTruncated ?? false
+                captureTruncated = state.Baseline?.CaptureTruncated ?? false,
+                sceneSemanticBaseline = state.SemanticBaseline != null ? new
+                {
+                    enabled = state.SemanticBaseline.Enabled,
+                    sceneCount = state.SemanticBaseline.SceneCount,
+                    objectCount = state.SemanticBaseline.ObjectCount,
+                    truncated = state.SemanticBaseline.Truncated
+                } : null
             };
         }
 
@@ -1190,6 +1218,8 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             public int MaxFiles = DefaultMaxFiles;
             public long MaxSingleCaptureBytes = DefaultMaxSingleCaptureBytes;
             public long MaxTotalCaptureBytes = DefaultMaxTotalCaptureBytes;
+            public bool IncludeSceneSemantics = true;
+            public int MaxSemanticObjects = DefaultMaxSemanticObjects;
 
             public static ScanOptions From(JObject parameters)
             {
@@ -1200,7 +1230,9 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                     IncludePackageFiles = GetBool(parameters, false, "IncludePackageFiles", "includePackageFiles", "include_package_files"),
                     MaxFiles = Math.Max(100, GetInt(parameters, DefaultMaxFiles, "MaxFiles", "maxFiles")),
                     MaxSingleCaptureBytes = Math.Max(0, GetLong(parameters, DefaultMaxSingleCaptureBytes, "MaxSingleCaptureBytes", "maxSingleCaptureBytes")),
-                    MaxTotalCaptureBytes = Math.Max(0, GetLong(parameters, DefaultMaxTotalCaptureBytes, "MaxTotalCaptureBytes", "maxTotalCaptureBytes"))
+                    MaxTotalCaptureBytes = Math.Max(0, GetLong(parameters, DefaultMaxTotalCaptureBytes, "MaxTotalCaptureBytes", "maxTotalCaptureBytes")),
+                    IncludeSceneSemantics = GetBool(parameters, true, "IncludeSceneSemantics", "includeSceneSemantics", "include_scene_semantics"),
+                    MaxSemanticObjects = Math.Max(0, GetInt(parameters, DefaultMaxSemanticObjects, "MaxSemanticObjects", "maxSemanticObjects", "max_semantic_objects"))
                 };
             }
         }
@@ -1216,6 +1248,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             public string EndedUtc;
             public ScanOptions Options;
             public SessionBaseline Baseline;
+            public SessionSemanticBaseline SemanticBaseline;
             public Dictionary<string, FileSnapshot> Files = new(StringComparer.OrdinalIgnoreCase);
         }
 

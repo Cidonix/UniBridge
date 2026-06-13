@@ -7811,6 +7811,113 @@ Docs/package:
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
 
+## 2026-06-14 - UniBridge 0.2.13 WorkSession semantic smoke result
+
+Після синхронізації пакета в
+`H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`
+Unity спершу бачила новий `package.json`, але тримала стару compiled assembly.
+Через MCP виконано `RefreshAssets WaitForCompletion=true Force=true`:
+
+- refresh перетнув Unity reload boundary;
+- relay повернув reload-safe result:
+  `recoveredAfterRefreshReload=true`, `reloadBoundary=true`,
+  `reconnectRequired=true`, `reloadSafe=true`;
+- `WaitForReadyAfterReload` підтвердив `isReady=true`,
+  `isCompiling=false`, `isPlaying=false`;
+- retained compilation diagnostics після reload:
+  `errors=0`, `warnings=0`.
+
+Live semantic smoke після reload:
+
+- `UniBridge_Discover Action=Ping` підтвердив package version `0.2.13`;
+- `UniBridge_WorkSession Action=Begin` створив semantic baseline:
+  `sceneCount=1`, `objectCount=363`, `truncated=false`,
+  `SnapshotPath=semantic/loaded-scenes-baseline.json`;
+- створено `UniBridgeSemanticProbe` через `UniBridge_ManageGameObject`;
+- `UniBridge_WorkSession Action=Review` повернув:
+  - `semanticReview.enabled=true`;
+  - `baselineObjects=363`;
+  - `currentObjects=364`;
+  - `commonObjects=363`;
+  - `totalChanges=1`;
+  - `objectsCreated=1`;
+  - change `Created` з `objectId=-10184`, `afterPath=/UniBridgeSemanticProbe`,
+    `afterIndexedPath=/UniBridgeSemanticProbe[7]`;
+- `UniBridge_ExecutionStatus Action=Snapshot IncludeWorkSession=true` містив
+  active WorkSession summary з `semanticReview.enabled=true`;
+- після `Delete` того ж probe повторний `Review` повернув:
+  `baselineObjects=363`, `currentObjects=363`, `totalChanges=0`,
+  `objectsCreated=0`, `objectsDeleted=0`;
+- session завершено через `WorkSession End`;
+- фінальний `ReadConsole DiagnosticSummary`:
+  `totalEntries=0`, `warningCount=0`, `errorCount=0`,
+  `exceptionCount=0`;
+- фінальний `GetCompilationDiagnostics`:
+  `errors=0`, `warnings=0`.
+
+Висновок: semantic WorkSession review реально корисний для AI self-check після
+live scene edits: агент бачить не тільки file diff, а й конкретний semantic
+результат у loaded scene, включно з `objectId`, `path` та `indexedPath`, і може
+перевірити cleanup до нульового diff.
+
+## 2026-06-14 - UniBridge 0.2.13 WorkSession semantic scene review
+
+Мета: зробити `UniBridge_WorkSession` кориснішим саме як self-review шар після
+Unity scene work. До цього WorkSession добре показував changed files, але агент
+бачив лише `.unity changed` / `.prefab changed`, а не фактичні зміни у live
+сцені.
+
+Зміни:
+
+- `WorkSession.cs` зроблено `partial`, семантичну частину винесено в
+  `WorkSession.Semantics.cs`;
+- `UniBridge_WorkSession Action=Begin` за замовчуванням створює compact
+  loaded-scene semantic baseline у
+  `Library/UniBridge/WorkSessions/<session>/semantic/loaded-scenes-baseline.json`;
+- додано параметри:
+  - `IncludeSceneSemantics`;
+  - `MaxSemanticObjects`;
+  - `IncludeSemanticReview`;
+  - `MaxSemanticChanges`;
+- `Action=Status` і `Action=Review` тепер додають `semanticReview`, якщо
+  baseline доступний;
+- helper `BuildCompactActiveReview` теж додає `semanticReview`, тому
+  `BatchActions` auto-review і `ExecutionStatus` active WorkSession summary
+  можуть показувати live-scene semantic changes;
+- semantic diff працює по stable `UnityApiAdapter.GetObjectId` і повертає
+  `path` / `indexedPath` для пояснення;
+- зараз semantic review покриває:
+  - created/deleted GameObjects;
+  - moved/reparented/siblingIndex changes;
+  - renamed objects;
+  - active/tag/layer changes;
+  - component list changes;
+  - missing scripts introduced/resolved;
+  - renderer sorting/material/enabled changes;
+  - prefab source/status/root info changes;
+  - local/world transform signature changes;
+- file revert поведінка не змінювалась: `Action=Revert` досі відновлює або
+  видаляє тільки файли зі snapshot, semantic review є visibility/self-check
+  шаром для loaded scenes.
+
+Docs/package:
+
+- `package.json` піднято до `0.2.13`;
+- додано `WorkSession.Semantics.cs.meta`;
+- оновлено `README.md`, `CHANGELOG.md`, `RELEASE_NOTES.md`,
+  `Documentation~/unibridge.md`.
+
+План live smoke:
+
+- синхронізувати пакет у `UniBridge_Test_Project`;
+- `RefreshAssets` / compile diagnostics мають бути чисті;
+- сценарій:
+  `ClearConsole -> WorkSession Begin -> BatchActions create GameObject
+  UniBridgeSemanticProbe -> WorkSession Review/ExecutionStatus -> delete probe
+  -> Review -> End`;
+- очікування: після create `semanticReview.summary.objectsCreated >= 1`, після
+  delete semantic changes повертаються до нуля, а консоль без errors/warnings.
+
 ## 2026-06-13 - UniBridge 0.2.12 WorkSession auto-review polish
 
 Мета: зробити WorkSession не просто окремим tool, а видимим самоконтролем

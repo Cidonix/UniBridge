@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Changed\n\n- UniBridge_BatchActions now appends active UniBridge_WorkSession review data after executing batches by default, so agents immediately see changed-file counts, risks, and sample paths when a WorkSession is active.\n- UniBridge_ExecutionStatus Snapshot/Recent now includes an active WorkSession review summary by default.\n\n### Previous Changes\n\n- Added UniBridge_WorkSession for project-local AI work-session checkpoints. Agents can begin a session, review changed files, inspect compact text diffs, dry-run selected reverts, and execute explicit file restores/deletes from snapshots stored under Library/UniBridge/WorkSessions.\n- ToolGuide, DomainCatalog, and Discover expose WorkSession as the recommended safety/review layer before and after broad AI edits.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
+    "changelog": "### Changed\n\n- UniBridge_WorkSession now captures an optional compact loaded-scene semantic baseline at Begin and includes semantic review data in Status/Review and active WorkSession auto-review blocks.\n- Semantic review reports created/deleted/moved/renamed GameObjects, component changes, renderer sorting changes, prefab-info changes, transform changes, and missing-script deltas by stable object id.\n\n### Previous Changes\n\n- UniBridge_BatchActions appends active UniBridge_WorkSession review data after executing batches by default, so agents immediately see changed-file counts, risks, and sample paths when a WorkSession is active.\n- UniBridge_ExecutionStatus Snapshot/Recent includes an active WorkSession review summary by default.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

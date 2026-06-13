@@ -21,8 +21,9 @@ through an approval-based connection flow.
 - `UniBridge_Discover`, a stable read-only ping/workflow entry point for new
   MCP clients and Codex sessions.
 - `UniBridge_WorkSession`, a project-local checkpoint/review/revert layer that
-  lets agents summarize changed files, inspect compact text diffs, and dry-run
-  selected reverts after broad AI work.
+  lets agents summarize changed files, review loaded-scene semantic changes,
+  inspect compact text diffs, and dry-run selected file reverts after broad AI
+  work.
 - Large-scene hierarchy export, JSON/JSONL file output, export comparison, and
   safe objectId-based batch reparent/container workflows.
 - Read-only additive scene registration validation for cloned/additive scene
@@ -83,11 +84,24 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.13 Notes
+
+- `UniBridge_WorkSession Action=Begin` captures a compact loaded-scene semantic
+  baseline by default. Use `IncludeSceneSemantics=false` to disable it, or
+  `MaxSemanticObjects=<n>` to bound very large scenes.
+- `Action=Status` and `Action=Review` include `semanticReview` with
+  created/deleted/moved/renamed GameObjects, component changes, renderer
+  sorting changes, prefab-info changes, transform changes, and missing-script
+  deltas by stable object id.
+- Semantic review is a visibility/self-check layer for loaded scenes. File
+  revert behavior is unchanged: `Action=Revert` restores/deletes selected files
+  from the WorkSession snapshot, not arbitrary live scene objects.
+
 ## Known 0.2.12 Notes
 
 - If a WorkSession is active, `UniBridge_BatchActions DryRun=false` appends a
   `workSessionReview` block by default. This gives agents an immediate
-  changed-file summary after a mutating batch.
+  changed-file and semantic scene summary after a mutating batch.
 - Use `IncludeWorkSessionReview=true` to include that block in dry-runs, or
   `WorkSessionReviewMaxChanged=<n>` to tune response size.
 - `UniBridge_ExecutionStatus Action=Snapshot` and `Action=Recent` include the
