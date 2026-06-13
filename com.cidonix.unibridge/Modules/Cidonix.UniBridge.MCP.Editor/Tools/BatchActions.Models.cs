@@ -29,22 +29,33 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             public bool RollbackOnFailure;
             public bool RollbackAssets;
             public bool IncludeImpact;
+            public bool IncludeWorkSessionReview;
+            public int WorkSessionReviewMaxChanged;
 
             public static BatchOptions From(JObject raw)
             {
                 var name = GetString(raw, "Name", "name", "BatchName", "batchName");
+                var dryRun = GetBool(raw, true, "DryRun", "dryRun", "dry_run", "ValidateOnly", "validateOnly", "validate_only");
                 return new BatchOptions
                 {
                     Name = string.IsNullOrWhiteSpace(name) ? "UniBridge Batch Actions" : name.Trim(),
-                    DryRun = GetBool(raw, true, "DryRun", "dryRun", "dry_run", "ValidateOnly", "validateOnly", "validate_only"),
+                    DryRun = dryRun,
                     ValidateBeforeExecute = GetBool(raw, true, "ValidateBeforeExecute", "validateBeforeExecute", "validate_before_execute"),
                     StopOnError = GetBool(raw, true, "StopOnError", "stopOnError", "stop_on_error"),
                     UseUndoGroup = GetBool(raw, true, "UseUndoGroup", "useUndoGroup", "use_undo_group"),
                     RollbackOnFailure = GetBool(raw, true, "RollbackOnFailure", "rollbackOnFailure", "rollback_on_failure", "Transaction", "transaction", "Transactional", "transactional"),
                     RollbackAssets = GetBool(raw, true, "RollbackAssets", "rollbackAssets", "rollback_assets", "AssetRollback", "assetRollback", "asset_rollback"),
-                    IncludeImpact = GetBool(raw, true, "IncludeImpact", "includeImpact", "include_impact", "Impact", "impact", "Plan", "plan")
+                    IncludeImpact = GetBool(raw, true, "IncludeImpact", "includeImpact", "include_impact", "Impact", "impact", "Plan", "plan"),
+                    IncludeWorkSessionReview = GetBool(raw, !dryRun, "IncludeWorkSessionReview", "includeWorkSessionReview", "include_work_session_review", "WorkSessionReview", "workSessionReview", "AutoReview", "autoReview"),
+                    WorkSessionReviewMaxChanged = Math.Max(1, GetInt(raw, 20, "WorkSessionReviewMaxChanged", "workSessionReviewMaxChanged", "work_session_review_max_changed"))
                 };
             }
+        }
+
+        static int GetInt(JObject obj, int defaultValue, params string[] names)
+        {
+            var raw = GetString(obj, names);
+            return int.TryParse(raw, out var value) ? value : defaultValue;
         }
 
         sealed class BatchStep

@@ -276,12 +276,12 @@ This tool is read-only.";
                     Key = "work_session",
                     Title = "Review and protect an AI work session",
                     When = "Use before and after broad AI edits so the agent can explain changed files, inspect text diffs, and safely revert selected paths.",
-                    FirstCalls = new[] { "UniBridge_WorkSession Action=Begin Name=<task>", "Run the normal domain-specific UniBridge tools for the task" },
+                    FirstCalls = new[] { "UniBridge_WorkSession Action=Begin Name=<task>", "Run the normal domain-specific UniBridge tools for the task; executing BatchActions appends data.workSessionReview when this session is active" },
                     EditCalls = new[] { "UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]", "UniBridge_WorkSession Action=Revert DryRun=false Paths=[Assets/...] only after checking the dry-run plan" },
-                    VerifyCalls = new[] { "UniBridge_WorkSession Action=Review", "UniBridge_WorkSession Action=Diff Paths=[Assets/...]", "UniBridge_ReadConsole Action=DiagnosticSummary", "UniBridge_WorkSession Action=End" },
+                    VerifyCalls = new[] { "UniBridge_ExecutionStatus Action=Snapshot to see scheduler state plus active WorkSession summary", "UniBridge_WorkSession Action=Review", "UniBridge_WorkSession Action=Diff Paths=[Assets/...]", "UniBridge_ReadConsole Action=DiagnosticSummary", "UniBridge_WorkSession Action=End" },
                     Tools = new[] { "UniBridge_WorkSession", "UniBridge_ReadConsole", "UniBridge_ExecutionStatus", "UniBridge_EditorEvents" },
                     BatchAliases = Array.Empty<string>(),
-                    Notes = new[] { "Snapshots live under Library/UniBridge/WorkSessions and are not meant for version control.", "Revert defaults to DryRun=true and only restores files that were captured at Begin, or deletes files added after Begin.", "Use this alongside BatchActions rollback: BatchActions protects one planned execution, WorkSession reviews the whole agent work window." },
+                    Notes = new[] { "Snapshots live under Library/UniBridge/WorkSessions and are not meant for version control.", "Revert defaults to DryRun=true and only restores files that were captured at Begin, or deletes files added after Begin.", "Use this alongside BatchActions rollback: BatchActions protects one planned execution, WorkSession reviews the whole agent work window.", "Use IncludeWorkSessionReview=false on BatchActions or IncludeWorkSession=false on ExecutionStatus when a response must stay scheduler-only." },
                     Aliases = new[] { "checkpoint", "review", "changes", "diff", "revert", "rollback", "safety" }
                 },
                 new WorkflowGuide

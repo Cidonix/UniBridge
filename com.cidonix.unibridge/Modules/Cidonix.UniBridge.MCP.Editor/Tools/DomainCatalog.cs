@@ -428,7 +428,7 @@ Returns:
                     VerificationTools = new[] { "UniBridge_WorkSession", "UniBridge_ReadConsole" },
                     CaptureTools = Array.Empty<string>(),
                     TypeNames = new[] { "UnityEditor.AssetDatabase" },
-                    Notes = new[] { "WorkSession snapshots are stored in Library/UniBridge/WorkSessions and are not version-controlled.", "Use Review and Diff before final reporting so the agent can explain exactly what changed.", "Revert defaults to DryRun=true and only executes when the agent explicitly passes DryRun=false." },
+                    Notes = new[] { "WorkSession snapshots are stored in Library/UniBridge/WorkSessions and are not version-controlled.", "Executing BatchActions appends data.workSessionReview by default while a WorkSession is active.", "ExecutionStatus Snapshot/Recent include the active WorkSession summary by default.", "Use Review and Diff before final reporting so the agent can explain exactly what changed.", "Revert defaults to DryRun=true and only executes when the agent explicitly passes DryRun=false." },
                     Aliases = new[] { "safety", "checkpoint", "work_session", "review", "changes", "diff", "revert", "rollback" }
                 },
                 new DomainDefinition

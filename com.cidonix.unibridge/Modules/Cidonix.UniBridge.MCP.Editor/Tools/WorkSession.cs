@@ -215,6 +215,56 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             });
         }
 
+        public static object BuildCompactActiveReview(int maxChanged = 20, bool includeChangedFiles = true)
+        {
+            try
+            {
+                var sessionId = GetActiveSessionId();
+                if (string.IsNullOrWhiteSpace(sessionId))
+                {
+                    return new
+                    {
+                        active = false,
+                        reviewAvailable = false,
+                        message = "No active UniBridge work session.",
+                        nextSuggestedCalls = new[]
+                        {
+                            "UniBridge_WorkSession Action=Begin"
+                        }
+                    };
+                }
+
+                var state = LoadStateById(sessionId);
+                var limit = Math.Max(1, maxChanged);
+                var changes = BuildChanges(state, state.Options, limit);
+                return new
+                {
+                    active = true,
+                    reviewAvailable = true,
+                    session = ToSessionSummary(state),
+                    summary = changes.Summary,
+                    changedFiles = includeChangedFiles ? changes.Items.Select(ToFileChangeDto).ToArray() : null,
+                    truncated = changes.TotalChanged > changes.Items.Length,
+                    warnings = changes.Warnings,
+                    nextSuggestedCalls = new[]
+                    {
+                        $"UniBridge_WorkSession Action=Review SessionId={state.SessionId}",
+                        $"UniBridge_WorkSession Action=Diff SessionId={state.SessionId} Paths=[...]"
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                return new
+                {
+                    active = false,
+                    reviewAvailable = false,
+                    error = ex.Message,
+                    message = "Failed to build active UniBridge work-session review."
+                };
+            }
+        }
+
         static object Diff(JObject parameters)
         {
             var state = LoadRequestedState(parameters, required: true);

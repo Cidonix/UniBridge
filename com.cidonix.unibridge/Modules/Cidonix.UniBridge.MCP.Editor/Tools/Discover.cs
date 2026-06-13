@@ -105,11 +105,12 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                 new
                 {
                     key = "work_session_review",
-                    summary = "Start a checkpoint before AI work, review changed files, inspect text diffs, and optionally revert selected paths.",
+                    summary = "Start a checkpoint before AI work, let mutating batches append active review data, inspect text diffs, and optionally revert selected paths.",
                     calls = new[]
                     {
                         "UniBridge_WorkSession Action=Begin Name=<task>",
-                        "Run normal UniBridge tools for the task",
+                        "Run normal UniBridge tools for the task; UniBridge_BatchActions DryRun=false appends data.workSessionReview by default",
+                        "UniBridge_ExecutionStatus Action=Snapshot to see scheduler state plus active WorkSession summary",
                         "UniBridge_WorkSession Action=Review",
                         "UniBridge_WorkSession Action=Diff Paths=[Assets/...]",
                         "UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]",

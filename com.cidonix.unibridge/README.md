@@ -83,6 +83,17 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.12 Notes
+
+- If a WorkSession is active, `UniBridge_BatchActions DryRun=false` appends a
+  `workSessionReview` block by default. This gives agents an immediate
+  changed-file summary after a mutating batch.
+- Use `IncludeWorkSessionReview=true` to include that block in dry-runs, or
+  `WorkSessionReviewMaxChanged=<n>` to tune response size.
+- `UniBridge_ExecutionStatus Action=Snapshot` and `Action=Recent` include the
+  active WorkSession summary by default. Pass `IncludeWorkSession=false` for a
+  scheduler-only response.
+
 ## Known 0.2.11 Notes
 
 - Use `UniBridge_WorkSession Action=Begin Name=<task>` before broad scene,

@@ -1,12 +1,18 @@
-# UniBridge 0.2.11 Release Notes
+# UniBridge 0.2.12 Release Notes
 
 Release date: 2026-06-13
 
-This release adds `UniBridge_WorkSession`, a project-local checkpoint and
-review layer for AI agents. It lets an agent begin a session before broad Unity
-work, review changed files afterward, inspect compact text diffs, dry-run
-selected reverts, and explicitly restore/delete selected files from session
-snapshots stored under `Library/UniBridge/WorkSessions`.
+This release makes `UniBridge_WorkSession` easier for agents to use correctly:
+executing `UniBridge_BatchActions` now appends active WorkSession review data by
+default, and `UniBridge_ExecutionStatus` exposes the active WorkSession summary
+alongside scheduler state. Agents can see what changed without remembering a
+separate review call after every batch.
+
+The previous 0.2.11 release added `UniBridge_WorkSession`, a project-local
+checkpoint and review layer for AI agents. It lets an agent begin a session
+before broad Unity work, review changed files afterward, inspect compact text
+diffs, dry-run selected reverts, and explicitly restore/delete selected files
+from session snapshots stored under `Library/UniBridge/WorkSessions`.
 
 Relay remains `1.1.0-build.15`; this release only adds Unity-side MCP tooling.
 
@@ -29,7 +35,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.11`
+- Version: `0.2.12`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
@@ -68,6 +74,22 @@ guessing from files alone.
   VFX, shaders, resources, and external model import.
 - Script workflows: validation, safe edits, preview mode, source context,
   attached MonoBehaviour context, and script capability inspection.
+
+## 0.2.12 Polish
+
+- `UniBridge_BatchActions` appends a `workSessionReview` block after executing
+  batches when a WorkSession is active. This includes the session summary,
+  changed-file counts, risk counts, bounded changed-file samples, warnings, and
+  suggested follow-up calls.
+- Added `IncludeWorkSessionReview` and `WorkSessionReviewMaxChanged` to
+  `UniBridge_BatchActions`.
+- `UniBridge_ExecutionStatus Action=Snapshot|Recent` includes active
+  WorkSession review data by default.
+- Added `IncludeWorkSession` and `WorkSessionMaxChanged` to
+  `UniBridge_ExecutionStatus`.
+- Removed an obsolete `Object.GetInstanceID()` call from
+  `UniBridge_SceneHierarchyExport` on Unity 6.4+ so compile diagnostics stay
+  clean during package smoke tests.
 
 ## 0.2.11 Polish
 

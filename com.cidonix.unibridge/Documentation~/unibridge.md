@@ -520,6 +520,8 @@ Executing batches are transactional by default. `RollbackOnFailure=true` opens a
 
 If a nested editor action returns a reload-safe boundary such as queued Play Mode entry/exit, `UniBridge_BatchActions` stops successfully at that step and returns `stopReason` plus `postReconnect.nextSuggestedCalls`. Run those follow-up calls after the bridge reconnects, then continue the remaining workflow in a new call.
 
+If a `UniBridge_WorkSession` is active, executing batches (`DryRun=false`) append `data.workSessionReview` by default. This gives agents the current session summary, changed-file counts, risk counts, bounded changed-file samples, warnings, and suggested follow-up calls immediately after the batch. Use `IncludeWorkSessionReview=true` to include the same block in dry-runs, `IncludeWorkSessionReview=false` to suppress it, and `WorkSessionReviewMaxChanged` to tune response size.
+
 Batch steps can call a curated set of local UniBridge tools:
 
 - `UniBridge_ManageGameObject`;
@@ -626,6 +628,8 @@ UniBridge_WorkSession Action=End
 ```
 
 Session snapshots are written under `Library/UniBridge/WorkSessions`, outside source control. `Begin` records project files under `Assets`, `ProjectSettings`, and package manifest files by default, captures restorable bytes for text/YAML Unity assets under configurable size limits, and marks the session active.
+
+`UniBridge_ExecutionStatus Action=Snapshot` and `Action=Recent` include active WorkSession review data by default, so an agent can check both tool scheduling state and the current changed-file summary in one read-only call. Pass `IncludeWorkSession=false` for a scheduler-only response, or `WorkSessionMaxChanged=<n>` to limit changed-file samples.
 
 Actions:
 

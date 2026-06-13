@@ -2,6 +2,27 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.12
+
+### Changed
+
+- `UniBridge_BatchActions` now appends active `UniBridge_WorkSession` review
+  data after executing batches by default. If a session is active, agents get a
+  compact changed-file summary, risk counts, and sample changed files directly
+  in the batch response.
+- Added `IncludeWorkSessionReview` and `WorkSessionReviewMaxChanged` to
+  `UniBridge_BatchActions` so agents can opt in for dry-runs or tune response
+  size.
+- `UniBridge_ExecutionStatus Action=Snapshot|Recent` now includes active
+  WorkSession review data by default, with `IncludeWorkSession` and
+  `WorkSessionMaxChanged` controls.
+
+### Fixed
+
+- Removed an obsolete `Object.GetInstanceID()` call from
+  `UniBridge_SceneHierarchyExport` on Unity 6.4+ so compile diagnostics stay
+  clean during smoke tests.
+
 ## 0.2.11
 
 ### Added

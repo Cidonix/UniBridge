@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n\n- Added UniBridge_WorkSession for project-local AI work-session checkpoints. Agents can begin a session, review changed files, inspect compact text diffs, dry-run selected reverts, and execute explicit file restores/deletes from snapshots stored under Library/UniBridge/WorkSessions.\n- ToolGuide, DomainCatalog, and Discover now expose WorkSession as the recommended safety/review layer before and after broad AI edits.\n\n### Changed\n\n- Package version bumped to 0.2.11. Relay remains 1.1.0-build.15 because this release only adds Unity-side MCP tooling.\n\n### Previous Changes\n\n- Bundled relay 1.1.0-build.15 now recovers RefreshAssets connection loss caused by Unity import/domain reload. The relay reconnects, waits for editor readiness, returns compilation diagnostics, and reports reloadBoundary, reconnectRequired, reloadSafe, and nextSuggestedCalls instead of surfacing a transport-level Unity connection closed MCP error.\n- Added UniBridge_Discover, a read-only ping/discovery tool with searchable aliases for Codex/tool_search: UniBridge, Unity, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, PlayMode, WaitForPlayMode, WaitForEditMode, and ValidateAdditiveSceneRegistration.\n- Added UniBridge_ValidateAdditiveSceneRegistration for read-only additive scene setup validation: scene/meta GUIDs, metadata references, Build Settings, scenesManager registration, boundary arrays, stale template references, and optional neighbor checks.\n- Updated bundled Roslyn compiler assemblies Microsoft.CodeAnalysis.dll and Microsoft.CodeAnalysis.CSharp.dll from 3.11.x to 5.3.0 for newer C# syntax parsing and diagnostics coverage."
+    "changelog": "### Changed\n\n- UniBridge_BatchActions now appends active UniBridge_WorkSession review data after executing batches by default, so agents immediately see changed-file counts, risks, and sample paths when a WorkSession is active.\n- UniBridge_ExecutionStatus Snapshot/Recent now includes an active WorkSession review summary by default.\n\n### Previous Changes\n\n- Added UniBridge_WorkSession for project-local AI work-session checkpoints. Agents can begin a session, review changed files, inspect compact text diffs, dry-run selected reverts, and execute explicit file restores/deletes from snapshots stored under Library/UniBridge/WorkSessions.\n- ToolGuide, DomainCatalog, and Discover expose WorkSession as the recommended safety/review layer before and after broad AI edits.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -47,6 +47,8 @@ Args:
     RollbackOnFailure: true by default for executing batches.
     RollbackAssets: true by default. Captures/restores referenced Assets/Packages files and deletes newly-created referenced paths on rollback.
     IncludeImpact: true by default. Adds a planned impact block with likely assets/scenes/settings touched.
+    IncludeWorkSessionReview: defaults to true for executing batches and false for dry-runs. If a UniBridge_WorkSession is active, appends changed-file review data.
+    WorkSessionReviewMaxChanged: maximum changed files to include in the appended WorkSession review.
     Name: Optional human-readable batch name.
     Steps/actions: array of steps.
 
@@ -80,6 +82,8 @@ Returns:
                     RollbackOnFailure = new { type = "boolean", description = "Rollback the whole executing batch when a required step fails. Defaults to true.", @default = true },
                     RollbackAssets = new { type = "boolean", description = "When rollback is enabled, snapshot referenced Assets/Packages files before execution and restore/delete them on failure. Defaults to true.", @default = true },
                     IncludeImpact = new { type = "boolean", description = "Return a planned impact block with likely asset, scene, and project-setting touches. Defaults to true.", @default = true },
+                    IncludeWorkSessionReview = new { type = "boolean", description = "Append active UniBridge_WorkSession review data after the batch. Defaults to true for executing batches and false for dry-runs." },
+                    WorkSessionReviewMaxChanged = new { type = "integer", description = "Maximum changed files to include in appended WorkSession review.", @default = 20 },
                     Name = new { type = "string", description = "Optional batch name used in reports and the Undo group." },
                     Steps = new
                     {
@@ -193,6 +197,10 @@ Returns:
                 : batchSuccess && IsReloadBoundaryStop(stopReason) ? "Batch stopped at a reload-safe editor boundary."
                 : batchSuccess ? "Batch executed successfully." : rollbackTriggered ? "Batch failed and transaction rollback was attempted." : "Batch finished with failures.";
 
+            var workSessionReview = options.IncludeWorkSessionReview
+                ? WorkSession.BuildCompactActiveReview(options.WorkSessionReviewMaxChanged, includeChangedFiles: true)
+                : null;
+
             var data = new
             {
                 name = options.Name,
@@ -204,6 +212,7 @@ Returns:
                 rollbackAssets = options.RollbackAssets,
                 impact,
                 rollback,
+                workSessionReview,
                 summary,
                 stopReason,
                 steps = reports,

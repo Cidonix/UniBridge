@@ -861,7 +861,7 @@ Returns:
                 ["traversalIndex"] = traversalIndex,
                 ["depth"] = depth,
                 ["objectId"] = UnityApiAdapter.GetObjectId(gameObject),
-                ["instanceId"] = gameObject.GetInstanceID(),
+                ["instanceId"] = UnityApiAdapter.GetObjectId(gameObject),
                 ["name"] = gameObject.name,
                 ["path"] = "/" + SceneObjectLocator.GetHierarchyPath(gameObject),
                 ["indexedPath"] = BuildIndexedPath(gameObject),

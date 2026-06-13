@@ -24,6 +24,8 @@ Args:
     Action: Snapshot, Recent, or Policies.
     RecentLimit: Maximum recent operations to return.
     IncludeDisabled: For Policies, include tools disabled in the user's UniBridge settings.
+    IncludeWorkSession: For Snapshot/Recent, include active UniBridge_WorkSession review summary.
+    WorkSessionMaxChanged: Maximum changed files returned in the active WorkSession summary.
 
 Returns:
     success, message, and scheduler/policy diagnostics.";
@@ -44,7 +46,9 @@ Returns:
                         @default = "Snapshot"
                     },
                     RecentLimit = new { type = "integer", description = "Maximum recent operations to return.", @default = 20 },
-                    IncludeDisabled = new { type = "boolean", description = "For Policies, include tools disabled in settings.", @default = false }
+                    IncludeDisabled = new { type = "boolean", description = "For Policies, include tools disabled in settings.", @default = false },
+                    IncludeWorkSession = new { type = "boolean", description = "For Snapshot/Recent, include active UniBridge_WorkSession review summary.", @default = true },
+                    WorkSessionMaxChanged = new { type = "integer", description = "Maximum changed files returned in the active WorkSession summary.", @default = 20 }
                 },
                 additionalProperties = true
             };
@@ -56,6 +60,8 @@ Returns:
             parameters ??= new JObject();
             var action = Normalize(ReadString(parameters, "Action", "action") ?? "Snapshot");
             var recentLimit = ReadInt(parameters, 20, "RecentLimit", "recentLimit", "recent_limit", "Limit", "limit");
+            var includeWorkSession = ReadBool(parameters, true, "IncludeWorkSession", "includeWorkSession", "include_work_session");
+            var workSessionMaxChanged = Math.Max(1, ReadInt(parameters, 20, "WorkSessionMaxChanged", "workSessionMaxChanged", "work_session_max_changed"));
 
             try
             {
@@ -64,7 +70,10 @@ Returns:
                     "recent" or "history" => Response.Success("Built UniBridge execution history.", new
                     {
                         action = "Recent",
-                        recent = ToolExecutionScheduler.Recent(recentLimit)
+                        recent = ToolExecutionScheduler.Recent(recentLimit),
+                        workSession = includeWorkSession
+                            ? WorkSession.BuildCompactActiveReview(workSessionMaxChanged, includeChangedFiles: true)
+                            : null
                     }),
                     "policies" or "policy" => Response.Success("Built UniBridge tool execution policy summary.", new
                     {
@@ -74,7 +83,10 @@ Returns:
                     _ => Response.Success("Built UniBridge execution scheduler snapshot.", new
                     {
                         action = "Snapshot",
-                        scheduler = ToolExecutionScheduler.Snapshot(recentLimit)
+                        scheduler = ToolExecutionScheduler.Snapshot(recentLimit),
+                        workSession = includeWorkSession
+                            ? WorkSession.BuildCompactActiveReview(workSessionMaxChanged, includeChangedFiles: true)
+                            : null
                     })
                 };
             }

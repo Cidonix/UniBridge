@@ -7810,3 +7810,49 @@ Docs/package:
 - після real revert `Review` повернув `post_revert_changed_paths=[]`;
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
+
+## 2026-06-13 - UniBridge 0.2.12 WorkSession auto-review polish
+
+Мета: зробити WorkSession не просто окремим tool, а видимим самоконтролем
+після mutating workflows, щоб агент менше покладався на пам'ять.
+
+Зміни:
+
+- `UniBridge_BatchActions` після executing batch (`DryRun=false`) автоматично
+  додає `data.workSessionReview`, якщо активна `UniBridge_WorkSession`;
+- додано `IncludeWorkSessionReview` і `WorkSessionReviewMaxChanged` для
+  `UniBridge_BatchActions`;
+- `UniBridge_ExecutionStatus Action=Snapshot|Recent` тепер включає активний
+  WorkSession summary за замовчуванням;
+- додано `IncludeWorkSession` і `WorkSessionMaxChanged` для
+  `UniBridge_ExecutionStatus`;
+- `UniBridge_WorkSession` отримав helper для компактного active review,
+  який повертає `active`, `reviewAvailable`, session summary, changed counts,
+  bounded changed files, warnings і suggested calls;
+- `UniBridge_SceneHierarchyExport` більше не викликає obsolete
+  `Object.GetInstanceID()` на Unity 6.4+, щоб не засмічувати compile diagnostics.
+
+Docs/package:
+
+- `package.json` піднято до `0.2.12`;
+- оновлено `README.md`, `CHANGELOG.md`, `RELEASE_NOTES.md`,
+  `Documentation~/unibridge.md`, `Discover`, `ToolGuide`, `DomainCatalog`.
+
+Живий MCP smoke у `UniBridge_Test_Project`:
+
+- source package синхронізовано в
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`;
+- `RefreshAssets WaitForCompletion=true Force=true` перетнув reload boundary,
+  relay відновив connection і повернув ready;
+- `UniBridge_Discover Action=Ping` підтвердив package version `0.2.12`;
+- `GetCompilationDiagnostics`: `errors=0`, `warnings=0`;
+- сценарій:
+  `ClearConsole -> WorkSession Begin -> BatchActions DryRun=false CreateFolder
+  Assets/UniBridgeAutoReviewProbe -> ExecutionStatus Snapshot
+  -> WorkSession Revert dry-run -> Revert DryRun=false -> Review -> End`;
+- `BatchActions` повернув `data.workSessionReview.active=true` і зміни:
+  `Assets/UniBridgeAutoReviewProbe.meta`;
+- `ExecutionStatus Snapshot` повернув той самий active WorkSession summary;
+- після real revert `WorkSession Review` повернув `post_revert_paths=[]`;
+- фінальна консоль:
+  `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
