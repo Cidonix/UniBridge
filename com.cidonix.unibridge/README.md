@@ -17,7 +17,8 @@ through an approval-based connection flow.
 - Local relay binaries for Windows x64, Linux x64, macOS x64, and macOS arm64.
 - Agent-facing tools for project context, search, assets, scripts, scenes,
   prefabs, UI, capture, validation, animation, rendering, physics, navigation,
-  tilemaps, input actions, timeline, audio, VFX, and workflow recipes.
+  tilemaps, input actions, timeline, audio, VFX, runtime profiling, runtime
+  state probing, and workflow recipes.
 - `UniBridge_Discover`, a stable read-only ping/workflow entry point for new
   MCP clients and Codex sessions.
 - `UniBridge_WorkSession`, a project-local checkpoint/review/revert layer that
@@ -83,6 +84,30 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## Known 0.2.16 Notes
+
+- `UniBridge_RuntimeStateProbe` is a read-only runtime state probe for
+  GameObjects and components. It supports `Snapshot`, `Sample`, and
+  `ListMembers` without executing arbitrary C# in the project.
+- Target lookup uses the shared scene resolver, including inactive objects,
+  Prefab Stage objects, instance IDs, hierarchy paths, component short/full
+  names, MonoScript GUIDs, and serialized editor class identifiers.
+- `Action=Sample` requires Play Mode by default, returns compact
+  changed-member summaries, and writes full raw payloads under
+  `Library/UniBridge/RuntimeStateProbe` when `SaveToFile=true`.
+
+## Known 0.2.15 Notes
+
+- `UniBridge_RuntimeProfiler` is a read-only runtime/profiler tool for Play
+  Mode debugging. It can return current runtime state, loaded-scene object
+  counts, Unity profiler memory counters, and supported metric aliases.
+- `Action=Sample` captures bounded `ProfilerRecorder` samples for frame time,
+  GC allocation, memory, rendering counters, physics/script markers, and spike
+  summaries. It requires Play Mode by default.
+- Full raw sample payloads are saved under
+  `Library/UniBridge/RuntimeProfiler` when `SaveToFile=true`; MCP responses
+  stay compact unless `ReturnSamples=true`.
 
 ## Known 0.2.14 Notes
 

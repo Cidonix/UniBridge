@@ -90,6 +90,77 @@ UniBridge_ManageEditor Action=WaitForReady RequireNotPlaying=true
 UniBridge_ReadConsole Action=DiagnosticSummary
 ```
 
+## Runtime Profiler
+
+`UniBridge_RuntimeProfiler` is a read-only tool for Play Mode runtime triage. It
+does not execute arbitrary project code. It uses Unity profiler APIs and
+bounded `ProfilerRecorder` sampling so agents can measure symptoms instead of
+guessing from scene files alone.
+
+Useful calls:
+
+```text
+UniBridge_RuntimeProfiler Action=Snapshot
+UniBridge_RuntimeProfiler Action=Metrics
+UniBridge_RuntimeProfiler Action=Sample SampleFrames=120 Metrics=[main_thread_ms,gc_alloc_bytes,batches_count]
+```
+
+`Action=Sample` requires Play Mode by default. Pass `RequirePlayMode=false` only
+when editor-time sampling is intentional.
+
+The response includes compact metric summaries and spike samples. When
+`SaveToFile=true`, the full raw sample payload is written under:
+
+```text
+Library/UniBridge/RuntimeProfiler
+```
+
+## Runtime State Probe
+
+`UniBridge_RuntimeStateProbe` is a read-only tool for inspecting live
+GameObject/component state. It is meant for gameplay debugging when the useful
+question is "what value did this component have over the next few frames?"
+rather than "what did the source file say?"
+
+It does not execute arbitrary project C# code. It reads Unity
+`SerializedObject`/`SerializedProperty` values plus reflected fields and
+readable properties.
+
+Useful calls:
+
+```text
+UniBridge_RuntimeStateProbe Action=ListMembers Component=<ComponentOrMonoBehaviour>
+UniBridge_RuntimeStateProbe Action=Snapshot Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty]
+UniBridge_RuntimeStateProbe Action=Sample Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty] SampleFrames=30
+```
+
+Batch aliases include:
+
+```text
+runtime_probe
+runtime_state
+runtime_state_probe
+state_probe
+watch_variables
+component_state
+monobehaviour_state
+runtime_fields
+```
+
+`Action=Sample` requires Play Mode by default. Pass `RequirePlayMode=false`
+only for intentional editor-time smoke tests.
+
+Target lookup uses the shared scene resolver, including inactive scene objects,
+Prefab Stage objects, instance IDs, hierarchy paths, component short/full type
+names, MonoScript GUIDs, and serialized editor class identifiers.
+
+The response returns compact changed-member summaries. When `SaveToFile=true`,
+the full raw sample payload is written under:
+
+```text
+Library/UniBridge/RuntimeStateProbe
+```
+
 ## Additive Scene Registration Validation
 
 `UniBridge_ValidateAdditiveSceneRegistration` is a read-only validator for

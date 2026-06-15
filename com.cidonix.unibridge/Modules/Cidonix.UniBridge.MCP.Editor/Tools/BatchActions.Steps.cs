@@ -246,6 +246,71 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "IncludeTypes", "includeTypes", "include_types");
                     CopyAlias(parameters, "IncludeTools", "includeTools", "include_tools");
                     break;
+                case "UniBridge_RuntimeProfiler":
+                    NormalizeAction(parameters, "Action", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["snapshot"] = "Snapshot",
+                        ["state"] = "Snapshot",
+                        ["sample"] = "Sample",
+                        ["samples"] = "Sample",
+                        ["profile"] = "Sample",
+                        ["metrics"] = "Metrics",
+                        ["list"] = "Metrics",
+                        ["list_metrics"] = "Metrics"
+                    });
+                    CopyAlias(parameters, "Action", "action");
+                    CopyAlias(parameters, "Name", "name");
+                    CopyAlias(parameters, "Metrics", "metrics", "metric", "Metric");
+                    CopyAlias(parameters, "SampleFrames", "sampleFrames", "sample_frames", "frames", "Frames");
+                    CopyAlias(parameters, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
+                    CopyAlias(parameters, "RequirePlayMode", "requirePlayMode", "require_play_mode");
+                    CopyAlias(parameters, "IncludeSceneSummary", "includeSceneSummary", "include_scene_summary");
+                    CopyAlias(parameters, "IncludeMemory", "includeMemory", "include_memory");
+                    CopyAlias(parameters, "IncludeBehaviourTypeCounts", "includeBehaviourTypeCounts", "include_behaviour_type_counts", "include_behavior_type_counts");
+                    CopyAlias(parameters, "MaxBehaviourTypes", "maxBehaviourTypes", "max_behaviour_types", "max_behavior_types");
+                    CopyAlias(parameters, "MainThreadSpikeThresholdMs", "mainThreadSpikeThresholdMs", "main_thread_spike_threshold_ms", "spike_threshold_ms");
+                    CopyAlias(parameters, "MaxSpikes", "maxSpikes", "max_spikes");
+                    CopyAlias(parameters, "SaveToFile", "saveToFile", "save_to_file");
+                    CopyAlias(parameters, "ReturnSamples", "returnSamples", "return_samples");
+                    break;
+                case "UniBridge_RuntimeStateProbe":
+                    NormalizeAction(parameters, "Action", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["snapshot"] = "Snapshot",
+                        ["state"] = "Snapshot",
+                        ["read"] = "Snapshot",
+                        ["sample"] = "Sample",
+                        ["samples"] = "Sample",
+                        ["watch"] = "Sample",
+                        ["probe"] = "Sample",
+                        ["list"] = "ListMembers",
+                        ["members"] = "ListMembers",
+                        ["listmembers"] = "ListMembers",
+                        ["list_members"] = "ListMembers"
+                    });
+                    CopyAlias(parameters, "Action", "action");
+                    CopyAlias(parameters, "Name", "name");
+                    CopyAlias(parameters, "Target", "target", "game_object", "gameObject", "object", "Object", "path", "Path");
+                    CopyAlias(parameters, "SearchMethod", "searchMethod", "search_method", "method", "Method");
+                    CopyAlias(parameters, "Component", "component", "componentType", "component_type", "type", "Type");
+                    CopyAlias(parameters, "Members", "members", "member", "Member", "fields", "Fields", "properties", "Properties");
+                    CopyAlias(parameters, "IncludeInactive", "includeInactive", "include_inactive", "search_inactive", "SearchInactive");
+                    CopyAlias(parameters, "IncludePrefabStage", "includePrefabStage", "include_prefab_stage", "prefab_stage");
+                    CopyAlias(parameters, "ScenePath", "scenePath", "scene_path", "scene");
+                    CopyAlias(parameters, "MaxTargets", "maxTargets", "max_targets", "limit", "Limit");
+                    CopyAlias(parameters, "MaxComponents", "maxComponents", "max_components");
+                    CopyAlias(parameters, "MaxMembers", "maxMembers", "max_members");
+                    CopyAlias(parameters, "IncludeSerializedFields", "includeSerializedFields", "include_serialized_fields");
+                    CopyAlias(parameters, "IncludeReadableMembers", "includeReadableMembers", "include_readable_members");
+                    CopyAlias(parameters, "IncludeNonPublicFields", "includeNonPublicFields", "include_non_public_fields");
+                    CopyAlias(parameters, "SampleFrames", "sampleFrames", "sample_frames", "frames", "Frames");
+                    CopyAlias(parameters, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
+                    CopyAlias(parameters, "RequirePlayMode", "requirePlayMode", "require_play_mode");
+                    CopyAlias(parameters, "MaxStringLength", "maxStringLength", "max_string_length");
+                    CopyAlias(parameters, "MaxCollectionItems", "maxCollectionItems", "max_collection_items");
+                    CopyAlias(parameters, "SaveToFile", "saveToFile", "save_to_file");
+                    CopyAlias(parameters, "ReturnSamples", "returnSamples", "return_samples");
+                    break;
                 case "UniBridge_ManagePhysics3D":
                     NormalizeAction(parameters, "Action", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {

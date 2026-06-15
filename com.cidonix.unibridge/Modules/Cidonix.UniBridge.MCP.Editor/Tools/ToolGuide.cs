@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -266,7 +266,7 @@ This tool is read-only.";
                     FirstCalls = new[] { "UniBridge_ToolGuide Action=Overview", "UniBridge_DomainCatalog Action=Overview", "UniBridge_ContextSnapshot Depth=Standard IncludeConsole=true IncludeTools=true IncludeProjectRoots=true IncludeProjectSettings=true", "UniBridge_WorkSession Action=Begin Name=<task> before broad edits", "UniBridge_EditorEvents Action=Snapshot IncludeSelection=true IncludeDiagnostics=true", "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     EditCalls = Array.Empty<string>(),
                     VerifyCalls = new[] { "UniBridge_ReadConsole Action=DiagnosticSummary" },
-                    Tools = new[] { ToolName, "UniBridge_Discover", "UniBridge_DomainCatalog", "UniBridge_ContextSnapshot", "UniBridge_WorkSession", "UniBridge_EditorEvents", "UniBridge_UnitySearch", "UniBridge_WorkflowRecipes", "UniBridge_ReadConsole", "UniBridge_ExecutionStatus", "UniBridge_EditorSnapshot" },
+                    Tools = new[] { ToolName, "UniBridge_Discover", "UniBridge_DomainCatalog", "UniBridge_ContextSnapshot", "UniBridge_WorkSession", "UniBridge_EditorEvents", "UniBridge_RuntimeProfiler", "UniBridge_RuntimeStateProbe", "UniBridge_UnitySearch", "UniBridge_WorkflowRecipes", "UniBridge_ReadConsole", "UniBridge_ExecutionStatus", "UniBridge_EditorSnapshot" },
                     BatchAliases = Array.Empty<string>(),
                     Notes = new[] { "Use this before planning broad scene, asset, UI, or script edits." },
                     Aliases = new[] { "start", "overview", "project" }
@@ -605,9 +605,35 @@ This tool is read-only.";
                     EditCalls = new[] { "UniBridge_BatchActions DryRun=false after a clean dry-run" },
                     VerifyCalls = new[] { "UniBridge_ReadConsole Action=DiagnosticSummary", "Specialized inspect/capture tools for the touched domain" },
                     Tools = new[] { "UniBridge_BatchActions", "UniBridge_WorkflowRecipes", "UniBridge_ReadConsole", ToolName },
-                    BatchAliases = new[] { "game_object", "asset", "asset_importer", "material", "scriptable_object", "ui", "unity_event", "capture", "context", "editor" },
+                    BatchAliases = new[] { "game_object", "asset", "asset_importer", "material", "scriptable_object", "ui", "unity_event", "capture", "context", "editor", "runtime_profiler", "runtime_probe", "state_probe" },
                     Notes = new[] { "RollbackOnFailure defaults to true for execution; still keep batches small and domain-focused.", "Impact now includes per-step likely asset paths, project settings, scene object references, and validation provider names." },
                     Aliases = new[] { "transaction", "rollback", "dry_run", "multi_step" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "runtime_profiler",
+                    Title = "Inspect Play Mode runtime and profiler state",
+                    When = "Use when runtime behavior, FPS, GC allocation, memory, rendering counters, physics spikes, or stutters need measured data instead of guesses.",
+                    FirstCalls = new[] { "UniBridge_ManageEditor Action=GetPlayModeState", "UniBridge_RuntimeProfiler Action=Snapshot", "UniBridge_RuntimeProfiler Action=Metrics" },
+                    EditCalls = Array.Empty<string>(),
+                    VerifyCalls = new[] { "UniBridge_RuntimeProfiler Action=Sample SampleFrames=120 Metrics=[main_thread_ms,gc_alloc_bytes,batches_count]", "UniBridge_ReadConsole Action=DiagnosticSummary", "UniBridge_CaptureView Action=CaptureGameView when visual context matters" },
+                    Tools = new[] { "UniBridge_RuntimeProfiler", "UniBridge_ManageEditor", "UniBridge_ReadConsole", "UniBridge_CaptureView", "UniBridge_VisualSceneAudit" },
+                    BatchAliases = new[] { "runtime_profiler", "runtime", "profiler", "performance", "fps", "gc_profile", "memory_profile" },
+                    Notes = new[] { "RuntimeProfiler is read-only and uses bounded ProfilerRecorder sampling; it does not execute arbitrary C# in the project.", "Action=Sample requires Play Mode by default; pass RequirePlayMode=false only for editor-time sampling.", "Full raw samples are saved under Library/UniBridge/RuntimeProfiler when SaveToFile=true, while the MCP response stays compact." },
+                    Aliases = new[] { "runtime", "profiler", "performance", "fps", "gc", "memory", "spikes", "stutter" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "runtime_state_probe",
+                    Title = "Probe live component state",
+                    When = "Use when a gameplay bug depends on MonoBehaviour flags, counters, references, positions, trigger state, animation state fields, or other component values over several frames.",
+                    FirstCalls = new[] { "UniBridge_ManageEditor Action=GetPlayModeState", "UniBridge_RuntimeStateProbe Action=ListMembers Component=<ComponentOrMonoBehaviour>", "UniBridge_RuntimeStateProbe Action=Snapshot Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty]" },
+                    EditCalls = Array.Empty<string>(),
+                    VerifyCalls = new[] { "UniBridge_RuntimeStateProbe Action=Sample Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty] SampleFrames=30", "UniBridge_RuntimeProfiler Action=Sample SampleFrames=60 Metrics=[main_thread_ms,gc_alloc_bytes]", "UniBridge_ReadConsole Action=DiagnosticSummary" },
+                    Tools = new[] { "UniBridge_RuntimeStateProbe", "UniBridge_RuntimeProfiler", "UniBridge_SceneObjectView", "UniBridge_UnitySearch", "UniBridge_ManageEditor", "UniBridge_ReadConsole" },
+                    BatchAliases = new[] { "runtime_probe", "runtime_state_probe", "state_probe", "watch_state", "watch_variables", "component_state", "monobehaviour_state", "runtime_fields" },
+                    Notes = new[] { "RuntimeStateProbe is read-only and samples SerializedProperty plus reflected fields/properties; it does not execute arbitrary C# in the project.", "Target lookup uses the shared scene resolver, so inactive objects, Prefab Stage objects, instance IDs, hierarchy paths, component short/full names, MonoScript GUIDs, and serialized editor class identifiers are supported.", "Action=Sample requires Play Mode by default; pass RequirePlayMode=false only for editor-time smoke tests. Full raw samples are saved under Library/UniBridge/RuntimeStateProbe when SaveToFile=true." },
+                    Aliases = new[] { "state_probe", "runtime_state", "watch", "variables", "fields", "monobehaviour", "component_state" }
                 },
                 new WorkflowGuide
                 {

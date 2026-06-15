@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, PlayMode, WaitForPlayMode, WaitForEditMode, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -156,6 +156,32 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                     {
                         "UniBridge_ValidateAdditiveSceneRegistration ScenePath=Assets/.../darkness12.unity",
                         "UniBridge_BatchActions DryRun=true steps=[validate_additive_scene, editor RefreshAssets, editor GetCompilationDiagnostics, console DiagnosticSummary]"
+                    }
+                },
+                new
+                {
+                    key = "runtime_profiler",
+                    summary = "Inspect live runtime/editor state and capture a bounded ProfilerRecorder sample for frame time, GC, memory, rendering, physics, and spike hints.",
+                    calls = new[]
+                    {
+                        "UniBridge_ManageEditor Action=GetPlayModeState",
+                        "UniBridge_RuntimeProfiler Action=Snapshot",
+                        "UniBridge_RuntimeProfiler Action=Metrics",
+                        "UniBridge_RuntimeProfiler Action=Sample SampleFrames=120 Metrics=[main_thread_ms,gc_alloc_bytes,batches_count]",
+                        "UniBridge_ReadConsole Action=DiagnosticSummary"
+                    }
+                },
+                new
+                {
+                    key = "runtime_state_probe",
+                    summary = "Read or sample live GameObject/component members over several frames without arbitrary C# execution.",
+                    calls = new[]
+                    {
+                        "UniBridge_ManageEditor Action=GetPlayModeState",
+                        "UniBridge_RuntimeStateProbe Action=ListMembers Component=<MonoBehaviourOrComponent>",
+                        "UniBridge_RuntimeStateProbe Action=Snapshot Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty]",
+                        "UniBridge_RuntimeStateProbe Action=Sample Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty] SampleFrames=30",
+                        "UniBridge_ReadConsole Action=DiagnosticSummary"
                     }
                 }
             };

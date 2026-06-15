@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.14",
+  "version": "0.2.16",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Changed\n\n- UniBridge_ContextSnapshot now includes an agentBrief onboarding block by default, summarizing project shape, likely folders/systems, risk flags, guardrails, active WorkSession state, and recommended next UniBridge calls.\n\n### Previous Changes\n\n- UniBridge_WorkSession captures an optional compact loaded-scene semantic baseline at Begin and includes semantic review data in Status/Review and active WorkSession auto-review blocks.\n- Semantic review reports scene-object changes by stable object id.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
+    "changelog": "### Added\n\n- Added UniBridge_RuntimeStateProbe, a read-only live component state probe for Snapshot, Sample, and ListMembers workflows. It reads SerializedProperty values and reflected fields/properties over bounded editor ticks without executing arbitrary project code, supports inactive/Prefab Stage lookup through the shared scene resolver, and saves raw samples under Library/UniBridge/RuntimeStateProbe.\n\n### Changed\n\n- Discover, ToolGuide, DomainCatalog, and BatchActions aliases now expose runtime state probing workflows alongside runtime profiler metrics.\n\n### Previous Changes\n\n- UniBridge_RuntimeProfiler measures bounded ProfilerRecorder samples for runtime performance triage.\n- UniBridge_ContextSnapshot includes an agentBrief onboarding block by default.\n- UniBridge_WorkSession captures optional compact loaded-scene semantic baselines and review data.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

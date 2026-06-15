@@ -1,9 +1,170 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-06-09, Europe/Kiev.
+Останнє оновлення: 2026-06-16, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-06-16: UniBridge 0.2.16 RuntimeStateProbe для live component state debugging
+
+Додано другий Locus-inspired runtime/debugging блок, якого в UniBridge реально
+не вистачало після `RuntimeProfiler`: read-only state probe для живих
+GameObject/component значень.
+
+Новий tool:
+
+- `UniBridge_RuntimeStateProbe`;
+- actions:
+  - `Snapshot` - один раз читає поточні значення компонентів/полів;
+  - `Sample` - читає ті самі значення протягом bounded editor ticks,
+    повертає компактний `changeSummary`, optional raw JSON пише у файл;
+  - `ListMembers` - показує readable `SerializedProperty` paths і reflected
+    fields/properties для компонента;
+- не виконує arbitrary C# у проекті; це принципова відмінність від Locus
+  Roslyn/JIT-style execution;
+- читає Unity `SerializedObject`/`SerializedProperty` значення через
+  `SerializedPropertyPatcher.SerializePropertyValue` і reflection-only
+  public/readable members;
+- explicit member paths можуть читати конкретні reflected fields/properties;
+- lookup використовує shared `SceneObjectLocator`, тому підтримує inactive
+  objects, Prefab Stage, instance IDs, hierarchy paths, ByComponent,
+  component short/full names, MonoScript GUID/path і serialized editor class
+  identifiers;
+- `Action=Sample` за замовчуванням вимагає Play Mode, але має
+  `RequirePlayMode=false` для editor-time smoke;
+- full sample JSON пишеться в
+  `Library/UniBridge/RuntimeStateProbe` при `SaveToFile=true`;
+- tool read-only і batch-safe.
+
+Discoverability:
+
+- `Discover`, `ToolGuide`, `DomainCatalog` отримали runtime state aliases:
+  `RuntimeStateProbe`, `runtime_state`, `runtime_probe`,
+  `runtime_state_probe`, `state_probe`, `watch_state`, `watch_variables`,
+  `component_state`, `monobehaviour_state`, `runtime_fields`;
+- `runtime` лишається alias для `UniBridge_RuntimeProfiler`;
+- `runtime_state` тепер веде до `UniBridge_RuntimeStateProbe`, бо це точніше
+  для сценарію “подивись значення компонентів”;
+- `BatchActions` allow-list вже підтримував tool, додано parameter aliases для
+  `RuntimeProfiler` і `RuntimeStateProbe`;
+- package version піднято до `0.2.16`;
+- оновлено `CHANGELOG.md`, `RELEASE_NOTES.md`, `README.md`,
+  `Documentation~/unibridge.md`, `package.json`.
+
+Важлива різниця між runtime tools:
+
+- `UniBridge_RuntimeProfiler` - “що відбувається з продуктивністю/кадрами/GC”;
+- `UniBridge_RuntimeStateProbe` - “які live значення у конкретних
+  GameObject/Component/MonoBehaviour полях протягом кадрів”.
+
+Перевірка:
+
+- package скопійовано в
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`
+  без `RelayApp~`, бо relay exe був заблокований відкритим Unity Editor;
+- перший MCP refresh виявив реальну compile-помилку:
+  `RuntimeStateProbe.cs`: `Cannot yield a value in the body of a catch clause`;
+- помилку виправлено, package повторно синхронізовано в тестовий проект;
+- `ManageEditor RefreshAssets WaitForCompletion=true Force=true` пройшов через
+  очікуваний reload boundary і повернув reload-safe результат:
+  `recoveredAfterRefreshReload=true`, `reloadBoundary=true`,
+  `reloadSafe=true`, editor ready;
+- `_server_info` після reload показав `toolCount=66`;
+- `Discover Action=Tools Query=RuntimeStateProbe` підтвердив
+  `UniBridge_RuntimeStateProbe`, enabled true, batchAllowed true;
+- `ToolGuide Action=Tool Tool=runtime_probe` резолвить alias у
+  `UniBridge_RuntimeStateProbe` і показує workflow `runtime_state_probe`;
+- `DomainCatalog InspectDomain RuntimeDebug` показує `RuntimeProfiler` і
+  `RuntimeStateProbe` у runtime-debug домені;
+- реальний MCP batch smoke:
+  - `runtime_probe Action=ListMembers Component=Transform` - success,
+    повертає SerializedProperty paths і reflected properties;
+  - `runtime_probe Action=Snapshot Component=Transform Members=[m_LocalPosition,
+    position, localPosition, localScale]` - success;
+  - `runtime_probe Action=Sample SampleFrames=5 RequirePlayMode=false` -
+    success, 5 rows, raw JSON saved under
+    `Library/UniBridge/RuntimeStateProbe`;
+  - `runtime_profiler Action=Sample SampleFrames=3 RequirePlayMode=false` -
+    success, raw JSON saved under `Library/UniBridge/RuntimeProfiler`;
+- `GetCompilationDiagnostics`: errors 0, warnings 0;
+- `ReadConsole DiagnosticSummary`: 0 logs/warnings/errors/exceptions/asserts.
+
+Нотатка:
+
+- Codex `tool_search` у вже відкритій MCP/Codex сесії може не одразу expose-ити
+  новий direct callable після Unity reload, але Unity-side registry, `Discover`,
+  `ToolGuide`, `DomainCatalog` і `BatchActions` вже бачать tool. Для поточної
+  сесії найстабільніший виклик - через `BatchActions` alias `runtime_probe`.
+
+## 2026-06-16: UniBridge 0.2.15 RuntimeProfiler для runtime/performance triage
+
+Додано перший Locus-inspired блок, якого в UniBridge реально не вистачало:
+read-only runtime/profiler inspection tool для агента.
+
+Новий tool:
+
+- `UniBridge_RuntimeProfiler`;
+- actions:
+  - `Snapshot` - компактний стан Editor/Play Mode, loaded scenes, object totals,
+    behaviour type counts, memory snapshot, supported metrics;
+  - `Metrics` - список підтриманих profiler metric aliases/category/name;
+  - `Sample` - bounded `ProfilerRecorder` sampling з avg/p50/p95/max/last,
+    spike summary і optional raw JSON output;
+- `Action=Sample` за замовчуванням вимагає Play Mode, але має
+  `RequirePlayMode=false` для editor-time smoke;
+- full sample JSON пишеться в
+  `Library/UniBridge/RuntimeProfiler` при `SaveToFile=true`;
+- tool є read-only і не виконує arbitrary C# у проекті.
+
+Підтримані метрики на момент додавання:
+
+- `main_thread_ms`, `render_thread_ms`, `gc_alloc_bytes`,
+  `gc_reserved_mb`, `system_used_memory_mb`, `total_used_memory_mb`,
+  `batches_count`, `setpass_calls`, `triangles_count`, `vertices_count`,
+  `script_update_ms`, `physics_simulate_ms`, `physics2d_simulate_ms`.
+
+Discoverability:
+
+- `Discover`, `ToolGuide`, `DomainCatalog` отримали runtime/profiler aliases:
+  `runtime_profiler`, `runtime`, `profiler`, `performance`, `fps`,
+  `frame_time`, `spikes`, `gc_profile`, `memory_profile`,
+  `playmode_profiler`;
+- `BatchActions` allow-list і aliases тепер підтримують
+  `runtime_profiler`, тож агенти можуть запускати profiler snapshot/sample
+  в batch workflow;
+- package version піднято до `0.2.15`;
+- оновлено `CHANGELOG.md`, `RELEASE_NOTES.md`, `README.md`,
+  `Documentation~/unibridge.md`, `package.json`.
+
+Перевірка:
+
+- package скопійовано в
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`;
+- `ManageEditor RefreshAssets WaitForCompletion=true Force=true` у тестовому
+  проекті пройшов reload-safe recovery:
+  `recoveredAfterRefreshReload=true`, `reloadBoundary=true`,
+  `reloadSafe=true`, editor ready;
+- `_server_info` у тестовому проекті показав relay `1.1.0-build.15`,
+  Unity connected true, toolCount `65`;
+- `Discover Action=Tools Query=RuntimeProfiler` підтвердив
+  `UniBridge_RuntimeProfiler`, enabled true, batchAllowed true;
+- реальний MCP batch smoke:
+  - `runtime_profiler Action=Metrics` - success, 13 metric entries;
+  - `runtime_profiler Action=Snapshot` - success, active scene
+    `Assets/CorgiEngine/Demos/Minimal/FeaturesPlatforms.unity`, 363
+    GameObjects, 0 missing scripts;
+  - `runtime_profiler Action=Sample SampleFrames=5 RequirePlayMode=false`
+    - success, 5 rows, raw JSON saved under
+    `Library/UniBridge/RuntimeProfiler`;
+- `GetCompilationDiagnostics`: errors 0, warnings 0;
+- `ReadConsole DiagnosticSummary`: 0 logs/warnings/errors/exceptions/asserts.
+
+Нотатка:
+
+- Codex `tool_search` може не одразу expose-ити новий direct callable після
+  Unity reload, але Unity-side registry і `BatchActions` вже бачать tool.
+  Для нового агента найстабільніший шлях до появи tool - перезапуск MCP/agent
+  session або використання `BatchActions` alias `runtime_profiler`.
 
 ## 2026-06-09: UniBridge 0.2.10 RefreshAssets reload-safe recovery
 

@@ -1,11 +1,25 @@
-# UniBridge 0.2.14 Release Notes
+# UniBridge 0.2.16 Release Notes
 
-Release date: 2026-06-14
+Release date: 2026-06-16
 
-This release polishes `UniBridge_ContextSnapshot` as the first-call orientation
-tool for new AI agents. The snapshot now includes an `agentBrief` block by
-default: project shape, likely important folders/systems, active WorkSession
-state, risk flags, guardrails, and recommended next UniBridge calls.
+This release adds `UniBridge_RuntimeStateProbe`, a read-only runtime component
+state probe for Play Mode debugging. It lets AI agents inspect live
+GameObject/component fields and properties, list readable members, and sample
+selected values over several editor ticks without executing arbitrary C# in the
+project.
+
+The previous 0.2.15 release added `UniBridge_RuntimeProfiler`, a read-only
+runtime/profiler inspection tool for Play Mode debugging. It gives AI agents a
+measured view of runtime state, loaded-scene object counts, Unity profiler
+memory counters, and bounded `ProfilerRecorder` samples for frame time, GC
+allocation, memory, rendering counters, physics/script markers, and spike
+summaries.
+
+The previous 0.2.14 release polished `UniBridge_ContextSnapshot` as the
+first-call orientation tool for new AI agents. The snapshot includes an
+`agentBrief` block by default: project shape, likely important folders/systems,
+active WorkSession state, risk flags, guardrails, and recommended next
+UniBridge calls.
 
 The previous 0.2.13 release made `UniBridge_WorkSession` more useful as an
 agent self-review tool after scene work. In addition to changed-file summaries,
@@ -46,7 +60,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.14`
+- Version: `0.2.16`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
@@ -60,6 +74,8 @@ guessing from files alone.
 
 - Project orientation: context snapshots, domain catalog, tool guide, workflow
   recipes, scene/object views, editor snapshots, and console diagnostics.
+- Runtime debugging: profiler metrics plus read-only component state probes for
+  selected SerializedProperty paths and reflected fields/properties.
 - Work-session safety: begin project-local checkpoints, review changed files,
   inspect compact text diffs, dry-run selected reverts, and restore/delete
   selected files from captured session snapshots.
@@ -80,11 +96,30 @@ guessing from files alone.
 - Visual work: Scene View/game-camera captures, object/prefab/overview captures,
   contact sheets, visual audits, pixel stats, diff heatmaps, and animated/VFX
   preview advance.
+- Runtime diagnostics: read-only runtime snapshots, loaded-scene object counts,
+  memory counters, bounded profiler samples, frame-time/GC/rendering metrics,
+  spike summaries, and full raw sample JSON output.
 - Gameplay authoring: animation clips, Animator Controllers, Physics2D,
   Physics3D, rendering, navigation, tilemaps, input actions, timeline, audio,
   VFX, shaders, resources, and external model import.
 - Script workflows: validation, safe edits, preview mode, source context,
   attached MonoBehaviour context, and script capability inspection.
+
+## 0.2.15 Polish
+
+- Added `UniBridge_RuntimeProfiler Action=Snapshot` for current editor/runtime
+  state, loaded-scene summaries, object/component counts, missing-script counts,
+  top MonoBehaviour type counts, and Unity profiler memory counters.
+- Added `UniBridge_RuntimeProfiler Action=Metrics` to expose supported metric
+  aliases such as `main_thread_ms`, `gc_alloc_bytes`, `batches_count`, and
+  category/name syntax such as `Internal/Main Thread`.
+- Added `UniBridge_RuntimeProfiler Action=Sample` for bounded profiler sampling
+  with compact avg/p50/p95/max/last summaries and configurable spike detection.
+- Full sample payloads are saved under `Library/UniBridge/RuntimeProfiler` when
+  `SaveToFile=true`; raw samples are only returned inline when
+  `ReturnSamples=true`.
+- Added runtime/profiler discoverability to `UniBridge_Discover`,
+  `UniBridge_ToolGuide`, `UniBridge_DomainCatalog`, and batch aliases.
 
 ## 0.2.14 Polish
 

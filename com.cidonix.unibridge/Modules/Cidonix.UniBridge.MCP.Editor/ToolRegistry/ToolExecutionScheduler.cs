@@ -62,6 +62,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             "UniBridge_GetSha",
             "UniBridge_ListResources",
             "UniBridge_ReadResource",
+            "UniBridge_RuntimeProfiler",
+            "UniBridge_RuntimeStateProbe",
             "UniBridge_SceneObjectView",
             "UniBridge_ScriptIntelligence",
             "UniBridge_ToolGuide",

@@ -2,6 +2,46 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.16
+
+### Added
+
+- Added `UniBridge_RuntimeStateProbe`, a read-only runtime component state
+  probe for AI gameplay debugging. It supports `Snapshot`, `Sample`, and
+  `ListMembers` actions for live GameObject/component state without arbitrary
+  C# execution.
+- `Action=Sample` reads selected SerializedProperty paths and reflected
+  fields/properties over bounded editor ticks, returns a compact changed-member
+  summary, and can save full raw samples under
+  `Library/UniBridge/RuntimeStateProbe`.
+
+### Changed
+
+- `UniBridge_Discover`, `UniBridge_ToolGuide`, `UniBridge_DomainCatalog`, and
+  `UniBridge_BatchActions` now expose runtime state probe workflows and aliases
+  such as `runtime_probe`, `runtime_state`, `state_probe`, `watch_variables`,
+  `component_state`, and `runtime_fields`.
+- `UniBridge_BatchActions` now normalizes friendly parameter aliases for
+  `UniBridge_RuntimeProfiler` and `UniBridge_RuntimeStateProbe`.
+
+## 0.2.15
+
+### Added
+
+- Added `UniBridge_RuntimeProfiler`, a read-only runtime/profiler inspection
+  tool for Play Mode debugging. It reports editor/runtime state, loaded-scene
+  object counts, Unity profiler memory counters, supported metric aliases, and
+  bounded `ProfilerRecorder` samples with avg/p50/p95/max/last and spike
+  summaries.
+- `Action=Sample` can save full raw samples to
+  `Library/UniBridge/RuntimeProfiler` while keeping the MCP response compact.
+
+### Changed
+
+- Added runtime/profiler aliases and workflow entries to `UniBridge_Discover`,
+  `UniBridge_ToolGuide`, `UniBridge_DomainCatalog`, and
+  `UniBridge_BatchActions`.
+
 ## 0.2.14
 
 ### Changed
