@@ -43,6 +43,11 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         CodeUsages,
 
         /// <summary>
+        /// Compare current source with proposed source and estimate API, serialized, and reload risk before applying edits.
+        /// </summary>
+        ChangeImpact,
+
+        /// <summary>
         /// Scan scripts for likely cleanup or maintenance hotspots.
         /// </summary>
         Hotspots,
@@ -96,7 +101,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
     /// </summary>
     public record ScriptIntelligenceParams
     {
-        [McpDescription("Operation to perform: Catalog, Analyze, ReadTypes, References, Usages, MemberUsages, CodeUsages, Hotspots, Assemblies, Selection, or Metrics.", Required = false, Default = ScriptIntelligenceAction.Catalog)]
+        [McpDescription("Operation to perform: Catalog, Analyze, ReadTypes, References, Usages, MemberUsages, CodeUsages, ChangeImpact, Hotspots, Assemblies, Selection, or Metrics.", Required = false, Default = ScriptIntelligenceAction.Catalog)]
         public ScriptIntelligenceAction Action { get; set; } = ScriptIntelligenceAction.Catalog;
 
         [McpDescription("Script asset path, folder scope, or readable project path. Accepts Assets/..., Packages/..., unity://path/..., or a path relative to Assets/.", Required = false)]
@@ -155,6 +160,12 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("For CodeUsages, include string-based callback references such as SendMessage(\"Method\"), Invoke(\"Method\"), and StartCoroutine(\"Method\"). Default true.", Required = false, Default = true)]
         public bool IncludeStringReferences { get; set; } = true;
+
+        [McpDescription("For ChangeImpact, proposed replacement source text to compare against the current script. This is read-only and does not modify files.", Required = false)]
+        public string ProposedSource { get; set; }
+
+        [McpDescription("For ChangeImpact, asset path or absolute path to a proposed replacement .cs file. Used when ProposedSource is not supplied.", Required = false)]
+        public string ProposedPath { get; set; }
 
         [McpDescription("Text or regex pattern for References. Defaults to TypeName or Query.", Required = false)]
         public string Pattern { get; set; }

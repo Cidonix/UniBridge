@@ -25,6 +25,9 @@ through an approval-based connection flow.
 - Location-aware asset/script reference workflows that report exact YAML
   line/property/object context before risky rename, move, delete, or script
   migration work.
+- Read-only C# source-change preflight that compares current scripts with
+  proposed source and reports API, serialized-field, Unity-callback, syntax,
+  and reload risk before applying edits.
 - `UniBridge_Discover`, a stable read-only ping/workflow entry point for new
   MCP clients and Codex sessions.
 - `UniBridge_WorkSession`, a project-local checkpoint/review/revert layer that
@@ -90,6 +93,23 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## Known 0.2.24 Notes
+
+- `UniBridge_ScriptIntelligence Action=ChangeImpact` can compare the current
+  `.cs` file with `ProposedSource` or `ProposedPath` before an agent applies a
+  larger source edit.
+- It reports syntax diagnostics, type/member shape changes, public API risk,
+  inspector serialized-field risk, Unity callback risk, source deltas, and
+  expected refresh/compile/domain-reload boundaries.
+- It returns suggested follow-up calls for `CodeUsages`, `MemberUsages`,
+  `ValidateScript`, refresh, compile, reload wait, and console / compilation
+  diagnostics.
+- Use it before risky script edits:
+  `Action=ChangeImpact Path=Assets/.../<script>.cs ProposedSource=<candidate>`.
+- `BatchActions`, `Discover`, `ToolGuide`, and `DomainCatalog` expose aliases
+  such as `change_impact`, `script_preflight`, `hot_diff`, `reload_risk`, and
+  `api_change_impact`.
 
 ## Known 0.2.23 Notes
 

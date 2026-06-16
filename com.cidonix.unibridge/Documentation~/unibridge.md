@@ -1064,6 +1064,7 @@ It is read-only and supports:
 - `Usages`: find scenes, prefabs, and assets that reference a script asset;
 - `MemberUsages`: find Unity serialized references to one script member, including UnityEvent method bindings, AnimationEvent function names, and serialized fields;
 - `CodeUsages`: find C# source call sites and type/member references before risky renames, deletes, or signature changes;
+- `ChangeImpact`: compare the current script with `ProposedSource` or `ProposedPath` and estimate syntax, API, serialized-field, Unity-callback, and reload risk before applying the edit;
 - `Hotspots`: find likely cleanup points such as TODO/FIXME, file/class mismatches, obsolete Unity APIs, large files, or `UnityEditor` references in runtime folders;
 - `Assemblies`: summarize Unity compilation assemblies and asmdefs;
 - `Selection`: analyze selected script assets;
@@ -1079,6 +1080,18 @@ For member rename/delete checks, combine:
 - `Action=CodeUsages Path=Assets/.../<script>.cs Member=<methodOrField>` to find C# callers and references.
 
 `CodeUsages` is read-only and syntax-based. `Exact` means the reference is qualified by the target type name, `Possible` means the name matches but the semantic receiver type was not resolved, and `RuntimeResolved` covers string-based callbacks such as `SendMessage("Method")`, `Invoke("Method")`, and `StartCoroutine("Method")`. Use `IncludeSelfReferences=true` when internal references inside the target script matter; by default it focuses on external callers.
+
+For larger source edits, call:
+
+- `Action=ChangeImpact Path=Assets/.../<script>.cs ProposedSource=<candidateSource>` or
+  `Action=ChangeImpact Path=Assets/.../<script>.cs ProposedPath=Assets/.../<candidate>.cs`
+  before applying the edit.
+
+`ChangeImpact` is read-only. It reports proposed-source syntax diagnostics,
+type/member shape diffs, public API risk, inspector serialized-field risk,
+Unity callback risk, source line/character deltas, expected refresh/compile/
+domain-reload boundaries, and suggested next calls for follow-up scans and
+post-edit verification.
 
 Use:
 

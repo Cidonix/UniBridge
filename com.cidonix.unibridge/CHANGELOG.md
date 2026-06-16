@@ -2,6 +2,33 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.24
+
+### Added
+
+- Added `UniBridge_ScriptIntelligence Action=ChangeImpact`, a read-only C#
+  source-change preflight for agents before applying larger script edits.
+- `ChangeImpact` compares the current script with `ProposedSource` or
+  `ProposedPath` and reports syntax diagnostics, type/member shape changes,
+  serialized field risk, Unity callback risk, public API risk, source deltas,
+  and expected refresh/compile/domain-reload boundaries.
+- Results include suggested follow-up calls for `CodeUsages`, `MemberUsages`,
+  `ValidateScript`, asset refresh, compilation, reload waiting, and console /
+  compilation diagnostics.
+- Added discoverability and batch aliases for `change_impact`,
+  `script_change_impact`, `script_preflight`, `hot_diff`, `reload_risk`, and
+  `api_change_impact`.
+
+### Improved
+
+- `UniBridge_ScriptIntelligence` source-shape parsing now keeps declaring type
+  context for parsed fields, properties, and methods, making member diffs and
+  risk output easier for agents to read.
+- Script preflight workflows now cover four complementary questions:
+  script GUID references (`Usages`), serialized Unity member references
+  (`MemberUsages`), C# caller/type references (`CodeUsages`), and proposed
+  source-change impact (`ChangeImpact`).
+
 ## 0.2.23
 
 ### Added

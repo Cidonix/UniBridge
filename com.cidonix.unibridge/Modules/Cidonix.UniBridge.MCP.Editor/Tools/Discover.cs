@@ -151,7 +151,8 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                         "UniBridge_AssetIntelligence Action=Impact Path=Assets/... ImpactOperation=Delete IncludeReferenceLocations=true",
                         "UniBridge_ScriptIntelligence Action=Usages Path=Assets/.../<script>.cs IncludeUsageLocations=true MaxUsageLocations=20",
                         "UniBridge_ScriptIntelligence Action=MemberUsages Path=Assets/.../<script>.cs Member=<methodOrField> MaxUsageLocations=20",
-                        "UniBridge_ScriptIntelligence Action=CodeUsages Path=Assets/.../<script>.cs Member=<methodOrField> MaxReferences=80"
+                        "UniBridge_ScriptIntelligence Action=CodeUsages Path=Assets/.../<script>.cs Member=<methodOrField> MaxReferences=80",
+                        "UniBridge_ScriptIntelligence Action=ChangeImpact Path=Assets/.../<script>.cs ProposedPath=Assets/.../<candidate>.cs MaxReferences=80"
                     }
                 },
                 new

@@ -1330,6 +1330,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["callers"] = "CodeUsages",
                         ["member_callers"] = "CodeUsages",
                         ["code_member_usages"] = "CodeUsages",
+                        ["changeimpact"] = "ChangeImpact",
+                        ["change_impact"] = "ChangeImpact",
+                        ["script_change_impact"] = "ChangeImpact",
+                        ["script_preflight"] = "ChangeImpact",
+                        ["hot_diff"] = "ChangeImpact",
+                        ["hotdiff"] = "ChangeImpact",
+                        ["reload_risk"] = "ChangeImpact",
+                        ["script_reload_risk"] = "ChangeImpact",
+                        ["api_change_impact"] = "ChangeImpact",
                         ["hotspots"] = "Hotspots",
                         ["assemblies"] = "Assemblies",
                         ["selection"] = "Selection",
@@ -1346,6 +1355,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "IncludePossibleMemberUsages", "includePossibleMemberUsages", "include_possible_member_usages", "includePossibleMatches", "include_possible_matches");
                     CopyAlias(parameters, "IncludeSelfReferences", "includeSelfReferences", "include_self_references", "selfReferences", "self_references");
                     CopyAlias(parameters, "IncludeStringReferences", "includeStringReferences", "include_string_references", "stringReferences", "string_references");
+                    CopyAlias(parameters, "ProposedSource", "proposedSource", "proposed_source", "newSource", "new_source", "afterSource", "after_source", "replacementSource", "replacement_source");
+                    CopyAlias(parameters, "ProposedPath", "proposedPath", "proposed_path", "newPath", "new_path", "afterPath", "after_path", "replacementPath", "replacement_path");
                     CopyAlias(parameters, "MaxUsageLocations", "maxUsageLocations", "max_usage_locations", "maxLocations", "max_locations");
                     CopyAlias(parameters, "MaxReferences", "maxReferences", "max_references", "maxMatches", "max_matches");
                     CopyAlias(parameters, "IncludeUsages", "includeUsages", "include_usages");

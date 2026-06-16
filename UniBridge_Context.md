@@ -5,6 +5,82 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.24 Script ChangeImpact Preflight
+
+Другий Locus-inspired пункт реалізується як read-only preflight у вже
+існуючому `UniBridge_ScriptIntelligence`, без hot reload і без копіювання
+чужої архітектури.
+
+Новий режим:
+
+- `UniBridge_ScriptIntelligence Action=ChangeImpact`;
+- target: `Path`, `Guid`, `TypeName` або `Query`;
+- candidate source: `ProposedSource` або `ProposedPath`;
+- результат показує syntax diagnostics, source delta, type/member shape diff,
+  public API risk, serialized field risk, Unity callback risk і очікуваний
+  refresh/compile/domain-reload boundary;
+- результат повертає `suggestedNextCalls` для `CodeUsages`, `MemberUsages`,
+  `ValidateScript`, `RefreshAssets`, `RequestScriptCompilationNoWait`,
+  `WaitForReadyAfterReload`, `GetCompilationDiagnostics`,
+  `ReadConsole DiagnosticSummary`.
+
+Навіщо це потрібно:
+
+- перед великим script edit агент може побачити, що саме зміниться в API,
+  serialized fields і Unity callbacks, ще до застосування текстових правок;
+- не замінює `CodeUsages`/`MemberUsages`, а доповнює їх як preflight
+  "що зміниться у файлі";
+- не робить hot reload і не пише файли, лише дає risk summary і наступні
+  безпечні кроки.
+
+Discoverability:
+
+- `BatchActions` aliases:
+  `change_impact`, `script_change_impact`, `script_preflight`, `hot_diff`,
+  `reload_risk`, `script_reload_risk`, `api_change_impact`;
+- `Discover`, `ToolGuide`, `DomainCatalog` scripts workflows тепер радять
+  `ChangeImpact` поруч із `Usages`, `MemberUsages`, `CodeUsages`.
+
+Package/docs:
+
+- package version піднято до `0.2.24`;
+- оновлено `CHANGELOG.md`, `RELEASE_NOTES.md`, root/package `README.md`,
+  `Documentation~/unibridge.md`;
+- `ScriptIntelligence` source-shape summaries тепер зберігають
+  `declaringType` / `declaringTypeFullName` для parsed fields/properties/
+  methods, щоб member diffs були зрозуміліші.
+
+Testing status:
+
+- implementation complete;
+- `dotnet build UniBridge.Relay/UniBridge.Relay.csproj`: success,
+  `0 warnings`, `0 errors`;
+- package sync у
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`;
+- `UniBridge_Discover Action=Ping`: package version `0.2.24`, Unity
+  `6000.4.11f1`, project `UniBridge_Test_Project`;
+- `ToolGuide Workflow scripts` показує
+  `UniBridge_ScriptIntelligence ChangeImpact ProposedSource=<candidateSource>`
+  і aliases `change_impact`, `script_preflight`, `hot_diff`, `reload_risk`;
+- live batch smoke через MCP:
+  `script_intelligence Action=ChangeImpact
+  Path=Assets/UniBridgeScriptFixtures/Runtime/UniBridgeFixtureMover.cs`
+  із candidate source, де `speed` перейменовано у `moveSpeed`, а
+  `MoveBy` у `MoveByWorld`;
+- результат: `riskLevel=High`, `syntaxErrors=0`, `syntaxWarnings=0`,
+  `possibleMemberRenames=2`, `serializedFieldRiskCount=1`,
+  `apiRiskCount=1`, `highRisks=2`;
+- risk output без дублювання removed/added noise:
+  `publicMemberPossibleRename` для `MoveBy -> MoveByWorld` і
+  `serializedFieldPossibleRename` для `speed -> moveSpeed`;
+- `declaringTypeFullName` у member diff/risk коректно містить
+  `Cidonix.UniBridge.TestFixtures.UniBridgeFixtureMover`;
+- `postActionDiagnostics.consoleDelta`: `totalEntries=0`, `warnings=0`,
+  `errors=0`, `exceptions=0`;
+- `UniBridge_ManageEditor Action=GetCompilationDiagnostics`: `errors=0`,
+  `warnings=0`;
+- `UniBridge_ReadConsole Action=DiagnosticSummary`: `totalEntries=0`.
+
 ## 2026-06-16: UniBridge 0.2.23 C# CodeUsages Caller Scan
 
 Перший наступний Locus-inspired пункт реалізовано без копіювання чужого коду:

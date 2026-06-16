@@ -56,7 +56,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         };
 
         static readonly Regex k_UsingLineRegex = new(@"^\s*using\s+(?:static\s+)?(?<name>[A-Za-z_][A-Za-z0-9_.]*)(?:\s*=\s*[A-Za-z_][A-Za-z0-9_.<>]*)?\s*;", RegexOptions.Compiled);
-        static readonly Regex k_NamespaceLineRegex = new(@"^\s*namespace\s+(?<name>[A-Za-z_][A-Za-z0-9_.]*)\s*(?:[;{])", RegexOptions.Compiled);
+        static readonly Regex k_NamespaceLineRegex = new(@"^\s*namespace\s+(?<name>[A-Za-z_][A-Za-z0-9_.]*)\s*(?:[;{]\s*)?$", RegexOptions.Compiled);
         static readonly Regex k_TypeLineRegex = new(@"^\s*(?<attrs>(?:\[[^\]]+\]\s*)*)\s*(?<mods>(?:(?:public|private|protected|internal|static|abstract|sealed|partial|unsafe|new)\s+)*)?(?<kind>class|struct|interface|enum|record)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(?<bases>[^{\r\n]+))?", RegexOptions.Compiled);
         static readonly Regex k_MethodLineRegex = new(@"^\s*(?<attrs>(?:\[[^\]]+\]\s*)*)\s*(?<mods>(?:(?:public|private|protected|internal|static|virtual|override|abstract|async|sealed|new|extern|unsafe|partial)\s+)*)?(?<return>[A-Za-z_][A-Za-z0-9_<>\[\].?, \t]*)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\((?<params>[^)]*)\)\s*(?:where\b[^{;]*)?\s*(?:\{|=>|;)?\s*$", RegexOptions.Compiled);
         static readonly Regex k_PropertyLineRegex = new(@"^\s*(?<attrs>(?:\[[^\]]+\]\s*)*)\s*(?<mods>(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|new|unsafe)\s+)*)?(?<type>[A-Za-z_][A-Za-z0-9_<>\[\].?, \t]*)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\{\s*(?:get|set|init)\b|=>)", RegexOptions.Compiled);
@@ -69,7 +69,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
 Use this when you need to understand code before editing: list MonoBehaviours and ScriptableObjects, inspect one script, read code for known component types, find references, locate prefab/scene usages, summarize assemblies, or detect maintenance hotspots.
 
-Search aliases: script search, script usages, code usages, caller scan, member callers, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, prefab script references, scene script references.
+Search aliases: script search, script usages, code usages, caller scan, member callers, change impact, script preflight, hot diff, reload risk, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, prefab script references, scene script references.
 
 Actions:
     Catalog: List scripts and compiled types with path, kind, assembly, and Unity role. Set IncludeMembers=true only when you need member summaries.
@@ -79,6 +79,7 @@ Actions:
     Usages: Find scenes, prefabs, and assets that reference a script asset GUID.
     MemberUsages: Find serialized uses of a specific script member in Unity assets: UnityEvent method bindings, AnimationEvent function names, and serialized fields.
     CodeUsages: Find C# source call sites and type/member references before risky renames, deletes, or signature changes. This is syntax-based and read-only.
+    ChangeImpact: Compare current script source with ProposedSource/ProposedPath and estimate API, serialized, Unity callback, and reload risk before applying edits.
     Hotspots: Scan scripts for TODO/FIXME, missing compiled types, file/class mismatches, obsolete Unity APIs, and large files.
     Assemblies: Summarize Unity compilation assemblies and script counts.
     Selection: Analyze selected MonoScript assets.
@@ -102,6 +103,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     ScriptIntelligenceAction.Usages => Usages(parameters),
                     ScriptIntelligenceAction.MemberUsages => MemberUsages(parameters),
                     ScriptIntelligenceAction.CodeUsages => CodeUsages(parameters),
+                    ScriptIntelligenceAction.ChangeImpact => ChangeImpact(parameters),
                     ScriptIntelligenceAction.Hotspots => Hotspots(parameters),
                     ScriptIntelligenceAction.Assemblies => Assemblies(parameters),
                     ScriptIntelligenceAction.Selection => Selection(parameters),
@@ -372,6 +374,114 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     note = match.Note,
                     preview = match.Preview
                 }).Cast<object>().ToList()
+            });
+        }
+
+        static object ChangeImpact(ScriptIntelligenceParams p)
+        {
+            var record = ResolveSingleScript(p);
+            if (record == null)
+                return Response.Error("ChangeImpact requires a target script. Provide Path, Guid, TypeName, or Query.");
+
+            if (!TryReadProposedSource(p, out var proposedSource, out var proposedSourceKind, out var proposedPath, out var error))
+                return Response.Error(error);
+
+            var currentSource = record.GetSourceText() ?? string.Empty;
+            var sourceChanged = !string.Equals(currentSource, proposedSource, StringComparison.Ordinal);
+            var before = AnalyzeSourceText(currentSource);
+            var after = AnalyzeSourceText(proposedSource);
+            var syntax = AnalyzeSyntax(proposedSource, p);
+            var typeChanges = CompareTypes(before, after);
+            var memberChanges = CompareMembers(before, after);
+            var risks = BuildChangeRisks(record, syntax, typeChanges, memberChanges, sourceChanged);
+            var limit = Clamp(p.Limit <= 0 ? DefaultLimit : p.Limit, 1, MaxLimit);
+            var highRisks = risks.Count(risk => string.Equals(risk.Severity, "high", StringComparison.OrdinalIgnoreCase));
+            var mediumRisks = risks.Count(risk => string.Equals(risk.Severity, "medium", StringComparison.OrdinalIgnoreCase));
+            var lowRisks = risks.Count(risk => string.Equals(risk.Severity, "low", StringComparison.OrdinalIgnoreCase));
+            var riskLevel = highRisks > 0 ? "High" : mediumRisks > 0 ? "Medium" : lowRisks > 0 ? "Low" : "None";
+            var riskScore = highRisks * 100 + mediumRisks * 10 + lowRisks;
+
+            return Response.Success($"Change impact for '{record.Path}': {riskLevel}.", new
+            {
+                action = "ChangeImpact",
+                target = BuildScriptSummary(record, p, false, false),
+                input = new
+                {
+                    proposedSourceKind,
+                    proposedPath,
+                    sourceChanged
+                },
+                summary = new
+                {
+                    sourceChanged,
+                    riskLevel,
+                    riskScore,
+                    syntaxErrors = syntax.Errors,
+                    syntaxWarnings = syntax.Warnings,
+                    addedTypes = typeChanges.Count(change => change.Change == "Added"),
+                    removedTypes = typeChanges.Count(change => change.Change == "Removed"),
+                    changedTypes = typeChanges.Count(change => change.Change == "Changed"),
+                    possibleTypeRenames = typeChanges.Count(change => change.Change == "PossibleRename"),
+                    addedMembers = memberChanges.Count(change => change.Change == "Added"),
+                    removedMembers = memberChanges.Count(change => change.Change == "Removed"),
+                    changedMembers = memberChanges.Count(change => change.Change == "Changed"),
+                    possibleMemberRenames = memberChanges.Count(change => change.Change == "PossibleRename"),
+                    serializedFieldRiskCount = risks.Count(risk => risk.Category == "SerializedField"),
+                    apiRiskCount = risks.Count(risk => risk.Category == "Api"),
+                    unityMessageRiskCount = risks.Count(risk => risk.Category == "UnityMessage"),
+                    highRisks,
+                    mediumRisks,
+                    lowRisks
+                },
+                sourceDelta = new
+                {
+                    beforeLines = before.LineCount,
+                    afterLines = after.LineCount,
+                    lineDelta = after.LineCount - before.LineCount,
+                    beforeChars = currentSource.Length,
+                    afterChars = proposedSource.Length,
+                    charDelta = proposedSource.Length - currentSource.Length
+                },
+                reload = new
+                {
+                    assetRefreshRequired = sourceChanged,
+                    scriptCompilationRequired = sourceChanged,
+                    domainReloadLikely = sourceChanged,
+                    canPreflightWithoutReload = true,
+                    hotReloadAttempted = false,
+                    note = sourceChanged
+                        ? "This preflight is read-only. Apply the edit with SHA/precondition tools, then refresh assets, request compilation, wait for reload, and read diagnostics."
+                        : "The proposed source is identical to the current script source."
+                },
+                syntaxDiagnostics = new
+                {
+                    syntax.Errors,
+                    syntax.Warnings,
+                    diagnostics = syntax.Diagnostics.Take(limit).ToArray(),
+                    truncated = syntax.TotalDiagnostics > limit
+                },
+                diff = new
+                {
+                    types = new
+                    {
+                        total = typeChanges.Count,
+                        changes = typeChanges.Take(limit).Select(BuildTypeChangeObject).ToArray(),
+                        truncated = typeChanges.Count > limit
+                    },
+                    members = new
+                    {
+                        total = memberChanges.Count,
+                        changes = memberChanges.Take(limit).Select(BuildMemberChangeObject).ToArray(),
+                        truncated = memberChanges.Count > limit
+                    }
+                },
+                risks = new
+                {
+                    total = risks.Count,
+                    items = risks.Take(limit).Select(BuildRiskObject).ToArray(),
+                    truncated = risks.Count > limit
+                },
+                suggestedNextCalls = BuildChangeImpactNextCalls(record, typeChanges, memberChanges, risks, p).Take(30).ToArray()
             });
         }
 
@@ -707,6 +817,12 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 return record.Analysis;
 
             var text = record.GetSourceText() ?? string.Empty;
+            record.Analysis = AnalyzeSourceText(text);
+            return record.Analysis;
+        }
+
+        static SourceAnalysis AnalyzeSourceText(string text)
+        {
             var analysis = new SourceAnalysis
             {
                 LineCount = CountLines(text)
@@ -771,18 +887,19 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     continue;
                 }
 
+                var declaringType = FindDirectDeclaringType(analysis, lineNumber, braceDepth);
                 var propertyMatch = k_PropertyLineRegex.Match(rawLine);
-                if (propertyMatch.Success && IsDirectTypeMemberLine(analysis, lineNumber, braceDepth))
+                if (propertyMatch.Success && declaringType != null)
                 {
-                    analysis.Properties.Add(BuildMember(propertyMatch, lineNumber, "property", pendingAttributes));
+                    analysis.Properties.Add(BuildMember(propertyMatch, lineNumber, "property", pendingAttributes, declaringType));
                     pendingAttributes = string.Empty;
                     continue;
                 }
 
                 var methodMatch = k_MethodLineRegex.Match(rawLine);
-                if (methodMatch.Success && !LooksLikeControlStatement(methodMatch) && IsDirectTypeMemberLine(analysis, lineNumber, braceDepth))
+                if (methodMatch.Success && !LooksLikeControlStatement(methodMatch) && declaringType != null)
                 {
-                    analysis.Methods.Add(BuildMember(methodMatch, lineNumber, "method", pendingAttributes));
+                    analysis.Methods.Add(BuildMember(methodMatch, lineNumber, "method", pendingAttributes, declaringType));
                     pendingAttributes = string.Empty;
                     continue;
                 }
@@ -794,9 +911,9 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 }
 
                 var fieldMatch = k_FieldLineRegex.Match(rawLine);
-                if (fieldMatch.Success && !LooksLikeControlStatement(fieldMatch) && IsDirectTypeMemberLine(analysis, lineNumber, braceDepth))
+                if (fieldMatch.Success && !LooksLikeControlStatement(fieldMatch) && declaringType != null)
                 {
-                    analysis.Fields.Add(BuildMember(fieldMatch, lineNumber, "field", pendingAttributes));
+                    analysis.Fields.Add(BuildMember(fieldMatch, lineNumber, "field", pendingAttributes, declaringType));
                     pendingAttributes = string.Empty;
                     continue;
                 }
@@ -821,6 +938,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 .Select(member => new
                 {
                     member.name,
+                    member.declaringType,
+                    member.declaringTypeFullName,
                     member.type,
                     member.visibility,
                     member.isStatic,
@@ -835,6 +954,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 .Select(member => new
                 {
                     member.name,
+                    member.declaringType,
+                    member.declaringTypeFullName,
                     returnType = member.type,
                     member.parameters,
                     member.attributes,
@@ -846,11 +967,10 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             analysis.UsingCount = analysis.Usings.Count;
             analysis.TypeCount = analysis.Types.Count;
             analysis.InterfaceSummary = BuildSourceInterfaceSummary(analysis);
-            record.Analysis = analysis;
             return analysis;
         }
 
-        static ParsedMember BuildMember(Match match, int lineNumber, string kind, string pendingAttributes = null)
+        static ParsedMember BuildMember(Match match, int lineNumber, string kind, string pendingAttributes = null, ParsedType declaringType = null)
         {
             var mods = SplitWords(match.Groups["mods"].Value);
             var attributes = ExtractAttributeNames((pendingAttributes ?? string.Empty) + match.Groups["attrs"].Value);
@@ -858,6 +978,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             {
                 Kind = kind,
                 Name = match.Groups["name"].Value,
+                DeclaringType = declaringType?.Name,
+                DeclaringTypeFullName = declaringType?.FullName,
                 Type = NormalizeWhitespace(match.Groups["return"].Success ? match.Groups["return"].Value : match.Groups["type"].Value),
                 Visibility = DetermineVisibility(mods),
                 IsStatic = mods.Contains("static"),
@@ -868,7 +990,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             };
         }
 
-        static bool IsDirectTypeMemberLine(SourceAnalysis analysis, int lineNumber, int braceDepth)
+        static ParsedType FindDirectDeclaringType(SourceAnalysis analysis, int lineNumber, int braceDepth)
         {
             var currentType = analysis.Types
                 .Where(type => type.Line < lineNumber && braceDepth >= type.BodyDepth)
@@ -876,7 +998,12 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 .ThenByDescending(type => type.Line)
                 .FirstOrDefault();
 
-            return currentType != null && braceDepth == currentType.BodyDepth;
+            return currentType != null && braceDepth == currentType.BodyDepth ? currentType : null;
+        }
+
+        static bool IsDirectTypeMemberLine(SourceAnalysis analysis, int lineNumber, int braceDepth)
+        {
+            return FindDirectDeclaringType(analysis, lineNumber, braceDepth) != null;
         }
 
         static int[] ComputeBraceDepths(string[] lines)
@@ -1017,6 +1144,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 {
                     member.Kind,
                     member.Name,
+                    member.DeclaringType,
+                    member.DeclaringTypeFullName,
                     signature = FormatMemberSignature(member),
                     member.Visibility,
                     inspectorVisible = member.IsInspectorVisible,
@@ -1829,6 +1958,651 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 .ToArray();
         }
 
+        static bool TryReadProposedSource(ScriptIntelligenceParams p, out string source, out string sourceKind, out string sourcePath, out string error)
+        {
+            source = null;
+            sourceKind = null;
+            sourcePath = null;
+            error = null;
+
+            if (!string.IsNullOrEmpty(p.ProposedSource))
+            {
+                source = p.ProposedSource;
+                sourceKind = "inline";
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(p.ProposedPath))
+            {
+                error = "ChangeImpact requires ProposedSource or ProposedPath. It does not modify files.";
+                return false;
+            }
+
+            var rawPath = p.ProposedPath.Trim();
+            if (Path.IsPathRooted(rawPath))
+            {
+                var absolute = Path.GetFullPath(rawPath);
+                if (!File.Exists(absolute))
+                {
+                    error = $"ProposedPath does not exist: {absolute}";
+                    return false;
+                }
+
+                source = File.ReadAllText(absolute);
+                sourceKind = "absolutePath";
+                sourcePath = NormalizePath(absolute);
+                return true;
+            }
+
+            var assetPath = NormalizeAssetPath(rawPath);
+            var text = ReadAssetText(assetPath);
+            if (text == null)
+            {
+                error = $"ProposedPath could not be read as an asset path: {assetPath}";
+                return false;
+            }
+
+            source = text;
+            sourceKind = "assetPath";
+            sourcePath = assetPath;
+            return true;
+        }
+
+        static SyntaxImpact AnalyzeSyntax(string source, ScriptIntelligenceParams p)
+        {
+            var limit = Clamp(p.MaxReferences <= 0 ? DefaultMaxReferences : p.MaxReferences, 1, MaxReferencesHardLimit);
+            var tree = CSharpSyntaxTree.ParseText(source ?? string.Empty);
+            var allDiagnostics = tree.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error || diagnostic.Severity == DiagnosticSeverity.Warning)
+                .ToList();
+
+            var diagnostics = allDiagnostics
+                .Select(diagnostic =>
+                {
+                    var span = diagnostic.Location.GetLineSpan();
+                    var line = span.IsValid ? span.StartLinePosition.Line + 1 : 0;
+                    var column = span.IsValid ? span.StartLinePosition.Character + 1 : 0;
+                    return new
+                    {
+                        id = diagnostic.Id,
+                        severity = diagnostic.Severity.ToString(),
+                        line,
+                        column,
+                        message = diagnostic.GetMessage()
+                    };
+                })
+                .Cast<object>()
+                .Take(limit)
+                .ToList();
+
+            return new SyntaxImpact
+            {
+                Errors = allDiagnostics.Count(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error),
+                Warnings = allDiagnostics.Count(diagnostic => diagnostic.Severity == DiagnosticSeverity.Warning),
+                TotalDiagnostics = allDiagnostics.Count,
+                Diagnostics = diagnostics
+            };
+        }
+
+        static List<TypeImpactChange> CompareTypes(SourceAnalysis before, SourceAnalysis after)
+        {
+            var result = new List<TypeImpactChange>();
+            var beforeMap = before.Types.GroupBy(TypeKey, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            var afterMap = after.Types.GroupBy(TypeKey, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+            foreach (var key in afterMap.Keys.Except(beforeMap.Keys, StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal))
+            {
+                result.Add(new TypeImpactChange { Change = "Added", After = afterMap[key], Reason = "Type declaration added." });
+            }
+
+            foreach (var key in beforeMap.Keys.Except(afterMap.Keys, StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal))
+            {
+                result.Add(new TypeImpactChange { Change = "Removed", Before = beforeMap[key], Reason = "Type declaration removed." });
+            }
+
+            foreach (var key in beforeMap.Keys.Intersect(afterMap.Keys, StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal))
+            {
+                var oldType = beforeMap[key];
+                var newType = afterMap[key];
+                if (!string.Equals(TypeSignature(oldType), TypeSignature(newType), StringComparison.Ordinal))
+                {
+                    result.Add(new TypeImpactChange
+                    {
+                        Change = "Changed",
+                        Before = oldType,
+                        After = newType,
+                        Reason = "Type kind, modifiers, attributes, or base types changed."
+                    });
+                }
+            }
+
+            var removed = result.Where(change => change.Change == "Removed").Select(change => change.Before).ToList();
+            var added = result.Where(change => change.Change == "Added").Select(change => change.After).ToList();
+            foreach (var oldType in removed)
+            {
+                var candidate = added.FirstOrDefault(newType => IsPossibleTypeRename(oldType, newType));
+                if (candidate != null)
+                {
+                    result.Add(new TypeImpactChange
+                    {
+                        Change = "PossibleRename",
+                        Before = oldType,
+                        After = candidate,
+                        Reason = "Removed and added type have similar shape; review as a possible rename."
+                    });
+                }
+            }
+
+            return result
+                .OrderBy(change => ChangeOrder(change.Change))
+                .ThenBy(change => change.Before?.FullName ?? change.After?.FullName ?? "", StringComparer.Ordinal)
+                .ToList();
+        }
+
+        static List<MemberImpactChange> CompareMembers(SourceAnalysis before, SourceAnalysis after)
+        {
+            var result = new List<MemberImpactChange>();
+            var beforeMembers = AllMembers(before).ToList();
+            var afterMembers = AllMembers(after).ToList();
+            var beforeMap = beforeMembers.GroupBy(MemberKey, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            var afterMap = afterMembers.GroupBy(MemberKey, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+            foreach (var key in afterMap.Keys.Except(beforeMap.Keys, StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal))
+            {
+                result.Add(new MemberImpactChange { Change = "Added", After = afterMap[key], Reason = "Member declaration added." });
+            }
+
+            foreach (var key in beforeMap.Keys.Except(afterMap.Keys, StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal))
+            {
+                result.Add(new MemberImpactChange { Change = "Removed", Before = beforeMap[key], Reason = "Member declaration removed." });
+            }
+
+            foreach (var key in beforeMap.Keys.Intersect(afterMap.Keys, StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal))
+            {
+                var oldMember = beforeMap[key];
+                var newMember = afterMap[key];
+                if (!string.Equals(MemberSignature(oldMember), MemberSignature(newMember), StringComparison.Ordinal))
+                {
+                    result.Add(new MemberImpactChange
+                    {
+                        Change = "Changed",
+                        Before = oldMember,
+                        After = newMember,
+                        Reason = "Member type, parameters, visibility, static flag, modifiers, or attributes changed."
+                    });
+                }
+            }
+
+            var removed = result.Where(change => change.Change == "Removed").Select(change => change.Before).ToList();
+            var added = result.Where(change => change.Change == "Added").Select(change => change.After).ToList();
+            foreach (var oldMember in removed)
+            {
+                var candidate = added.FirstOrDefault(newMember => IsPossibleMemberRename(oldMember, newMember));
+                if (candidate != null)
+                {
+                    result.Add(new MemberImpactChange
+                    {
+                        Change = "PossibleRename",
+                        Before = oldMember,
+                        After = candidate,
+                        Reason = "Removed and added member have similar signature; review as a possible rename."
+                    });
+                }
+            }
+
+            return result
+                .OrderBy(change => ChangeOrder(change.Change))
+                .ThenBy(change => change.Before?.DeclaringTypeFullName ?? change.After?.DeclaringTypeFullName ?? "", StringComparer.Ordinal)
+                .ThenBy(change => change.Before?.Name ?? change.After?.Name ?? "", StringComparer.Ordinal)
+                .ToList();
+        }
+
+        static List<ChangeRisk> BuildChangeRisks(ScriptRecord record, SyntaxImpact syntax, List<TypeImpactChange> typeChanges, List<MemberImpactChange> memberChanges, bool sourceChanged)
+        {
+            var risks = new List<ChangeRisk>();
+            var possibleRenamedTypeKeys = new HashSet<string>(
+                typeChanges
+                    .Where(change => change.Change == "PossibleRename" && change.Before != null)
+                    .Select(change => TypeKey(change.Before)),
+                StringComparer.Ordinal);
+            var possibleRenamedMemberBeforeKeys = new HashSet<string>(
+                memberChanges
+                    .Where(change => change.Change == "PossibleRename" && change.Before != null)
+                    .Select(change => MemberKey(change.Before)),
+                StringComparer.Ordinal);
+            var possibleRenamedMemberAfterKeys = new HashSet<string>(
+                memberChanges
+                    .Where(change => change.Change == "PossibleRename" && change.After != null)
+                    .Select(change => MemberKey(change.After)),
+                StringComparer.Ordinal);
+
+            if (syntax.Errors > 0)
+            {
+                risks.Add(new ChangeRisk
+                {
+                    Severity = "high",
+                    Category = "Syntax",
+                    Code = "syntaxErrors",
+                    Message = $"Proposed source has {syntax.Errors} syntax error(s). Do not apply until fixed."
+                });
+            }
+
+            foreach (var change in typeChanges)
+            {
+                if (change.Change == "Removed")
+                {
+                    if (change.Before != null && possibleRenamedTypeKeys.Contains(TypeKey(change.Before)))
+                        continue;
+
+                    risks.Add(new ChangeRisk
+                    {
+                        Severity = "high",
+                        Category = "Api",
+                        Code = "typeRemoved",
+                        TypeName = change.Before?.FullName ?? change.Before?.Name,
+                        Message = $"Type '{change.Before?.FullName ?? change.Before?.Name}' was removed. Check C# callers and serialized script references."
+                    });
+                }
+                else if (change.Change == "PossibleRename")
+                {
+                    risks.Add(new ChangeRisk
+                    {
+                        Severity = "high",
+                        Category = "Api",
+                        Code = "possibleTypeRename",
+                        TypeName = change.Before?.FullName ?? change.Before?.Name,
+                        Message = $"Type '{change.Before?.FullName ?? change.Before?.Name}' may have been renamed to '{change.After?.FullName ?? change.After?.Name}'. Check references before applying."
+                    });
+                }
+                else if (change.Change == "Changed" && !SequenceEqual(change.Before?.BaseTypes, change.After?.BaseTypes))
+                {
+                    risks.Add(new ChangeRisk
+                    {
+                        Severity = "high",
+                        Category = "Api",
+                        Code = "typeBaseChanged",
+                        TypeName = change.Before?.FullName ?? change.Before?.Name,
+                        Message = $"Type '{change.Before?.FullName ?? change.Before?.Name}' base/interface list changed. This can affect Unity attachability and runtime behavior."
+                    });
+                }
+            }
+
+            foreach (var change in memberChanges)
+            {
+                var member = change.Before ?? change.After;
+                if (member == null)
+                    continue;
+
+                var oldMember = change.Before;
+                var newMember = change.After;
+                var oldName = oldMember?.Name;
+                var newName = newMember?.Name;
+                var displayName = JoinContext(member.DeclaringTypeFullName ?? member.DeclaringType, oldName ?? newName);
+
+                if (change.Change == "Removed" && oldMember != null)
+                {
+                    if (possibleRenamedMemberBeforeKeys.Contains(MemberKey(oldMember)))
+                        continue;
+
+                    if (oldMember.IsInspectorVisible)
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "SerializedField",
+                            Code = "serializedFieldRemoved",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Inspector-serialized field '{displayName}' was removed. Existing prefab/scene data can be lost or orphaned."
+                        });
+                    }
+
+                    if (k_UnityMessageNames.Contains(oldMember.Name))
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "UnityMessage",
+                            Code = "unityMessageRemoved",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Unity callback '{displayName}' was removed. Runtime behavior may change even without C# callers."
+                        });
+                    }
+
+                    if (IsPublicApi(oldMember))
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "Api",
+                            Code = "publicMemberRemoved",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Public API member '{displayName}' was removed. Check C# callers."
+                        });
+                    }
+                }
+                else if (change.Change == "Changed" && oldMember != null && newMember != null)
+                {
+                    if (oldMember.IsInspectorVisible && (!string.Equals(oldMember.Type, newMember.Type, StringComparison.Ordinal) || !newMember.IsInspectorVisible))
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "SerializedField",
+                            Code = "serializedFieldShapeChanged",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Inspector-serialized field '{displayName}' type or visibility changed. Check prefab/scene serialized data."
+                        });
+                    }
+
+                    if (IsPublicApi(oldMember) && !string.Equals(MemberCallableSignature(oldMember), MemberCallableSignature(newMember), StringComparison.Ordinal))
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "Api",
+                            Code = "publicMemberSignatureChanged",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Public API member '{displayName}' signature changed. Check C# callers before applying."
+                        });
+                    }
+                }
+                else if (change.Change == "PossibleRename" && oldMember != null && newMember != null)
+                {
+                    if (oldMember.IsInspectorVisible)
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "SerializedField",
+                            Code = "serializedFieldPossibleRename",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Inspector-serialized field '{displayName}' may have been renamed to '{newMember.Name}'. Unity will not preserve data automatically without FormerlySerializedAs."
+                        });
+                    }
+
+                    if (k_UnityMessageNames.Contains(oldMember.Name))
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "UnityMessage",
+                            Code = "unityMessagePossibleRename",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Unity callback '{displayName}' may have been renamed to '{newMember.Name}'. Unity will stop invoking the old callback."
+                        });
+                    }
+
+                    if (IsPublicApi(oldMember))
+                    {
+                        risks.Add(new ChangeRisk
+                        {
+                            Severity = "high",
+                            Category = "Api",
+                            Code = "publicMemberPossibleRename",
+                            MemberName = oldMember.Name,
+                            DeclaringType = oldMember.DeclaringTypeFullName,
+                            Message = $"Public API member '{displayName}' may have been renamed to '{newMember.Name}'. Check C# callers."
+                        });
+                    }
+                }
+                else if (change.Change == "Added" && newMember != null && (newMember.IsInspectorVisible || IsPublicApi(newMember)))
+                {
+                    if (possibleRenamedMemberAfterKeys.Contains(MemberKey(newMember)))
+                        continue;
+
+                    risks.Add(new ChangeRisk
+                    {
+                        Severity = "medium",
+                        Category = newMember.IsInspectorVisible ? "SerializedField" : "Api",
+                        Code = newMember.IsInspectorVisible ? "serializedFieldAdded" : "publicMemberAdded",
+                        MemberName = newMember.Name,
+                        DeclaringType = newMember.DeclaringTypeFullName,
+                        Message = $"New {(newMember.IsInspectorVisible ? "inspector field" : "public API member")} '{JoinContext(newMember.DeclaringTypeFullName, newMember.Name)}' was added."
+                    });
+                }
+            }
+
+            if (risks.Count == 0 && record != null && sourceChanged)
+            {
+                risks.Add(new ChangeRisk
+                {
+                    Severity = "low",
+                    Category = "Reload",
+                    Code = "scriptSourceChanged",
+                    Message = "No API or serialized shape risk detected. Script edits still require asset refresh and compilation."
+                });
+            }
+
+            return risks
+                .GroupBy(risk => string.Join("|", risk.Severity, risk.Category, risk.Code, risk.DeclaringType, risk.MemberName, risk.TypeName, risk.Message), StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(risk => RiskOrder(risk.Severity))
+                .ThenBy(risk => risk.Category, StringComparer.Ordinal)
+                .ThenBy(risk => risk.Message, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        static IEnumerable<string> BuildChangeImpactNextCalls(ScriptRecord record, List<TypeImpactChange> typeChanges, List<MemberImpactChange> memberChanges, List<ChangeRisk> risks, ScriptIntelligenceParams p)
+        {
+            var calls = new List<string>();
+            var path = record?.Path ?? p.Path ?? "Assets/.../<script>.cs";
+            foreach (var risk in risks)
+            {
+                if (!string.IsNullOrWhiteSpace(risk.MemberName))
+                {
+                    if (risk.Category == "SerializedField" || risk.Category == "UnityMessage")
+                        calls.Add($"UniBridge_ScriptIntelligence Action=MemberUsages Path={path} Member={risk.MemberName} MaxUsageLocations=40");
+
+                    if (risk.Category == "Api")
+                        calls.Add($"UniBridge_ScriptIntelligence Action=CodeUsages Path={path} Member={risk.MemberName} MaxReferences=120");
+                }
+
+                if (!string.IsNullOrWhiteSpace(risk.TypeName) && risk.Category == "Api")
+                    calls.Add($"UniBridge_ScriptIntelligence Action=CodeUsages TypeName={risk.TypeName} MaxReferences=120");
+            }
+
+            foreach (var change in typeChanges.Where(change => change.Change == "Removed" || change.Change == "PossibleRename").Take(8))
+            {
+                var typeName = change.Before?.FullName ?? change.Before?.Name;
+                if (!string.IsNullOrWhiteSpace(typeName))
+                    calls.Add($"UniBridge_ScriptIntelligence Action=Usages Path={path} IncludeUsageLocations=true MaxUsageLocations=40");
+            }
+
+            calls.Add($"UniBridge_ValidateScript Uri={path} Level=standard IncludeDiagnostics=true");
+            calls.Add("UniBridge_ManageEditor Action=RefreshAssets WaitForCompletion=true Force=true");
+            calls.Add("UniBridge_ManageEditor Action=RequestScriptCompilationNoWait Force=true");
+            calls.Add("UniBridge_ManageEditor Action=WaitForReadyAfterReload RequireNotPlaying=true TimeoutMs=60000");
+            calls.Add("UniBridge_ManageEditor Action=GetCompilationDiagnostics");
+            calls.Add("UniBridge_ReadConsole Action=DiagnosticSummary");
+
+            return calls
+                .Where(call => !string.IsNullOrWhiteSpace(call))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        static object BuildTypeChangeObject(TypeImpactChange change)
+        {
+            return new
+            {
+                change = change.Change,
+                reason = change.Reason,
+                before = change.Before == null ? null : BuildParsedTypeObject(change.Before),
+                after = change.After == null ? null : BuildParsedTypeObject(change.After)
+            };
+        }
+
+        static object BuildMemberChangeObject(MemberImpactChange change)
+        {
+            return new
+            {
+                change = change.Change,
+                reason = change.Reason,
+                before = change.Before == null ? null : BuildParsedMemberObject(change.Before),
+                after = change.After == null ? null : BuildParsedMemberObject(change.After)
+            };
+        }
+
+        static object BuildRiskObject(ChangeRisk risk)
+        {
+            return new
+            {
+                severity = risk.Severity,
+                category = risk.Category,
+                code = risk.Code,
+                typeName = risk.TypeName,
+                declaringType = risk.DeclaringType,
+                memberName = risk.MemberName,
+                message = risk.Message
+            };
+        }
+
+        static object BuildParsedTypeObject(ParsedType type)
+        {
+            return new
+            {
+                kind = type.Kind,
+                name = type.Name,
+                fullName = type.FullName,
+                modifiers = type.Modifiers,
+                baseTypes = type.BaseTypes,
+                attributes = type.Attributes,
+                line = type.Line
+            };
+        }
+
+        static object BuildParsedMemberObject(ParsedMember member)
+        {
+            return new
+            {
+                kind = member.Kind,
+                name = member.Name,
+                declaringType = member.DeclaringType,
+                declaringTypeFullName = member.DeclaringTypeFullName,
+                type = member.Type,
+                visibility = member.Visibility,
+                isStatic = member.IsStatic,
+                modifiers = member.Modifiers,
+                attributes = member.Attributes,
+                parameters = member.Parameters,
+                inspectorVisible = member.IsInspectorVisible,
+                unityMessage = k_UnityMessageNames.Contains(member.Name),
+                line = member.Line
+            };
+        }
+
+        static IEnumerable<ParsedMember> AllMembers(SourceAnalysis analysis)
+        {
+            return analysis.Fields.Concat(analysis.Properties).Concat(analysis.Methods);
+        }
+
+        static string TypeKey(ParsedType type)
+        {
+            return type?.FullName ?? type?.Name ?? "";
+        }
+
+        static string MemberKey(ParsedMember member)
+        {
+            return string.Join("|", member.DeclaringTypeFullName ?? member.DeclaringType ?? "", member.Kind ?? "", member.Name ?? "");
+        }
+
+        static string TypeSignature(ParsedType type)
+        {
+            if (type == null)
+                return string.Empty;
+
+            return string.Join("|",
+                type.Kind ?? "",
+                string.Join(",", type.Modifiers ?? Array.Empty<string>()),
+                string.Join(",", type.BaseTypes ?? Array.Empty<string>()),
+                string.Join(",", type.Attributes ?? Array.Empty<string>()));
+        }
+
+        static string MemberSignature(ParsedMember member)
+        {
+            if (member == null)
+                return string.Empty;
+
+            return string.Join("|",
+                MemberCallableSignature(member),
+                string.Join(",", member.Modifiers ?? Array.Empty<string>()),
+                string.Join(",", member.Attributes ?? Array.Empty<string>()),
+                member.IsInspectorVisible ? "inspector" : "");
+        }
+
+        static string MemberCallableSignature(ParsedMember member)
+        {
+            if (member == null)
+                return string.Empty;
+
+            return string.Join("|", member.Kind ?? "", member.Type ?? "", member.Parameters ?? "", member.Visibility ?? "", member.IsStatic ? "static" : "instance");
+        }
+
+        static bool IsPossibleTypeRename(ParsedType oldType, ParsedType newType)
+        {
+            if (oldType == null || newType == null)
+                return false;
+
+            return string.Equals(oldType.Kind, newType.Kind, StringComparison.Ordinal) &&
+                   SequenceEqual(oldType.BaseTypes, newType.BaseTypes) &&
+                   SequenceEqual(oldType.Modifiers, newType.Modifiers) &&
+                   !string.Equals(oldType.Name, newType.Name, StringComparison.Ordinal);
+        }
+
+        static bool IsPossibleMemberRename(ParsedMember oldMember, ParsedMember newMember)
+        {
+            if (oldMember == null || newMember == null)
+                return false;
+
+            return string.Equals(oldMember.Kind, newMember.Kind, StringComparison.Ordinal) &&
+                   string.Equals(oldMember.DeclaringTypeFullName, newMember.DeclaringTypeFullName, StringComparison.Ordinal) &&
+                   string.Equals(oldMember.Type, newMember.Type, StringComparison.Ordinal) &&
+                   string.Equals(oldMember.Parameters, newMember.Parameters, StringComparison.Ordinal) &&
+                   string.Equals(oldMember.Visibility, newMember.Visibility, StringComparison.Ordinal) &&
+                   oldMember.IsStatic == newMember.IsStatic &&
+                   !string.Equals(oldMember.Name, newMember.Name, StringComparison.Ordinal);
+        }
+
+        static bool IsPublicApi(ParsedMember member)
+        {
+            return member != null && member.Visibility == "public";
+        }
+
+        static bool SequenceEqual(string[] left, string[] right)
+        {
+            return (left ?? Array.Empty<string>()).SequenceEqual(right ?? Array.Empty<string>(), StringComparer.Ordinal);
+        }
+
+        static int ChangeOrder(string change)
+        {
+            return change switch
+            {
+                "PossibleRename" => 0,
+                "Removed" => 1,
+                "Changed" => 2,
+                "Added" => 3,
+                _ => 9
+            };
+        }
+
+        static int RiskOrder(string severity)
+        {
+            return severity switch
+            {
+                "high" => 0,
+                "medium" => 1,
+                "low" => 2,
+                _ => 9
+            };
+        }
+
         static void AddSourceMatches(ScriptRecord record, string text, string pattern, Regex regex, bool useRegex, int maxReferences, List<object> matches)
         {
             var lines = SplitLines(text);
@@ -1973,6 +2747,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 {
                     kind = member.Kind,
                     name = member.Name,
+                    declaringType = member.DeclaringType,
+                    declaringTypeFullName = member.DeclaringTypeFullName,
                     type = member.Type,
                     visibility = member.Visibility,
                     isStatic = member.IsStatic,
@@ -2610,6 +3386,41 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             public string Preview;
         }
 
+        sealed class SyntaxImpact
+        {
+            public int Errors;
+            public int Warnings;
+            public int TotalDiagnostics;
+            public List<object> Diagnostics = new();
+        }
+
+        sealed class TypeImpactChange
+        {
+            public string Change;
+            public ParsedType Before;
+            public ParsedType After;
+            public string Reason;
+        }
+
+        sealed class MemberImpactChange
+        {
+            public string Change;
+            public ParsedMember Before;
+            public ParsedMember After;
+            public string Reason;
+        }
+
+        sealed class ChangeRisk
+        {
+            public string Severity;
+            public string Category;
+            public string Code;
+            public string TypeName;
+            public string DeclaringType;
+            public string MemberName;
+            public string Message;
+        }
+
         sealed class SourceAnalysis
         {
             public string Namespace;
@@ -2631,6 +3442,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
         {
             public string Kind;
             public string Name;
+            public string DeclaringType;
+            public string DeclaringTypeFullName;
             public string Type;
             public string Visibility;
             public bool IsStatic;
@@ -2642,6 +3455,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             public bool IsInspectorVisible => ScriptIntelligence.IsInspectorField(this);
 
             public string name => Name;
+            public string declaringType => DeclaringType;
+            public string declaringTypeFullName => DeclaringTypeFullName;
             public string type => Type;
             public string visibility => Visibility;
             public bool isStatic => IsStatic;

@@ -1,8 +1,50 @@
-# UniBridge 0.2.23 Release Notes
+# UniBridge 0.2.24 Release Notes
 
 Release date: 2026-06-16
 
-This release adds C# caller/type impact scanning to
+This release adds script change-impact preflight to
+`UniBridge_ScriptIntelligence`. Agents can now compare a current C# script with
+`ProposedSource` or `ProposedPath` before applying a larger edit and see what
+the change is likely to affect.
+
+`UniBridge_ScriptIntelligence Action=ChangeImpact` reports:
+
+- syntax diagnostics for the proposed source;
+- added, removed, changed, and possible-renamed types;
+- added, removed, changed, and possible-renamed fields, properties, and
+  methods with declaring type context;
+- public API risks;
+- inspector/serialized field risks;
+- Unity callback risks;
+- source line/character deltas and expected refresh/compile/domain-reload
+  boundaries;
+- suggested follow-up calls for `CodeUsages`, `MemberUsages`,
+  `ValidateScript`, refresh, compile, reload wait, and diagnostics.
+
+Example:
+
+`UniBridge_ScriptIntelligence Action=ChangeImpact Path=Assets/.../Player.cs ProposedPath=Assets/.../Player.candidate.cs`
+
+The workflow is intentionally read-only. It does not hot reload, patch, or
+write source files. Use it before SHA/precondition text edits when the edit
+could rename public API, serialized fields, or Unity callbacks.
+
+Discoverability was updated across `BatchActions`, `Discover`, `ToolGuide`, and
+`DomainCatalog` with aliases such as `change_impact`,
+`script_change_impact`, `script_preflight`, `hot_diff`, `reload_risk`, and
+`api_change_impact`.
+
+Use the four script impact scans together:
+
+- `Action=Usages IncludeUsageLocations=true` for prefab/scene YAML references to
+  a script GUID;
+- `Action=MemberUsages Member=<methodOrField>` for UnityEvent, AnimationEvent,
+  and serialized field references in Unity assets;
+- `Action=CodeUsages Member=<methodOrField>` for C# caller/type references;
+- `Action=ChangeImpact ProposedSource=<candidateSource>` for proposed source
+  shape and reload-risk preflight before applying the edit.
+
+The previous 0.2.23 release added C# caller/type impact scanning to
 `UniBridge_ScriptIntelligence`. Agents can now ask where a script type or
 member is referenced in C# source before renaming, deleting, or changing a
 public API.
