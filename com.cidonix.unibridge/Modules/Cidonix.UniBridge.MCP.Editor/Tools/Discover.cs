@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, asset reference search, asset_ref_search, reference locations, script usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, asset reference search, asset_ref_search, reference locations, script usages, code usages, caller scan, member callers, code member usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -144,13 +144,14 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                 new
                 {
                     key = "asset_reference_locations",
-                    summary = "Find exact YAML locations where an asset/script GUID or a serialized script member is referenced before script cleanup or serialized member renames.",
+                    summary = "Find exact YAML locations where an asset/script GUID or a serialized script member is referenced, plus C# caller sites before script API renames.",
                     calls = new[]
                     {
                         "UniBridge_AssetIntelligence Action=ReferenceGraph Path=Assets/... IncludeReferenceLocations=true MaxReferenceLocations=20",
                         "UniBridge_AssetIntelligence Action=Impact Path=Assets/... ImpactOperation=Delete IncludeReferenceLocations=true",
                         "UniBridge_ScriptIntelligence Action=Usages Path=Assets/.../<script>.cs IncludeUsageLocations=true MaxUsageLocations=20",
-                        "UniBridge_ScriptIntelligence Action=MemberUsages Path=Assets/.../<script>.cs Member=<methodOrField> MaxUsageLocations=20"
+                        "UniBridge_ScriptIntelligence Action=MemberUsages Path=Assets/.../<script>.cs Member=<methodOrField> MaxUsageLocations=20",
+                        "UniBridge_ScriptIntelligence Action=CodeUsages Path=Assets/.../<script>.cs Member=<methodOrField> MaxReferences=80"
                     }
                 },
                 new

@@ -36,6 +36,12 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         /// Find serialized Unity asset usages of one script member, such as UnityEvent methods, AnimationEvent functions, and serialized fields.
         /// </summary>
         MemberUsages,
+
+        /// <summary>
+        /// Find C# source call sites and type/member references before risky rename, delete, or signature changes.
+        /// </summary>
+        CodeUsages,
+
         /// <summary>
         /// Scan scripts for likely cleanup or maintenance hotspots.
         /// </summary>
@@ -90,7 +96,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
     /// </summary>
     public record ScriptIntelligenceParams
     {
-        [McpDescription("Operation to perform: Catalog, Analyze, ReadTypes, References, Usages, MemberUsages, Hotspots, Assemblies, Selection, or Metrics.", Required = false, Default = ScriptIntelligenceAction.Catalog)]
+        [McpDescription("Operation to perform: Catalog, Analyze, ReadTypes, References, Usages, MemberUsages, CodeUsages, Hotspots, Assemblies, Selection, or Metrics.", Required = false, Default = ScriptIntelligenceAction.Catalog)]
         public ScriptIntelligenceAction Action { get; set; } = ScriptIntelligenceAction.Catalog;
 
         [McpDescription("Script asset path, folder scope, or readable project path. Accepts Assets/..., Packages/..., unity://path/..., or a path relative to Assets/.", Required = false)]
@@ -143,6 +149,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("For MemberUsages, include same-named UnityEvent/AnimationEvent matches that cannot be fully resolved to the target script and mark them as possible/needsVerification. Default true.", Required = false, Default = true)]
         public bool IncludePossibleMemberUsages { get; set; } = true;
+
+        [McpDescription("For CodeUsages, include references from the target script itself. Default false focuses on external callers before rename/delete work.", Required = false, Default = false)]
+        public bool IncludeSelfReferences { get; set; }
+
+        [McpDescription("For CodeUsages, include string-based callback references such as SendMessage(\"Method\"), Invoke(\"Method\"), and StartCoroutine(\"Method\"). Default true.", Required = false, Default = true)]
+        public bool IncludeStringReferences { get; set; } = true;
+
         [McpDescription("Text or regex pattern for References. Defaults to TypeName or Query.", Required = false)]
         public string Pattern { get; set; }
 

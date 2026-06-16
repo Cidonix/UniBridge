@@ -1063,6 +1063,7 @@ It is read-only and supports:
 - `References`: search C# files for a type, member, text, or regex pattern;
 - `Usages`: find scenes, prefabs, and assets that reference a script asset;
 - `MemberUsages`: find Unity serialized references to one script member, including UnityEvent method bindings, AnimationEvent function names, and serialized fields;
+- `CodeUsages`: find C# source call sites and type/member references before risky renames, deletes, or signature changes;
 - `Hotspots`: find likely cleanup points such as TODO/FIXME, file/class mismatches, obsolete Unity APIs, large files, or `UnityEditor` references in runtime folders;
 - `Assemblies`: summarize Unity compilation assemblies and asmdefs;
 - `Selection`: analyze selected script assets;
@@ -1072,9 +1073,12 @@ Prefer this tool for orientation and impact analysis. Use the dedicated edit too
 
 For script migration or deletion checks, call `Action=Usages IncludeUsageLocations=true`. Usage locations resolve prefab/scene YAML references to the script GUID and include line/column, property path, YAML document context, inferred object path, duplicate-safe indexed object path, and resolved script type where Unity can load the `MonoScript`.
 
-For member rename/delete checks, use:
+For member rename/delete checks, combine:
 
 - `Action=MemberUsages Path=Assets/.../<script>.cs Member=<methodOrField>` to find serialized UnityEvent, AnimationEvent, and inspector-field references in Unity assets;
+- `Action=CodeUsages Path=Assets/.../<script>.cs Member=<methodOrField>` to find C# callers and references.
+
+`CodeUsages` is read-only and syntax-based. `Exact` means the reference is qualified by the target type name, `Possible` means the name matches but the semantic receiver type was not resolved, and `RuntimeResolved` covers string-based callbacks such as `SendMessage("Method")`, `Invoke("Method")`, and `StartCoroutine("Method")`. Use `IncludeSelfReferences=true` when internal references inside the target script matter; by default it focuses on external callers.
 
 Use:
 

@@ -5,6 +5,84 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.23 C# CodeUsages Caller Scan
+
+Перший наступний Locus-inspired пункт реалізовано без копіювання чужого коду:
+додано read-only caller/impact scan у вже існуючий
+`UniBridge_ScriptIntelligence`, а не окремий дублюючий tool.
+
+Новий режим:
+
+- `UniBridge_ScriptIntelligence Action=CodeUsages`;
+- target: `Path`, `Guid`, `TypeName` або `Query`;
+- optional `Member=<methodOrField>`;
+- bounds: `MaxScanScripts`, `MaxReferences`;
+- flags: `IncludeSelfReferences`, `IncludeStringReferences`.
+
+Навіщо це потрібно:
+
+- перед rename/delete/signature-change агент може знайти C# call sites, а не
+  покладатись лише на текстовий grep;
+- `Usages` лишається для prefab/scene YAML references до script GUID;
+- `MemberUsages` лишається для serialized UnityEvent/AnimationEvent/field
+  references;
+- `CodeUsages` покриває C# callers/type references:
+  method invocation, member access, conditional access, `nameof(...)`,
+  possible identifier references і string callbacks типу `SendMessage`,
+  `Invoke`, `StartCoroutine`.
+
+Результат повертає:
+
+- `path`, `guid`, `fullName`, `scriptKind`;
+- `line`, `column`, `usageKind`;
+- `confidence`: `Exact`, `Possible`, `RuntimeResolved`;
+- `symbol`, `context`, `note`, `preview`.
+
+Discoverability:
+
+- `BatchActions` aliases:
+  `code_usages`, `caller_scan`, `callers`, `member_callers`,
+  `code_member_usages`;
+- `Discover`, `ToolGuide`, `DomainCatalog` scripts workflows тепер радять
+  `CodeUsages` як третій preflight поруч із `Usages` і `MemberUsages`.
+
+Package/docs:
+
+- package version піднято до `0.2.23`;
+- оновлено `CHANGELOG.md`, `RELEASE_NOTES.md`, package `README.md`,
+  `Documentation~/unibridge.md`;
+- старі 0.2.21 notes уточнено: `script_usages`/`asset_script_usages`/
+  `guid_usages` означають script GUID/YAML usage, а `code_usages` тепер
+  означає саме C# source caller scan.
+
+Testing status:
+
+- `dotnet build UniBridge.Relay/UniBridge.Relay.csproj`: success,
+  `0 warnings`, `0 errors`;
+- package sync у `H:/Repos/UnityRepos/UniBridge_Test_Project`, Unity
+  `6000.4.11f1`;
+- `UniBridge_ManageEditor Action=RefreshAssets WaitForCompletion=true
+  Force=true` пройшов через reload boundary, relay reconnect спрацював,
+  editor ready;
+- `UniBridge_ManageEditor Action=GetCompilationDiagnostics`: `errors=0`,
+  `warnings=0`;
+- `UniBridge_Discover Action=Ping`: package version `0.2.23`;
+- `ToolGuide Workflow scripts` показує
+  `UniBridge_ScriptIntelligence CodeUsages Member=<methodOrField>`;
+- `Discover Tools Query="CodeUsages caller_scan member_callers
+  code_member_usages"` повертає `UniBridge_ScriptIntelligence` і нові aliases;
+- batch smoke через MCP:
+  `script_intelligence Action=CodeUsages
+  Path=Assets/CorgiEngine/Common/Scripts/Managers/InputManager.cs
+  MaxReferences=12` знайшов 12 C# type references, `12 Exact`,
+  `ParseErrors=0`, без дублювання `TypeReference`/`TypeIdentifier`,
+  console delta clean;
+- member smoke через MCP:
+  `script_intelligence Action=CodeUsages
+  Path=Assets/CorgiEngine/Common/Scripts/Agents/CharacterAbilities/CharacterAbility.cs
+  Member=SetInputManager` знайшов 6 method call sites з `line`, `column`,
+  `context`, `preview`, console delta clean.
+
 ## 2026-06-16: UniBridge 0.2.22 Serialized Member Usages
 
 Після звірки з Locus-style `unity_code_usages` додано не окремий дублюючий

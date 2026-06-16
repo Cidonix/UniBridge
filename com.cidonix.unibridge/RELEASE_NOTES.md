@@ -1,8 +1,38 @@
-# UniBridge 0.2.22 Release Notes
+# UniBridge 0.2.23 Release Notes
 
 Release date: 2026-06-16
 
-This release adds serialized member usage inspection to
+This release adds C# caller/type impact scanning to
+`UniBridge_ScriptIntelligence`. Agents can now ask where a script type or
+member is referenced in C# source before renaming, deleting, or changing a
+public API.
+
+`UniBridge_ScriptIntelligence Action=CodeUsages` accepts a target script or
+`TypeName` plus optional `Member=<methodOrField>`. It scans C# scripts and
+returns bounded call/type sites with path, GUID, line, column, usage kind,
+confidence, symbol, containing code context, note, and preview line.
+
+The scan is intentionally syntax-based and read-only. `Exact` means the site is
+qualified by the target type name, `Possible` means the name matches but the
+semantic receiver was not resolved, and `RuntimeResolved` covers string-based
+callbacks such as `SendMessage("Method")`, `Invoke("Method")`, or
+`StartCoroutine("Method")`.
+
+Discoverability was updated across `BatchActions`, `Discover`, `ToolGuide`, and
+`DomainCatalog` with aliases such as `code_usages`, `caller_scan`, `callers`,
+`member_callers`, and `code_member_usages`. `UniBridge_BatchActions` also
+normalizes `IncludeSelfReferences`, `IncludeStringReferences`, and
+`MaxReferences` for the new workflow.
+
+Use the three script impact scans together:
+
+- `Action=Usages IncludeUsageLocations=true` for prefab/scene YAML references to
+  a script GUID;
+- `Action=MemberUsages Member=<methodOrField>` for UnityEvent, AnimationEvent,
+  and serialized field references in Unity assets;
+- `Action=CodeUsages Member=<methodOrField>` for C# caller/type references.
+
+The previous 0.2.22 release added serialized member usage inspection to
 `UniBridge_ScriptIntelligence`. Agents can now ask where a specific script
 member is referenced from Unity serialized assets before renaming or removing
 callbacks and inspector fields.
@@ -146,7 +176,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.22`
+- Version: `0.2.23`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows

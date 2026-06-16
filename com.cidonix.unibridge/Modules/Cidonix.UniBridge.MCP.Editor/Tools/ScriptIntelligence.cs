@@ -8,6 +8,9 @@ using System.Text.RegularExpressions;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
 using Cidonix.UniBridge.MCP.Editor.Tools.Parameters;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -66,7 +69,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
 Use this when you need to understand code before editing: list MonoBehaviours and ScriptableObjects, inspect one script, read code for known component types, find references, locate prefab/scene usages, summarize assemblies, or detect maintenance hotspots.
 
-Search aliases: script search, script usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, prefab script references, scene script references.
+Search aliases: script search, script usages, code usages, caller scan, member callers, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, prefab script references, scene script references.
 
 Actions:
     Catalog: List scripts and compiled types with path, kind, assembly, and Unity role. Set IncludeMembers=true only when you need member summaries.
@@ -75,6 +78,7 @@ Actions:
     References: Search C# source files for a type/member/text/regex pattern.
     Usages: Find scenes, prefabs, and assets that reference a script asset GUID.
     MemberUsages: Find serialized uses of a specific script member in Unity assets: UnityEvent method bindings, AnimationEvent function names, and serialized fields.
+    CodeUsages: Find C# source call sites and type/member references before risky renames, deletes, or signature changes. This is syntax-based and read-only.
     Hotspots: Scan scripts for TODO/FIXME, missing compiled types, file/class mismatches, obsolete Unity APIs, and large files.
     Assemblies: Summarize Unity compilation assemblies and script counts.
     Selection: Analyze selected MonoScript assets.
@@ -97,6 +101,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     ScriptIntelligenceAction.References => References(parameters),
                     ScriptIntelligenceAction.Usages => Usages(parameters),
                     ScriptIntelligenceAction.MemberUsages => MemberUsages(parameters),
+                    ScriptIntelligenceAction.CodeUsages => CodeUsages(parameters),
                     ScriptIntelligenceAction.Hotspots => Hotspots(parameters),
                     ScriptIntelligenceAction.Assemblies => Assemblies(parameters),
                     ScriptIntelligenceAction.Selection => Selection(parameters),
@@ -296,6 +301,77 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     byKind = CountMemberUsageKinds(result.Matches)
                 },
                 matches = result.Matches
+            });
+        }
+
+        static object CodeUsages(ScriptIntelligenceParams p)
+        {
+            var target = ResolveSingleScript(p);
+            var requestedType = FirstNonEmpty(p.TypeName, target?.FullName, target?.TypeName, target?.Name, p.Query);
+            var member = FirstNonEmpty(p.Member, p.Pattern);
+            var targetTypeNames = BuildTargetTypeNameSet(target, requestedType);
+
+            if (target == null && targetTypeNames.Count == 0)
+                return Response.Error("CodeUsages requires a target script or TypeName.");
+
+            if (targetTypeNames.Count == 0 && string.IsNullOrWhiteSpace(member))
+                return Response.Error("CodeUsages requires TypeName or Member.");
+
+            member = string.IsNullOrWhiteSpace(member) ? null : member.Trim();
+            var result = FindCodeUsages(target, targetTypeNames, member, p);
+            var displayTarget = requestedType ?? target?.Path ?? "(unknown)";
+            var messageTarget = string.IsNullOrWhiteSpace(member) ? displayTarget : displayTarget + "." + member;
+
+            return Response.Success($"Found {result.Matches.Count} C# code usage(s) for '{messageTarget}'.", new
+            {
+                action = "CodeUsages",
+                target = target != null
+                    ? BuildScriptSummary(target, p, false, false)
+                    : new
+                    {
+                        requestedType,
+                        typeNames = targetTypeNames.OrderBy(name => name, StringComparer.Ordinal).ToArray()
+                    },
+                member,
+                scanMode = string.IsNullOrWhiteSpace(member) ? "TypeReferences" : "MemberReferences",
+                exactness = "syntaxBased",
+                notes = new[]
+                {
+                    "CodeUsages is read-only and syntax-based. Exact matches are type-qualified; Possible/RuntimeResolved matches should be reviewed before changing public or serialized API.",
+                    "Use MemberUsages as a companion scan for UnityEvent, AnimationEvent, and serialized field references in assets."
+                },
+                scanned = new
+                {
+                    result.CandidateScripts,
+                    result.ScannedScripts,
+                    result.SkippedSelfReferences,
+                    result.ParseErrors,
+                    result.Truncated
+                },
+                counts = new
+                {
+                    total = result.Matches.Count,
+                    exact = result.Matches.Count(match => string.Equals(match.Confidence, "Exact", StringComparison.OrdinalIgnoreCase)),
+                    possible = result.Matches.Count(match => string.Equals(match.Confidence, "Possible", StringComparison.OrdinalIgnoreCase)),
+                    runtimeResolved = result.Matches.Count(match => string.Equals(match.Confidence, "RuntimeResolved", StringComparison.OrdinalIgnoreCase)),
+                    byKind = CountCodeUsageKinds(result.Matches),
+                    byConfidence = CountCodeUsageConfidence(result.Matches)
+                },
+                matches = result.Matches.Select(match => new
+                {
+                    path = match.Path,
+                    guid = match.Guid,
+                    fullName = match.FullName,
+                    scriptKind = match.ScriptKind,
+                    line = match.Line,
+                    column = match.Column,
+                    usageKind = match.UsageKind,
+                    confidence = match.Confidence,
+                    symbol = match.Symbol,
+                    context = match.Context,
+                    note = match.Note,
+                    preview = match.Preview
+                }).Cast<object>().ToList()
             });
         }
 
@@ -1156,6 +1232,603 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 .ToArray();
         }
 
+        static CodeUsageScanResult FindCodeUsages(ScriptRecord target, HashSet<string> targetTypeNames, string member, ScriptIntelligenceParams p)
+        {
+            var result = new CodeUsageScanResult();
+            var maxReferences = Clamp(p.MaxReferences <= 0 ? DefaultMaxReferences : p.MaxReferences, 1, MaxReferencesHardLimit);
+            var maxScan = Clamp(p.MaxScanScripts <= 0 ? DefaultMaxScanScripts : p.MaxScanScripts, 1, MaxScanScriptsHardLimit);
+            var records = FindScriptRecords(new ScriptIntelligenceParams
+            {
+                IncludePackages = p.IncludePackages,
+                IncludeAbstract = true,
+                MaxScanScripts = maxScan,
+                Kind = ScriptKindFilter.Any
+            })
+                .OrderBy(record => record.Path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            result.CandidateScripts = records.Count;
+            result.Truncated = records.Count >= maxScan;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var record in records)
+            {
+                if (result.Matches.Count >= maxReferences)
+                    break;
+
+                if (!p.IncludeSelfReferences &&
+                    target != null &&
+                    string.Equals(record.Path, target.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    result.SkippedSelfReferences++;
+                    continue;
+                }
+
+                result.ScannedScripts++;
+                var text = record.GetSourceText();
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                SyntaxTree tree;
+                SyntaxNode root;
+                try
+                {
+                    tree = CSharpSyntaxTree.ParseText(text);
+                    root = tree.GetRoot();
+                }
+                catch
+                {
+                    result.ParseErrors++;
+                    continue;
+                }
+
+                var parseErrorCount = tree.GetDiagnostics().Count(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+                if (parseErrorCount > 0)
+                    result.ParseErrors++;
+
+                var lines = SplitLines(text);
+                if (string.IsNullOrWhiteSpace(member))
+                    AddTypeCodeUsages(record, root, lines, targetTypeNames, maxReferences, result.Matches, seen);
+                else
+                    AddMemberCodeUsages(record, root, lines, targetTypeNames, member, p.IncludeStringReferences, maxReferences, result.Matches, seen);
+            }
+
+            result.Matches = result.Matches
+                .OrderBy(match => match.Path, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(match => match.Line)
+                .ThenBy(match => match.Column)
+                .ToList();
+
+            return result;
+        }
+
+        static void AddMemberCodeUsages(
+            ScriptRecord record,
+            SyntaxNode root,
+            string[] lines,
+            HashSet<string> targetTypeNames,
+            string member,
+            bool includeStringReferences,
+            int maxReferences,
+            List<CodeUsageMatch> matches,
+            HashSet<string> seen)
+        {
+            foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                if (matches.Count >= maxReferences)
+                    return;
+
+                if (IsNameofInvocation(invocation))
+                {
+                    var nameofMatch = MatchNameofMember(invocation, targetTypeNames, member);
+                    if (nameofMatch.Matches)
+                    {
+                        AddCodeUsageMatch(record, invocation, lines, "Nameof", nameofMatch.Confidence, nameofMatch.Note, invocation.ToString(), matches, seen);
+                        continue;
+                    }
+                }
+
+                if (includeStringReferences)
+                    AddStringCallbackMatches(record, invocation, lines, member, maxReferences, matches, seen);
+
+                if (matches.Count >= maxReferences)
+                    return;
+
+                var invokedName = GetInvokedMemberName(invocation.Expression);
+                if (!string.Equals(invokedName, member, StringComparison.Ordinal))
+                    continue;
+
+                var qualified = IsExpressionQualifiedByTargetType(invocation.Expression, targetTypeNames);
+                AddCodeUsageMatch(
+                    record,
+                    invocation,
+                    lines,
+                    "MethodInvocation",
+                    qualified ? "Exact" : "Possible",
+                    qualified
+                        ? "Invocation is qualified by the target type name."
+                        : "Invocation name matches the member; semantic receiver type was not resolved.",
+                    invocation.Expression.ToString(),
+                    matches,
+                    seen);
+            }
+
+            foreach (var access in root.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+            {
+                if (matches.Count >= maxReferences)
+                    return;
+
+                if (!string.Equals(access.Name.Identifier.ValueText, member, StringComparison.Ordinal))
+                    continue;
+
+                if (access.Parent is InvocationExpressionSyntax invocation && invocation.Expression == access)
+                    continue;
+
+                if (IsInsideNameofInvocation(access))
+                    continue;
+
+                var qualified = TypeNameMatches(access.Expression.ToString(), targetTypeNames);
+                AddCodeUsageMatch(
+                    record,
+                    access,
+                    lines,
+                    "MemberAccess",
+                    qualified ? "Exact" : "Possible",
+                    qualified
+                        ? "Member access is qualified by the target type name."
+                        : "Member name matches; semantic receiver type was not resolved.",
+                    access.ToString(),
+                    matches,
+                    seen);
+            }
+
+            foreach (var binding in root.DescendantNodes().OfType<MemberBindingExpressionSyntax>())
+            {
+                if (matches.Count >= maxReferences)
+                    return;
+
+                if (!string.Equals(binding.Name.Identifier.ValueText, member, StringComparison.Ordinal))
+                    continue;
+
+                AddCodeUsageMatch(
+                    record,
+                    binding,
+                    lines,
+                    "ConditionalMemberAccess",
+                    "Possible",
+                    "Conditional access member name matches; semantic receiver type was not resolved.",
+                    binding.ToString(),
+                    matches,
+                    seen);
+            }
+
+            foreach (var identifier in root.DescendantNodes().OfType<IdentifierNameSyntax>())
+            {
+                if (matches.Count >= maxReferences)
+                    return;
+
+                if (!string.Equals(identifier.Identifier.ValueText, member, StringComparison.Ordinal))
+                    continue;
+
+                if (IsIdentifierAlreadyAccountedFor(identifier) || IsInsideNameofInvocation(identifier))
+                    continue;
+
+                AddCodeUsageMatch(
+                    record,
+                    identifier,
+                    lines,
+                    "IdentifierReference",
+                    "Possible",
+                    "Identifier matches the member name outside a declaration; review before rename/delete.",
+                    identifier.ToString(),
+                    matches,
+                    seen);
+            }
+        }
+
+        static void AddTypeCodeUsages(
+            ScriptRecord record,
+            SyntaxNode root,
+            string[] lines,
+            HashSet<string> targetTypeNames,
+            int maxReferences,
+            List<CodeUsageMatch> matches,
+            HashSet<string> seen)
+        {
+            if (targetTypeNames.Count == 0)
+                return;
+
+            foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
+            {
+                if (matches.Count >= maxReferences)
+                    return;
+
+                if (!TypeNameMatches(creation.Type?.ToString(), targetTypeNames))
+                    continue;
+
+                AddCodeUsageMatch(
+                    record,
+                    creation.Type,
+                    lines,
+                    "ObjectCreation",
+                    "Exact",
+                    "Object creation type matches the target type name.",
+                    creation.Type.ToString(),
+                    matches,
+                    seen);
+            }
+
+            foreach (var typeSyntax in root.DescendantNodes().OfType<TypeSyntax>())
+            {
+                if (matches.Count >= maxReferences)
+                    return;
+
+                if (typeSyntax is PredefinedTypeSyntax)
+                    continue;
+
+                if (typeSyntax.Parent is ObjectCreationExpressionSyntax creation && ReferenceEquals(creation.Type, typeSyntax))
+                    continue;
+
+                var text = typeSyntax.ToString();
+                if (!TypeNameMatches(text, targetTypeNames))
+                    continue;
+
+                AddCodeUsageMatch(
+                    record,
+                    typeSyntax,
+                    lines,
+                    "TypeReference",
+                    "Exact",
+                    "Type syntax matches the target type name.",
+                    text,
+                    matches,
+                    seen);
+            }
+
+            foreach (var identifier in root.DescendantNodes().OfType<IdentifierNameSyntax>())
+            {
+                if (matches.Count >= maxReferences)
+                    return;
+
+                if (!TypeNameMatches(identifier.Identifier.ValueText, targetTypeNames))
+                    continue;
+
+                if (identifier.Parent is TypeSyntax ||
+                    identifier.Parent is MemberAccessExpressionSyntax access && ReferenceEquals(access.Name, identifier) ||
+                    identifier.Parent is QualifiedNameSyntax qualified && (ReferenceEquals(qualified.Left, identifier) || ReferenceEquals(qualified.Right, identifier)))
+                    continue;
+
+                if (seen.Contains(record.Path + ":" + identifier.SpanStart + ":TypeReference"))
+                    continue;
+
+                AddCodeUsageMatch(
+                    record,
+                    identifier,
+                    lines,
+                    "TypeIdentifier",
+                    "Possible",
+                    "Identifier matches the target type name; semantic binding was not resolved.",
+                    identifier.ToString(),
+                    matches,
+                    seen);
+            }
+        }
+
+        static void AddStringCallbackMatches(
+            ScriptRecord record,
+            InvocationExpressionSyntax invocation,
+            string[] lines,
+            string member,
+            int maxReferences,
+            List<CodeUsageMatch> matches,
+            HashSet<string> seen)
+        {
+            if (matches.Count >= maxReferences || !IsStringCallbackHost(GetInvokedMemberName(invocation.Expression)))
+                return;
+
+            if (invocation.ArgumentList == null)
+                return;
+
+            foreach (var argument in invocation.ArgumentList.Arguments)
+            {
+                if (argument.Expression is not LiteralExpressionSyntax literal ||
+                    !literal.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StringLiteralExpression))
+                    continue;
+
+                var value = literal.Token.ValueText;
+                if (!string.Equals(value, member, StringComparison.Ordinal))
+                    continue;
+
+                AddCodeUsageMatch(
+                    record,
+                    literal,
+                    lines,
+                    "StringCallback",
+                    "RuntimeResolved",
+                    "String callback matches the member name. Unity/runtime reflection may invoke this member by name.",
+                    invocation.Expression.ToString(),
+                    matches,
+                    seen);
+            }
+        }
+
+        static void AddCodeUsageMatch(
+            ScriptRecord record,
+            SyntaxNode node,
+            string[] lines,
+            string usageKind,
+            string confidence,
+            string note,
+            string symbol,
+            List<CodeUsageMatch> matches,
+            HashSet<string> seen)
+        {
+            if (node == null)
+                return;
+
+            var key = record.Path + ":" + node.SpanStart + ":" + usageKind;
+            if (!seen.Add(key))
+                return;
+
+            var lineSpan = node.SyntaxTree.GetLineSpan(node.Span);
+            var line = lineSpan.StartLinePosition.Line + 1;
+            var column = lineSpan.StartLinePosition.Character + 1;
+            var preview = line > 0 && line <= lines.Length ? TrimLine(lines[line - 1]) : string.Empty;
+
+            matches.Add(new CodeUsageMatch
+            {
+                Path = record.Path,
+                Guid = record.Guid,
+                FullName = record.FullName,
+                ScriptKind = record.Kind,
+                Line = line,
+                Column = column,
+                UsageKind = usageKind,
+                Confidence = confidence,
+                Symbol = NormalizeWhitespace(symbol),
+                Context = BuildCodeContext(node),
+                Note = note,
+                Preview = preview
+            });
+        }
+
+        static HashSet<string> BuildTargetTypeNameSet(ScriptRecord target, string requestedType)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            AddTargetTypeName(names, requestedType);
+            AddTargetTypeName(names, target?.FullName);
+            AddTargetTypeName(names, target?.TypeName);
+            AddTargetTypeName(names, target?.Name);
+            return names;
+        }
+
+        static void AddTargetTypeName(HashSet<string> names, string value)
+        {
+            var normalized = NormalizeTypeNameForMatch(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+                return;
+
+            names.Add(normalized);
+            var shortName = ShortTypeName(normalized);
+            if (!string.IsNullOrWhiteSpace(shortName))
+                names.Add(shortName);
+        }
+
+        static bool TypeNameMatches(string candidate, HashSet<string> targetTypeNames)
+        {
+            if (string.IsNullOrWhiteSpace(candidate) || targetTypeNames == null || targetTypeNames.Count == 0)
+                return false;
+
+            var normalized = NormalizeTypeNameForMatch(candidate);
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            if (targetTypeNames.Contains(normalized) || targetTypeNames.Contains(ShortTypeName(normalized)))
+                return true;
+
+            foreach (var target in targetTypeNames)
+            {
+                if (normalized.EndsWith("." + target, StringComparison.Ordinal) ||
+                    normalized.EndsWith("+" + target, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static string NormalizeTypeNameForMatch(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            var text = value.Trim()
+                .Replace("global::", string.Empty)
+                .Replace("::", ".")
+                .Replace('+', '.');
+
+            text = Regex.Replace(text, @"\s+", string.Empty);
+            while (text.EndsWith("[]", StringComparison.Ordinal) || text.EndsWith("?", StringComparison.Ordinal))
+            {
+                if (text.EndsWith("[]", StringComparison.Ordinal))
+                    text = text.Substring(0, text.Length - 2);
+                else
+                    text = text.Substring(0, text.Length - 1);
+            }
+
+            var genericIndex = text.IndexOf('<');
+            if (genericIndex >= 0)
+                text = text.Substring(0, genericIndex);
+
+            return text.Trim('.');
+        }
+
+        static string ShortTypeName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            var normalized = NormalizeTypeNameForMatch(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+                return null;
+
+            var dot = normalized.LastIndexOf('.');
+            return dot >= 0 ? normalized.Substring(dot + 1) : normalized;
+        }
+
+        static string GetInvokedMemberName(ExpressionSyntax expression)
+        {
+            return expression switch
+            {
+                IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+                GenericNameSyntax generic => generic.Identifier.ValueText,
+                MemberAccessExpressionSyntax access => access.Name.Identifier.ValueText,
+                MemberBindingExpressionSyntax binding => binding.Name.Identifier.ValueText,
+                _ => null
+            };
+        }
+
+        static bool IsExpressionQualifiedByTargetType(ExpressionSyntax expression, HashSet<string> targetTypeNames)
+        {
+            if (expression is MemberAccessExpressionSyntax access)
+                return TypeNameMatches(access.Expression.ToString(), targetTypeNames);
+
+            return false;
+        }
+
+        static bool IsNameofInvocation(InvocationExpressionSyntax invocation)
+        {
+            return invocation.Expression is IdentifierNameSyntax identifier &&
+                   string.Equals(identifier.Identifier.ValueText, "nameof", StringComparison.Ordinal);
+        }
+
+        static (bool Matches, string Confidence, string Note) MatchNameofMember(
+            InvocationExpressionSyntax invocation,
+            HashSet<string> targetTypeNames,
+            string member)
+        {
+            var expression = invocation.ArgumentList?.Arguments.FirstOrDefault().Expression;
+            switch (expression)
+            {
+                case IdentifierNameSyntax identifier when string.Equals(identifier.Identifier.ValueText, member, StringComparison.Ordinal):
+                    return (true, "Possible", "nameof argument matches the member name; semantic target was not resolved.");
+                case MemberAccessExpressionSyntax access when string.Equals(access.Name.Identifier.ValueText, member, StringComparison.Ordinal):
+                    var qualified = TypeNameMatches(access.Expression.ToString(), targetTypeNames);
+                    return (true, qualified ? "Exact" : "Possible", qualified
+                        ? "nameof member access is qualified by the target type name."
+                        : "nameof member access name matches; semantic target was not resolved.");
+                default:
+                    return (false, null, null);
+            }
+        }
+
+        static bool IsInsideNameofInvocation(SyntaxNode node)
+        {
+            return node.Ancestors().OfType<InvocationExpressionSyntax>().Any(IsNameofInvocation);
+        }
+
+        static bool IsStringCallbackHost(string invokedName)
+        {
+            return invokedName is "SendMessage" or "BroadcastMessage" or "SendMessageUpwards" or
+                "StartCoroutine" or "StopCoroutine" or "Invoke" or "InvokeRepeating" or
+                "CancelInvoke" or "IsInvoking";
+        }
+
+        static bool IsIdentifierAlreadyAccountedFor(IdentifierNameSyntax identifier)
+        {
+            return identifier.Parent switch
+            {
+                MemberAccessExpressionSyntax access when ReferenceEquals(access.Name, identifier) => true,
+                MemberBindingExpressionSyntax binding when ReferenceEquals(binding.Name, identifier) => true,
+                InvocationExpressionSyntax invocation when ReferenceEquals(invocation.Expression, identifier) => true,
+                QualifiedNameSyntax qualified when ReferenceEquals(qualified.Left, identifier) || ReferenceEquals(qualified.Right, identifier) => true,
+                NameColonSyntax => true,
+                NameEqualsSyntax => true,
+                _ => false
+            };
+        }
+
+        static string BuildCodeContext(SyntaxNode node)
+        {
+            var method = node.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
+            if (method != null)
+            {
+                var type = method.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
+                return JoinContext(type?.Identifier.ValueText, MethodName(method));
+            }
+
+            var accessor = node.Ancestors().OfType<AccessorDeclarationSyntax>().FirstOrDefault();
+            if (accessor != null)
+            {
+                var property = accessor.Ancestors().OfType<BasePropertyDeclarationSyntax>().FirstOrDefault();
+                var type = property?.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
+                return JoinContext(type?.Identifier.ValueText, property == null ? accessor.Keyword.ValueText : PropertyName(property) + "." + accessor.Keyword.ValueText);
+            }
+
+            var field = node.Ancestors().OfType<FieldDeclarationSyntax>().FirstOrDefault();
+            if (field != null)
+            {
+                var type = field.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
+                return JoinContext(type?.Identifier.ValueText, "field");
+            }
+
+            var typeDecl = node.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
+            return typeDecl == null ? "(file)" : typeDecl.Identifier.ValueText;
+        }
+
+        static string MethodName(BaseMethodDeclarationSyntax method)
+        {
+            return method switch
+            {
+                MethodDeclarationSyntax m => m.Identifier.ValueText,
+                ConstructorDeclarationSyntax c => c.Identifier.ValueText + ".ctor",
+                DestructorDeclarationSyntax d => "~" + d.Identifier.ValueText,
+                OperatorDeclarationSyntax o => "operator " + o.OperatorToken.ValueText,
+                ConversionOperatorDeclarationSyntax conversion => "operator " + conversion.Type,
+                _ => method.Kind().ToString()
+            };
+        }
+
+        static string PropertyName(BasePropertyDeclarationSyntax property)
+        {
+            return property switch
+            {
+                PropertyDeclarationSyntax p => p.Identifier.ValueText,
+                IndexerDeclarationSyntax => "this[]",
+                EventDeclarationSyntax e => e.Identifier.ValueText,
+                _ => property.Kind().ToString()
+            };
+        }
+
+        static string JoinContext(string typeName, string memberName)
+        {
+            if (string.IsNullOrWhiteSpace(typeName))
+                return string.IsNullOrWhiteSpace(memberName) ? "(file)" : memberName;
+
+            return string.IsNullOrWhiteSpace(memberName) ? typeName : typeName + "." + memberName;
+        }
+
+        static object[] CountCodeUsageKinds(IEnumerable<CodeUsageMatch> usages)
+        {
+            return usages
+                .GroupBy(item => item.UsageKind ?? "Unknown", StringComparer.OrdinalIgnoreCase)
+                .Select(group => new { kind = group.Key, count = group.Count() })
+                .OrderByDescending(item => item.count)
+                .ThenBy(item => item.kind, StringComparer.OrdinalIgnoreCase)
+                .Cast<object>()
+                .ToArray();
+        }
+
+        static object[] CountCodeUsageConfidence(IEnumerable<CodeUsageMatch> usages)
+        {
+            return usages
+                .GroupBy(item => item.Confidence ?? "Unknown", StringComparer.OrdinalIgnoreCase)
+                .Select(group => new { confidence = group.Key, count = group.Count() })
+                .OrderByDescending(item => item.count)
+                .ThenBy(item => item.confidence, StringComparer.OrdinalIgnoreCase)
+                .Cast<object>()
+                .ToArray();
+        }
+
         static void AddSourceMatches(ScriptRecord record, string text, string pattern, Regex regex, bool useRegex, int maxReferences, List<object> matches)
         {
             var lines = SplitLines(text);
@@ -1909,6 +2582,32 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             public int AnimationClips;
             public bool Truncated;
             public List<object> Matches = new();
+        }
+
+        sealed class CodeUsageScanResult
+        {
+            public int CandidateScripts;
+            public int ScannedScripts;
+            public int SkippedSelfReferences;
+            public int ParseErrors;
+            public bool Truncated;
+            public List<CodeUsageMatch> Matches = new();
+        }
+
+        sealed class CodeUsageMatch
+        {
+            public string Path;
+            public string Guid;
+            public string FullName;
+            public string ScriptKind;
+            public int Line;
+            public int Column;
+            public string UsageKind;
+            public string Confidence;
+            public string Symbol;
+            public string Context;
+            public string Note;
+            public string Preview;
         }
 
         sealed class SourceAnalysis

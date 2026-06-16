@@ -2,6 +2,32 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.23
+
+### Added
+
+- Added `UniBridge_ScriptIntelligence Action=CodeUsages`, a read-only
+  syntax-based C# impact scan for risky API renames, deletes, and signature
+  changes.
+- `CodeUsages` finds target type references and member call sites across C#
+  scripts, including method invocations, member access, conditional access,
+  `nameof(...)`, possible identifier references, and string-based Unity/runtime
+  callbacks such as `SendMessage`, `Invoke`, and `StartCoroutine`.
+- Code usage results include script path/GUID/type, line, column, usage kind,
+  confidence (`Exact`, `Possible`, or `RuntimeResolved`), symbol, containing
+  code context, note, and preview line.
+- Added discoverability and batch aliases for `code_usages`, `caller_scan`,
+  `callers`, `member_callers`, and `code_member_usages`.
+
+### Improved
+
+- `UniBridge_BatchActions` now normalizes `ScriptIntelligence CodeUsages`
+  action aliases plus `IncludeSelfReferences`, `IncludeStringReferences`, and
+  `MaxReferences` parameter aliases.
+- Script impact workflows now distinguish script asset GUID usage
+  (`Action=Usages`), serialized Unity member usage (`Action=MemberUsages`), and
+  C# source caller/type usage (`Action=CodeUsages`).
+
 ## 0.2.22
 
 ### Added

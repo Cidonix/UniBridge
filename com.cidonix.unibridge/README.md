@@ -91,6 +91,22 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.23 Notes
+
+- `UniBridge_ScriptIntelligence Action=CodeUsages` can find C# source call
+  sites and target type/member references before risky renames, deletes, or
+  signature changes.
+- It reports method invocations, member access, conditional access,
+  `nameof(...)`, possible identifier matches, and string-based callbacks such
+  as `SendMessage`, `Invoke`, and `StartCoroutine`.
+- Results include line/column, usage kind, confidence (`Exact`, `Possible`, or
+  `RuntimeResolved`), code context, symbol, note, and preview line.
+- Use it together with `Usages` and `MemberUsages`:
+  `Action=CodeUsages Path=Assets/.../<script>.cs Member=<methodOrField>`.
+- `BatchActions`, `Discover`, `ToolGuide`, and `DomainCatalog` expose aliases
+  such as `code_usages`, `caller_scan`, `callers`, `member_callers`, and
+  `code_member_usages`.
+
 ## Known 0.2.22 Notes
 
 - `UniBridge_ScriptIntelligence Action=MemberUsages` can find serialized

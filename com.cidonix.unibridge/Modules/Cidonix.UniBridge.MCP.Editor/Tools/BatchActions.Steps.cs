@@ -1316,8 +1316,6 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["script_usages"] = "Usages",
                         ["asset_script_usages"] = "Usages",
                         ["guid_usages"] = "Usages",
-                        ["code_usages"] = "Usages",
-                        ["unity_code_usages"] = "Usages",
                         ["memberusages"] = "MemberUsages",
                         ["member_usages"] = "MemberUsages",
                         ["serialized_member_usages"] = "MemberUsages",
@@ -1325,6 +1323,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["unity_event_usages"] = "MemberUsages",
                         ["animation_event_usages"] = "MemberUsages",
                         ["serialized_field_usages"] = "MemberUsages",
+                        ["codeusages"] = "CodeUsages",
+                        ["code_usages"] = "CodeUsages",
+                        ["unity_code_usages"] = "CodeUsages",
+                        ["caller_scan"] = "CodeUsages",
+                        ["callers"] = "CodeUsages",
+                        ["member_callers"] = "CodeUsages",
+                        ["code_member_usages"] = "CodeUsages",
                         ["hotspots"] = "Hotspots",
                         ["assemblies"] = "Assemblies",
                         ["selection"] = "Selection",
@@ -1339,7 +1344,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "Pattern", "pattern", "regex");
                     CopyAlias(parameters, "IncludeUsageLocations", "includeUsageLocations", "include_usage_locations", "usageLocations", "usage_locations");
                     CopyAlias(parameters, "IncludePossibleMemberUsages", "includePossibleMemberUsages", "include_possible_member_usages", "includePossibleMatches", "include_possible_matches");
+                    CopyAlias(parameters, "IncludeSelfReferences", "includeSelfReferences", "include_self_references", "selfReferences", "self_references");
+                    CopyAlias(parameters, "IncludeStringReferences", "includeStringReferences", "include_string_references", "stringReferences", "string_references");
                     CopyAlias(parameters, "MaxUsageLocations", "maxUsageLocations", "max_usage_locations", "maxLocations", "max_locations");
+                    CopyAlias(parameters, "MaxReferences", "maxReferences", "max_references", "maxMatches", "max_matches");
                     CopyAlias(parameters, "IncludeUsages", "includeUsages", "include_usages");
                     CopyAlias(parameters, "IncludeSource", "includeSource", "include_source");
                     CopyAlias(parameters, "IncludeMembers", "includeMembers", "include_members");
