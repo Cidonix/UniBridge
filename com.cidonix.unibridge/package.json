@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n\n- Added UniBridge_RuntimeStateProbe, a read-only live component state probe for Snapshot, Sample, and ListMembers workflows. It reads SerializedProperty values and reflected fields/properties over bounded editor ticks without executing arbitrary project code, supports inactive/Prefab Stage lookup through the shared scene resolver, and saves raw samples under Library/UniBridge/RuntimeStateProbe.\n\n### Changed\n\n- Discover, ToolGuide, DomainCatalog, and BatchActions aliases now expose runtime state probing workflows alongside runtime profiler metrics.\n\n### Previous Changes\n\n- UniBridge_RuntimeProfiler measures bounded ProfilerRecorder samples for runtime performance triage.\n- UniBridge_ContextSnapshot includes an agentBrief onboarding block by default.\n- UniBridge_WorkSession captures optional compact loaded-scene semantic baselines and review data.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
+    "changelog": "### Added\n\n- Added UniBridge_RuntimeStateProbe Action=Assert for read-only runtime watch/assertion rules. Assertions can check selected component values with equals, numeric comparisons, ranges, contains, regex matches, null checks, changed, and stable modes over bounded samples. Required assertion failures return success=false by default so BatchActions can stop safely.\n\n### Changed\n\n- Runtime state probe discoverability now includes runtime_assert, watch_assert, expect_state, and related aliases in Discover, ToolGuide, DomainCatalog, and BatchActions.\n\n### Previous Changes\n\n- UniBridge_RuntimeStateProbe samples live component SerializedProperty/reflection values without arbitrary C# execution.\n- UniBridge_RuntimeProfiler measures bounded ProfilerRecorder samples for runtime performance triage.\n- UniBridge_ContextSnapshot includes an agentBrief onboarding block by default.\n- UniBridge_WorkSession captures optional compact loaded-scene semantic baselines and review data.\n- Bundled relay 1.1.0-build.15 recovers RefreshAssets connection loss caused by Unity import/domain reload."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -5,6 +5,80 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.17 RuntimeStateProbe assertions/watch rules
+
+Додано `UniBridge_RuntimeStateProbe Action=Assert` як read-only pass/fail gate
+для AI workflow. Це продовження `RuntimeStateProbe`: агент може не тільки
+подивитися live component state, а й формально перевірити очікування перед тим,
+як рухатись далі.
+
+Що вміє `Action=Assert`:
+
+- приймає `Assertions` масив із rules:
+  `name`, `member/memberPath`, optional `valuePath`, `operator`,
+  `value/expected`, `min/max`, `mode`, `required`, `tolerance`;
+- operators: `exists`, `not_exists`, `==`, `!=`, `>`, `>=`, `<`, `<=`,
+  `between`, `contains`, `not_contains`, `matches`, `is_null`, `not_null`,
+  `changed`, `stable`;
+- modes: `Last`, `First`, `Any`, `All`, `Changed`, `Stable`;
+- за замовчуванням `FailOnFailedAssertions=true`, тобто required failed
+  assertion повертає `success=false` і може зупинити `BatchActions`;
+- якщо передати `FailOnFailedAssertions=false`, tool повертає `success=true`,
+  але `passed=false`, що корисно для non-blocking diagnostics;
+- full raw assertion payload пишеться у
+  `Library/UniBridge/RuntimeStateProbe` при `SaveToFile=true`.
+
+Discoverability:
+
+- додано aliases: `runtime_assert`, `watch_assert`, `state_assert`,
+  `expect_state`;
+- `Discover`, `ToolGuide`, `DomainCatalog`, `BatchActionToolCatalog`,
+  `BatchActions.Steps`, `BatchActions.Validation` описують новий assert
+  workflow;
+- docs оновлено в `README.md`, `RELEASE_NOTES.md`,
+  `CHANGELOG.md`, `Documentation~/unibridge.md`, `package.json`;
+- package version піднято до `0.2.17`.
+
+Важливий edge case, який зловив smoke:
+
+- `Transform.localScale.x` може читатись як reflected path `localScale.x`,
+  тоді як base `localScale` також може мати serialized representation
+  `m_LocalScale`;
+- assertion expansion тепер додає і original dotted member, і normalized
+  base/subpath форму, щоб rules типу `member=localScale.x` не губилися між
+  serialized/reflection шляхами.
+
+Перевірка через MCP на
+`H:/Repos/UnityRepos/UniBridge_Test_Project`:
+
+- package 0.2.17 скопійовано в
+  `Packages/com.cidonix.unibridge` без `RelayApp~`;
+- `ManageEditor RefreshAssets WaitForCompletion=true Force=true` двічі
+  проходив через Unity reload boundary і щоразу повертав reload-safe result:
+  `recoveredAfterRefreshReload=true`, `reloadBoundary=true`,
+  `reloadSafe=true`, editor ready;
+- `GetCompilationDiagnostics`: errors 0, warnings 0;
+- `ReadConsole DiagnosticSummary`: 0 logs/warnings/errors/exceptions/asserts;
+- `ToolGuide Action=Tool Tool=runtime_assert` резолвить alias у
+  `UniBridge_RuntimeStateProbe`, enabled true, batchAllowed true;
+- `DomainCatalog InspectDomain RuntimeDebug` показує `runtime_assert` /
+  `watch_assert` у runtime-debug domain;
+- `Discover Action=Tools Query=RuntimeStateProbe` і
+  `Discover Action=Tools Query="runtime assert"` повертають
+  `UniBridge_RuntimeStateProbe`;
+- `Discover Action=Aliases Query=runtime_assert` повертає alias
+  `runtime_assert -> UniBridge_RuntimeStateProbe`;
+- positive assertion smoke:
+  `Transform.localScale.x == 1` і `Transform.position.y > -1000` -
+  `passed=true`, 3 samples, raw JSON saved;
+- non-blocking failure smoke:
+  `Transform.localScale.x == 999` з `FailOnFailedAssertions=false` -
+  tool `success=true`, `passed=false`;
+- fail-fast smoke:
+  та сама required failure без `FailOnFailedAssertions=false` повертає
+  structured `success=false`, `stopReason="Step 1 execution failed."`, без
+  MCP transport/connection error.
+
 ## 2026-06-16: UniBridge 0.2.16 RuntimeStateProbe для live component state debugging
 
 Додано другий Locus-inspired runtime/debugging блок, якого в UniBridge реально

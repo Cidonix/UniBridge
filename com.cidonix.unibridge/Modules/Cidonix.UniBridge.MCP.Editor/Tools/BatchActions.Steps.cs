@@ -283,6 +283,12 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["samples"] = "Sample",
                         ["watch"] = "Sample",
                         ["probe"] = "Sample",
+                        ["assert"] = "Assert",
+                        ["assertions"] = "Assert",
+                        ["expect"] = "Assert",
+                        ["check"] = "Assert",
+                        ["watch_assert"] = "Assert",
+                        ["watchassert"] = "Assert",
                         ["list"] = "ListMembers",
                         ["members"] = "ListMembers",
                         ["listmembers"] = "ListMembers",
@@ -294,6 +300,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "SearchMethod", "searchMethod", "search_method", "method", "Method");
                     CopyAlias(parameters, "Component", "component", "componentType", "component_type", "type", "Type");
                     CopyAlias(parameters, "Members", "members", "member", "Member", "fields", "Fields", "properties", "Properties");
+                    CopyAlias(parameters, "Assertions", "assertions", "rules", "Rules", "watchRules", "watch_rules", "expectations", "Expectations");
                     CopyAlias(parameters, "IncludeInactive", "includeInactive", "include_inactive", "search_inactive", "SearchInactive");
                     CopyAlias(parameters, "IncludePrefabStage", "includePrefabStage", "include_prefab_stage", "prefab_stage");
                     CopyAlias(parameters, "ScenePath", "scenePath", "scene_path", "scene");
@@ -306,6 +313,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "SampleFrames", "sampleFrames", "sample_frames", "frames", "Frames");
                     CopyAlias(parameters, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
                     CopyAlias(parameters, "RequirePlayMode", "requirePlayMode", "require_play_mode");
+                    CopyAlias(parameters, "FailOnFailedAssertions", "failOnFailedAssertions", "fail_on_failed_assertions", "failOnFail", "fail_on_fail");
                     CopyAlias(parameters, "MaxStringLength", "maxStringLength", "max_string_length");
                     CopyAlias(parameters, "MaxCollectionItems", "maxCollectionItems", "max_collection_items");
                     CopyAlias(parameters, "SaveToFile", "saveToFile", "save_to_file");

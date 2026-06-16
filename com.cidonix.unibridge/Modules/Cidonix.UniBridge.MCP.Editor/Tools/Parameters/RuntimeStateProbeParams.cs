@@ -1,5 +1,6 @@
 #nullable disable
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
+using Newtonsoft.Json.Linq;
 
 namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 {
@@ -7,12 +8,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
     {
         Snapshot,
         Sample,
+        Assert,
         ListMembers
     }
 
     public record RuntimeStateProbeParams
     {
-        [McpDescription("Operation to perform: Snapshot, Sample, or ListMembers.", Required = false, Default = RuntimeStateProbeAction.Snapshot)]
+        [McpDescription("Operation to perform: Snapshot, Sample, Assert, or ListMembers.", Required = false, Default = RuntimeStateProbeAction.Snapshot)]
         public RuntimeStateProbeAction Action { get; set; } = RuntimeStateProbeAction.Snapshot;
 
         [McpDescription("Optional human-readable probe name used for saved files.", Required = false)]
@@ -29,6 +31,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("Optional member/property paths to read. Supports reflected field/property names and SerializedProperty paths such as m_Field or nested.property.", Required = false)]
         public string[] Members { get; set; }
+
+        [McpDescription("Assertion/watch rules for Action=Assert. Each rule supports name, member/memberPath, optional valuePath, operator, expected/value/min/max, mode Last/First/Any/All/Changed/Stable, tolerance, and required.", Required = false)]
+        public JArray Assertions { get; set; }
 
         [McpDescription("Include inactive scene and Prefab Stage objects during target resolution. Default true.", Required = false, Default = true)]
         public bool? IncludeInactive { get; set; }
@@ -65,6 +70,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("Require Play Mode for Action=Sample. Default true because runtime state probes are intended for live gameplay.", Required = false, Default = true)]
         public bool? RequirePlayMode { get; set; }
+
+        [McpDescription("For Action=Assert, return success=false when required assertions fail. Default true.", Required = false, Default = true)]
+        public bool? FailOnFailedAssertions { get; set; }
 
         [McpDescription("Maximum string characters returned for a single value. Default 400.", Required = false, Default = 400)]
         public int? MaxStringLength { get; set; }

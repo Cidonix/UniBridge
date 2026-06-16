@@ -2,6 +2,25 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.17
+
+### Added
+
+- Added `UniBridge_RuntimeStateProbe Action=Assert`, a read-only runtime
+  assertion/watch workflow for AI gameplay debugging.
+- Assertions can evaluate sampled component values with equals/not-equals,
+  numeric comparisons, ranges, contains/not-contains, regex matches, null
+  checks, `changed`, and `stable` rules.
+- Required assertion failures return `success=false` by default so
+  `UniBridge_BatchActions` can stop safely before an agent continues from a bad
+  runtime assumption.
+
+### Changed
+
+- Runtime state probing now exposes `runtime_assert`, `watch_assert`,
+  `state_assert`, and `expect_state` aliases through `Discover`, `ToolGuide`,
+  `DomainCatalog`, and `BatchActions`.
+
 ## 0.2.16
 
 ### Added

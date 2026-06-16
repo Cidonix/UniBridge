@@ -26,7 +26,7 @@ public const string Description = @"Return an agent-facing catalog of Unity doma
 
 Use this as a first call when a new agent knows the task domain but not the exact UniBridge tool. It is read-only and optimized for tool discovery, workflow order, and domain-specific type hints.
 
-Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
+Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
 
 Args:
     Action: Overview, ListDomains, InspectDomain, ListTypes, or SuggestTools.
@@ -421,15 +421,15 @@ Returns:
                 {
                     Key = "RuntimeDebug",
                     Title = "Runtime state, profiler, and Play Mode diagnostics",
-                    When = "Use for Play Mode runtime state, live component variables, frame time, GC/memory, rendering counters, physics/script markers, spikes, stutter, and performance triage.",
+                    When = "Use for Play Mode runtime state, live component variables, runtime assertions/watch rules, frame time, GC/memory, rendering counters, physics/script markers, spikes, stutter, and performance triage.",
                     FirstCalls = new[] { "UniBridge_ManageEditor Action=GetPlayModeState", "UniBridge_RuntimeProfiler Action=Snapshot", "UniBridge_RuntimeProfiler Action=Metrics", "UniBridge_RuntimeStateProbe Action=ListMembers Component=<ComponentOrMonoBehaviour>" },
                     AuthoringTools = new[] { "UniBridge_ManageEditor" },
                     InspectionTools = new[] { "UniBridge_RuntimeProfiler", "UniBridge_RuntimeStateProbe", "UniBridge_ContextSnapshot", "UniBridge_SceneObjectView", "UniBridge_EditorEvents", "UniBridge_ReadConsole" },
                     VerificationTools = new[] { "UniBridge_RuntimeStateProbe", "UniBridge_RuntimeProfiler", "UniBridge_ReadConsole", "UniBridge_CaptureView", "UniBridge_VisualSceneAudit" },
                     CaptureTools = new[] { "UniBridge_CaptureView", "UniBridge_VisualSceneAudit" },
                     TypeNames = new[] { "Unity.Profiling.ProfilerRecorder", "UnityEngine.Profiling.Profiler", "UnityEngine.MonoBehaviour", "UnityEngine.Renderer", "UnityEngine.Camera", "UnityEngine.ParticleSystem", "UnityEngine.EventSystems.EventSystem" },
-                    Notes = new[] { "RuntimeProfiler is read-only and captures bounded ProfilerRecorder samples; RuntimeStateProbe is read-only and samples component SerializedProperty/reflection values. Neither tool executes arbitrary project code.", "Both Sample actions require Play Mode by default so data comes from the running game; pass RequirePlayMode=false only for editor-time smoke tests.", "Full raw profiler samples are saved under Library/UniBridge/RuntimeProfiler and state samples under Library/UniBridge/RuntimeStateProbe when SaveToFile=true; MCP responses stay compact." },
-                    Aliases = new[] { "runtime", "runtime_debug", "runtime_state", "state_probe", "watch_variables", "component_state", "profiler", "performance", "fps", "gc", "memory", "spikes", "stutter" }
+                    Notes = new[] { "RuntimeProfiler is read-only and captures bounded ProfilerRecorder samples; RuntimeStateProbe is read-only and samples component SerializedProperty/reflection values and can evaluate simple assertions/watch rules. Neither tool executes arbitrary project code.", "RuntimeStateProbe Action=Assert can fail a batch on required failed assertions, giving AI workflows a structured pass/fail gate.", "Sample/Assert actions require Play Mode by default so data comes from the running game; pass RequirePlayMode=false only for editor-time smoke tests.", "Full raw profiler samples are saved under Library/UniBridge/RuntimeProfiler and state samples under Library/UniBridge/RuntimeStateProbe when SaveToFile=true; MCP responses stay compact." },
+                    Aliases = new[] { "runtime", "runtime_debug", "runtime_state", "state_probe", "watch_variables", "watch_assert", "runtime_assert", "component_state", "profiler", "performance", "fps", "gc", "memory", "spikes", "stutter" }
                 },
                 new DomainDefinition
                 {

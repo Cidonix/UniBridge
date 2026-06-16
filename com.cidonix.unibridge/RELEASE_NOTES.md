@@ -1,12 +1,18 @@
-# UniBridge 0.2.16 Release Notes
+# UniBridge 0.2.17 Release Notes
 
 Release date: 2026-06-16
 
-This release adds `UniBridge_RuntimeStateProbe`, a read-only runtime component
-state probe for Play Mode debugging. It lets AI agents inspect live
-GameObject/component fields and properties, list readable members, and sample
-selected values over several editor ticks without executing arbitrary C# in the
-project.
+This release adds `UniBridge_RuntimeStateProbe Action=Assert`, a read-only
+runtime assertion/watch workflow for Play Mode debugging. It lets AI agents
+sample selected GameObject/component fields and properties, evaluate simple
+pass/fail rules, and stop a batch workflow when a required runtime assumption is
+false.
+
+The previous 0.2.16 release added `UniBridge_RuntimeStateProbe`, a read-only
+runtime component state probe for Play Mode debugging. It lets AI agents inspect
+live GameObject/component fields and properties, list readable members, and
+sample selected values over several editor ticks without executing arbitrary C#
+in the project.
 
 The previous 0.2.15 release added `UniBridge_RuntimeProfiler`, a read-only
 runtime/profiler inspection tool for Play Mode debugging. It gives AI agents a
@@ -60,7 +66,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.16`
+- Version: `0.2.17`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
@@ -74,8 +80,9 @@ guessing from files alone.
 
 - Project orientation: context snapshots, domain catalog, tool guide, workflow
   recipes, scene/object views, editor snapshots, and console diagnostics.
-- Runtime debugging: profiler metrics plus read-only component state probes for
-  selected SerializedProperty paths and reflected fields/properties.
+- Runtime debugging: profiler metrics plus read-only component state probes and
+  assertion/watch rules for selected SerializedProperty paths and reflected
+  fields/properties.
 - Work-session safety: begin project-local checkpoints, review changed files,
   inspect compact text diffs, dry-run selected reverts, and restore/delete
   selected files from captured session snapshots.

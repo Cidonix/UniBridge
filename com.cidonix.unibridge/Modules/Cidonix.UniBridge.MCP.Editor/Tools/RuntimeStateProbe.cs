@@ -6,12 +6,14 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
 using Cidonix.UniBridge.MCP.Editor.Tools.Parameters;
 using Cidonix.UniBridge.Toolkit;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -37,21 +39,27 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         public const string Description = @"Read and sample live scene GameObject/component state for AI debugging without executing arbitrary C#.
 
-Use this after entering Play Mode when a gameplay issue depends on MonoBehaviour flags, counters, references, positions, trigger state, animation state fields, or other component values over several frames.
+Use this after entering Play Mode when a gameplay issue depends on MonoBehaviour flags, counters, references, positions, trigger state, animation state fields, or other component values over several frames. Use Assert when the AI needs a structured pass/fail gate before continuing a workflow.
 
 Actions:
     Snapshot: Resolve target GameObjects and read current component/member values once.
     Sample: In Play Mode by default, read the same values over a bounded number of editor update ticks, save raw samples, and return a compact changed-member summary.
+    Assert: Sample values and evaluate simple watch/assertion rules such as equals, >, between, changed, stable, isNull, contains, or regex matches.
     ListMembers: Show readable SerializedProperty paths and reflected fields/properties for matching components.
 
 The probe is read-only. It uses the shared UniBridge scene resolver, so Target/Component lookup supports inactive objects, Prefab Stage objects, instance IDs, hierarchy paths, short/full type names, MonoScript GUIDs, and serialized editor class identifiers.
 
-Search aliases: UniBridge Unity runtime state probe watch variables component fields MonoBehaviour state frame sampling play mode debugger.";
+Search aliases: UniBridge Unity runtime state probe runtime assert watch assert watch variables component fields MonoBehaviour state frame sampling play mode debugger.";
 
         [McpTool(ToolName, Description, Title, Groups = new[] { "core", "runtime", "debugging", "scene" }, EnabledByDefault = true, ExecutionPolicy = ToolExecutionPolicy.ReadOnly)]
         public static async Task<object> HandleCommand(RuntimeStateProbeParams parameters)
         {
             parameters ??= new RuntimeStateProbeParams();
+            if (parameters.Action == RuntimeStateProbeAction.Assert)
+            {
+                ExpandMembersFromAssertions(parameters);
+            }
+
             var options = ProbeOptions.From(parameters);
 
             try
@@ -77,6 +85,8 @@ Search aliases: UniBridge Unity runtime state probe watch variables component fi
                         return Response.Success("Listed runtime probe members.", ListMembers(targets, parameters, options));
                     case RuntimeStateProbeAction.Sample:
                         return await Sample(targets, parameters, options);
+                    case RuntimeStateProbeAction.Assert:
+                        return await Assert(targets, parameters, options);
                     case RuntimeStateProbeAction.Snapshot:
                     default:
                         return Response.Success("Captured runtime state snapshot.", Snapshot(targets, parameters, options));
@@ -173,6 +183,110 @@ Search aliases: UniBridge Unity runtime state probe watch variables component fi
                 changeSummary,
                 samples = parameters.ReturnSamples == true ? samples.Select(sample => sample.ToDto()).ToArray() : null
             });
+        }
+
+        static async Task<object> Assert(List<GameObject> targets, RuntimeStateProbeParams parameters, ProbeOptions options)
+        {
+            var rules = ParseAssertionRules(parameters.Assertions);
+            if (rules.Count == 0)
+            {
+                return Response.Error("ASSERTIONS_REQUIRED", new
+                {
+                    hint = "Provide Assertions with at least one rule, e.g. { member:'localScale.x', operator:'==', value:1 }."
+                });
+            }
+
+            var requirePlayMode = parameters.RequirePlayMode ?? true;
+            if (requirePlayMode && !Application.isPlaying)
+            {
+                return Response.Error("PLAY_MODE_REQUIRED", new
+                {
+                    isPlaying = Application.isPlaying,
+                    isPaused = EditorApplication.isPaused,
+                    hint = "Enter Play Mode first, or pass RequirePlayMode=false for editor-time assertion smoke tests."
+                });
+            }
+
+            var frames = Clamp(parameters.SampleFrames ?? DefaultSampleFrames, 1, 600);
+            var timeoutMs = Clamp(parameters.TimeoutMs ?? DefaultTimeoutMs, 1000, 300000);
+            var startUtc = DateTime.UtcNow;
+            var startEditorTime = EditorApplication.timeSinceStartup;
+            var deadline = startEditorTime + timeoutMs / 1000.0;
+            var samples = new List<ProbeSample>(frames);
+
+            await EditorTask.Yield();
+            while (samples.Count < frames && EditorApplication.timeSinceStartup <= deadline)
+            {
+                samples.Add(CaptureSample(samples.Count, targets, parameters, options));
+                await EditorTask.Yield();
+            }
+
+            var elapsedMs = Math.Max(0, (EditorApplication.timeSinceStartup - startEditorTime) * 1000.0);
+            var assertionResults = EvaluateAssertions(samples, rules);
+            var failedRequired = assertionResults.Where(result => !result.Passed && result.Required).ToArray();
+            var failedOptional = assertionResults.Where(result => !result.Passed && !result.Required).ToArray();
+            var passed = failedRequired.Length == 0;
+            var changeSummary = BuildChangeSummary(samples);
+            var payload = new
+            {
+                schema = "unibridge.runtimeStateProbe.assert.v1",
+                name = NormalizeName(parameters.Name, "runtime_state_assert"),
+                startedUtc = startUtc.ToString("o"),
+                endedUtc = DateTime.UtcNow.ToString("o"),
+                requestedFrames = frames,
+                sampleRows = samples.Count,
+                timedOut = samples.Count < frames,
+                elapsedMs,
+                editor = BuildEditorState(),
+                targetCount = targets.Count,
+                componentFilter = parameters.Component,
+                requestedMembers = options.RequestedMembers,
+                passed,
+                assertionSummary = new
+                {
+                    total = assertionResults.Count,
+                    passed = assertionResults.Count(result => result.Passed),
+                    failed = assertionResults.Count(result => !result.Passed),
+                    failedRequired = failedRequired.Length,
+                    failedOptional = failedOptional.Length
+                },
+                assertions = assertionResults.Select(result => result.ToDto()).ToArray(),
+                changeSummary,
+                samples = samples.Select(sample => sample.ToDto()).ToArray()
+            };
+
+            string savedPath = null;
+            if (parameters.SaveToFile ?? true)
+            {
+                savedPath = SavePayload(payload, parameters.Name);
+            }
+
+            var responseData = new
+            {
+                schema = "unibridge.runtimeStateProbe.assert.summary.v1",
+                name = payload.name,
+                requestedFrames = frames,
+                sampleRows = samples.Count,
+                timedOut = samples.Count < frames,
+                elapsedMs,
+                savedPath,
+                editor = payload.editor,
+                targetCount = targets.Count,
+                componentFilter = parameters.Component,
+                requestedMembers = options.RequestedMembers,
+                passed,
+                assertionSummary = payload.assertionSummary,
+                assertions = assertionResults.Select(result => result.ToDto()).ToArray(),
+                changeSummary,
+                samples = parameters.ReturnSamples == true ? samples.Select(sample => sample.ToDto()).ToArray() : null
+            };
+
+            if (!passed && (parameters.FailOnFailedAssertions ?? true))
+            {
+                return Response.Error("Runtime state assertions failed.", responseData);
+            }
+
+            return Response.Success(passed ? "Runtime state assertions passed." : "Runtime state assertions completed with failures.", responseData);
         }
 
         static object ListMembers(List<GameObject> targets, RuntimeStateProbeParams parameters, ProbeOptions options)
@@ -867,6 +981,683 @@ Search aliases: UniBridge Unity runtime state probe watch variables component fi
             };
         }
 
+        static void ExpandMembersFromAssertions(RuntimeStateProbeParams parameters)
+        {
+            var assertions = parameters.Assertions;
+            if (assertions == null || assertions.Count == 0)
+            {
+                return;
+            }
+
+            var members = new HashSet<string>(parameters.Members ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+            foreach (var token in assertions)
+            {
+                if (token is JObject obj)
+                {
+                    var requestedMember = GetRuleString(obj, "member", "memberPath", "field", "property", "path");
+                    if (!string.IsNullOrWhiteSpace(requestedMember))
+                    {
+                        members.Add(requestedMember);
+                    }
+                }
+            }
+
+            foreach (var rule in ParseAssertionRules(assertions))
+            {
+                if (string.IsNullOrWhiteSpace(rule.Member))
+                {
+                    continue;
+                }
+
+                members.Add(rule.Member);
+                if (!string.IsNullOrWhiteSpace(rule.ValuePath))
+                {
+                    members.Add(rule.Member + "." + rule.ValuePath);
+                }
+
+                var baseMember = GuessBaseMember(rule.Member);
+                if (!string.IsNullOrWhiteSpace(baseMember))
+                {
+                    members.Add(baseMember);
+                }
+            }
+
+            parameters.Members = members.Where(member => !string.IsNullOrWhiteSpace(member)).ToArray();
+        }
+
+        static List<AssertionRule> ParseAssertionRules(JArray assertions)
+        {
+            var rules = new List<AssertionRule>();
+            if (assertions == null)
+            {
+                return rules;
+            }
+
+            var index = 0;
+            foreach (var token in assertions)
+            {
+                index++;
+                if (token is not JObject obj)
+                {
+                    rules.Add(new AssertionRule
+                    {
+                        Index = index,
+                        Name = "rule_" + index.ToString(CultureInfo.InvariantCulture),
+                        ParseError = "Assertion rule must be an object."
+                    });
+                    continue;
+                }
+
+                var member = GetRuleString(obj, "member", "memberPath", "field", "property", "path");
+                var rule = new AssertionRule
+                {
+                    Index = index,
+                    Name = GetRuleString(obj, "name", "id", "label") ?? "rule_" + index.ToString(CultureInfo.InvariantCulture),
+                    Member = member,
+                    ValuePath = GetRuleString(obj, "valuePath", "value_path", "subPath", "sub_path"),
+                    Operator = NormalizeOperator(GetRuleString(obj, "operator", "op", "comparison", "expect") ?? "exists"),
+                    Mode = NormalizeMode(GetRuleString(obj, "mode", "sampleMode", "sample_mode") ?? "Last"),
+                    Expected = obj["expected"] ?? obj["value"] ?? obj["equals"],
+                    Min = obj["min"],
+                    Max = obj["max"],
+                    Required = GetRuleBool(obj, true, "required", "failOnFailure", "fail_on_failure"),
+                    Tolerance = GetRuleDouble(obj, 0.0, "tolerance", "epsilon"),
+                    Component = GetRuleString(obj, "component", "componentType", "component_type"),
+                    ObjectPath = GetRuleString(obj, "objectPath", "object_path", "targetPath", "target_path"),
+                    ObjectId = GetRuleLong(obj, null, "objectId", "object_id", "instanceId", "instance_id"),
+                    Source = GetRuleString(obj, "source")
+                };
+
+                if (string.IsNullOrWhiteSpace(rule.Member) &&
+                    rule.Operator != "exists" &&
+                    rule.Operator != "not_exists" &&
+                    rule.Operator != "changed" &&
+                    rule.Operator != "stable")
+                {
+                    rule.ParseError = "Assertion rule requires member/memberPath.";
+                }
+
+                if (string.IsNullOrWhiteSpace(rule.ValuePath) && !string.IsNullOrWhiteSpace(rule.Member))
+                {
+                    var inferred = InferValuePath(rule.Member);
+                    if (inferred.HasValuePath)
+                    {
+                        rule.Member = inferred.Member;
+                        rule.ValuePath = inferred.ValuePath;
+                    }
+                }
+
+                rules.Add(rule);
+            }
+
+            return rules;
+        }
+
+        static List<AssertionObservation> CollectAssertionObservations(List<ProbeSample> samples, AssertionRule rule)
+        {
+            var result = new List<AssertionObservation>();
+            foreach (var sample in samples)
+            {
+                foreach (var target in sample.Targets)
+                {
+                    var objectId = ReadObjectId(target.GameObject);
+                    var objectPath = ReadString(target.GameObject, "path");
+                    if (rule.ObjectId.HasValue && objectId != rule.ObjectId.Value)
+                    {
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(rule.ObjectPath) &&
+                        !string.Equals(objectPath, rule.ObjectPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    foreach (var component in target.Components)
+                    {
+                        if (!ComponentMatchesRule(component, rule))
+                        {
+                            continue;
+                        }
+
+                        foreach (var value in component.Values)
+                        {
+                            var valuePath = rule.ValuePath;
+                            if (!MemberMatchesRule(value, rule, out var inferredValuePath))
+                            {
+                                continue;
+                            }
+
+                            if (inferredValuePath != null)
+                            {
+                                valuePath = inferredValuePath;
+                            }
+
+                            var actual = string.IsNullOrWhiteSpace(value.Error)
+                                ? ExtractValuePath(value.Value, valuePath)
+                                : null;
+
+                            result.Add(new AssertionObservation
+                            {
+                                SampleIndex = sample.SampleIndex,
+                                ObjectId = objectId,
+                                ObjectPath = objectPath,
+                                ComponentIndex = component.Index,
+                                ComponentType = component.Type,
+                                MemberPath = value.MemberPath,
+                                Source = value.Source,
+                                ValuePath = valuePath,
+                                Value = actual,
+                                Error = value.Error
+                            });
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        static List<AssertionResult> EvaluateAssertions(List<ProbeSample> samples, List<AssertionRule> rules)
+        {
+            return rules.Select(rule =>
+            {
+                if (!string.IsNullOrWhiteSpace(rule.ParseError))
+                {
+                    return AssertionResult.Fail(rule, rule.ParseError, Array.Empty<AssertionObservation>());
+                }
+
+                var observations = CollectAssertionObservations(samples, rule);
+                var errors = observations.Where(observation => !string.IsNullOrWhiteSpace(observation.Error)).ToArray();
+                var usable = observations.Where(observation => string.IsNullOrWhiteSpace(observation.Error)).ToArray();
+
+                if (rule.Operator == "exists")
+                {
+                    return AssertionResult.From(rule, usable.Length > 0, usable.Length > 0 ? "Member exists." : "No matching member value was observed.", observations);
+                }
+
+                if (rule.Operator == "not_exists")
+                {
+                    return AssertionResult.From(rule, usable.Length == 0, usable.Length == 0 ? "No matching member value was observed." : "Member exists.", observations);
+                }
+
+                if (usable.Length == 0)
+                {
+                    var reason = errors.Length > 0 ? "All matching values had read errors." : "No matching member value was observed.";
+                    return AssertionResult.Fail(rule, reason, observations);
+                }
+
+                if (rule.Mode == "changed" || rule.Operator == "changed")
+                {
+                    var changed = DistinctValueCount(usable) > 1;
+                    return AssertionResult.From(rule, changed, changed ? "Value changed during sampling." : "Value stayed stable during sampling.", observations);
+                }
+
+                if (rule.Mode == "stable" || rule.Operator == "stable")
+                {
+                    var stable = DistinctValueCount(usable) <= 1;
+                    return AssertionResult.From(rule, stable, stable ? "Value stayed stable during sampling." : "Value changed during sampling.", observations);
+                }
+
+                var selected = SelectObservationsForMode(usable, rule.Mode);
+                var passedCount = selected.Count(observation => CompareObservation(observation.Value, rule));
+                var passed = rule.Mode switch
+                {
+                    "any" => passedCount > 0,
+                    "all" => selected.Length > 0 && passedCount == selected.Length,
+                    _ => selected.Length > 0 && passedCount == selected.Length
+                };
+
+                var message = passed
+                    ? $"Assertion passed for {passedCount}/{selected.Length} evaluated value(s)."
+                    : $"Assertion failed for {selected.Length - passedCount}/{selected.Length} evaluated value(s).";
+
+                return AssertionResult.From(rule, passed, message, observations);
+            }).ToList();
+        }
+
+        static AssertionObservation[] SelectObservationsForMode(AssertionObservation[] observations, string mode)
+        {
+            if (observations.Length == 0)
+            {
+                return observations;
+            }
+
+            return mode switch
+            {
+                "first" => observations.Take(1).ToArray(),
+                "any" => observations,
+                "all" => observations,
+                _ => observations.Skip(observations.Length - 1).Take(1).ToArray()
+            };
+        }
+
+        static bool CompareObservation(object actual, AssertionRule rule)
+        {
+            return rule.Operator switch
+            {
+                "is_null" => IsNullValue(actual),
+                "not_null" => !IsNullValue(actual),
+                "equals" => ValuesEqual(actual, rule.Expected, rule.Tolerance),
+                "not_equals" => !ValuesEqual(actual, rule.Expected, rule.Tolerance),
+                "greater" => CompareNumeric(actual, rule.Expected, out var greater) && greater > 0,
+                "greater_or_equal" => CompareNumeric(actual, rule.Expected, out var greaterOrEqual) && greaterOrEqual >= 0,
+                "less" => CompareNumeric(actual, rule.Expected, out var less) && less < 0,
+                "less_or_equal" => CompareNumeric(actual, rule.Expected, out var lessOrEqual) && lessOrEqual <= 0,
+                "between" => IsBetween(actual, rule.Min, rule.Max),
+                "contains" => ContainsValue(actual, rule.Expected),
+                "not_contains" => !ContainsValue(actual, rule.Expected),
+                "matches" => RegexMatches(actual, rule.Expected),
+                _ => ValuesEqual(actual, rule.Expected, rule.Tolerance)
+            };
+        }
+
+        static bool ComponentMatchesRule(ComponentProbe component, AssertionRule rule)
+        {
+            if (string.IsNullOrWhiteSpace(rule.Component))
+            {
+                return true;
+            }
+
+            return string.Equals(component.Type, rule.Component, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(component.ShortType, rule.Component, StringComparison.OrdinalIgnoreCase)
+                   || NormalizeMemberKey(component.Type) == NormalizeMemberKey(rule.Component)
+                   || NormalizeMemberKey(component.ShortType) == NormalizeMemberKey(rule.Component);
+        }
+
+        static bool MemberMatchesRule(ValueProbe value, AssertionRule rule, out string inferredValuePath)
+        {
+            inferredValuePath = null;
+            if (string.IsNullOrWhiteSpace(rule.Member))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(rule.Source) &&
+                !string.Equals(value.Source, rule.Source, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (string.Equals(value.MemberPath, rule.Member, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value.MemberName, rule.Member, StringComparison.OrdinalIgnoreCase) ||
+                NormalizeMemberKey(value.MemberPath) == NormalizeMemberKey(rule.Member) ||
+                NormalizeMemberKey(value.MemberName) == NormalizeMemberKey(rule.Member))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(rule.ValuePath))
+            {
+                var fullMemberPath = rule.Member + "." + rule.ValuePath;
+                if (string.Equals(value.MemberPath, fullMemberPath, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value.MemberName, fullMemberPath, StringComparison.OrdinalIgnoreCase) ||
+                    NormalizeMemberKey(value.MemberPath) == NormalizeMemberKey(fullMemberPath) ||
+                    NormalizeMemberKey(value.MemberName) == NormalizeMemberKey(fullMemberPath))
+                {
+                    inferredValuePath = string.Empty;
+                    return true;
+                }
+            }
+
+            var member = rule.Member;
+            var dot = member.LastIndexOf('.');
+            if (dot <= 0 || dot >= member.Length - 1)
+            {
+                return false;
+            }
+
+            var baseMember = member.Substring(0, dot);
+            var tail = member.Substring(dot + 1);
+            if (string.Equals(value.MemberPath, baseMember, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value.MemberName, baseMember, StringComparison.OrdinalIgnoreCase) ||
+                NormalizeMemberKey(value.MemberPath) == NormalizeMemberKey(baseMember) ||
+                NormalizeMemberKey(value.MemberName) == NormalizeMemberKey(baseMember))
+            {
+                inferredValuePath = tail;
+                return true;
+            }
+
+            return false;
+        }
+
+        static object ExtractValuePath(object value, string valuePath)
+        {
+            if (value == null || string.IsNullOrWhiteSpace(valuePath))
+            {
+                return value;
+            }
+
+            object current = value;
+            foreach (var segment in valuePath.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (current == null)
+                {
+                    return null;
+                }
+
+                if (current is JToken token)
+                {
+                    current = token.Type == JTokenType.Object ? token[segment] : null;
+                    continue;
+                }
+
+                if (current is IDictionary dictionary)
+                {
+                    current = dictionary.Contains(segment) ? dictionary[segment] : null;
+                    continue;
+                }
+
+                var property = current.GetType().GetProperty(segment, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+                if (property != null && property.GetIndexParameters().Length == 0)
+                {
+                    current = property.GetValue(current, null);
+                    continue;
+                }
+
+                var field = current.GetType().GetField(segment, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+                if (field != null)
+                {
+                    current = field.GetValue(current);
+                    continue;
+                }
+
+                return null;
+            }
+
+            return current is JValue valueToken ? valueToken.Value : current;
+        }
+
+        static int DistinctValueCount(IEnumerable<AssertionObservation> observations)
+        {
+            return observations
+                .Select(observation => JsonConvert.SerializeObject(observation.Value, Formatting.None))
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+        }
+
+        static bool IsNullValue(object value)
+        {
+            if (value == null)
+            {
+                return true;
+            }
+
+            return value is JValue token && token.Type == JTokenType.Null;
+        }
+
+        static bool ValuesEqual(object actual, JToken expectedToken, double tolerance)
+        {
+            if (expectedToken == null || expectedToken.Type == JTokenType.Null)
+            {
+                return IsNullValue(actual);
+            }
+
+            if (TryToDouble(actual, out var actualNumber) && TryToDouble(expectedToken, out var expectedNumber))
+            {
+                return Math.Abs(actualNumber - expectedNumber) <= Math.Max(0.0, tolerance);
+            }
+
+            var actualText = ValueToComparableString(actual);
+            var expectedText = ValueToComparableString(expectedToken);
+            return string.Equals(actualText, expectedText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool CompareNumeric(object actual, JToken expectedToken, out int comparison)
+        {
+            comparison = 0;
+            if (!TryToDouble(actual, out var actualNumber) || !TryToDouble(expectedToken, out var expectedNumber))
+            {
+                return false;
+            }
+
+            comparison = actualNumber.CompareTo(expectedNumber);
+            return true;
+        }
+
+        static bool IsBetween(object actual, JToken minToken, JToken maxToken)
+        {
+            if (!TryToDouble(actual, out var actualNumber))
+            {
+                return false;
+            }
+
+            if (minToken != null && TryToDouble(minToken, out var min) && actualNumber < min)
+            {
+                return false;
+            }
+
+            if (maxToken != null && TryToDouble(maxToken, out var max) && actualNumber > max)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        static bool ContainsValue(object actual, JToken expectedToken)
+        {
+            var actualText = ValueToComparableString(actual);
+            var expectedText = ValueToComparableString(expectedToken);
+            return actualText?.IndexOf(expectedText ?? string.Empty, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        static bool RegexMatches(object actual, JToken expectedToken)
+        {
+            var pattern = ValueToComparableString(expectedToken);
+            if (string.IsNullOrWhiteSpace(pattern))
+            {
+                return false;
+            }
+
+            try
+            {
+                return Regex.IsMatch(ValueToComparableString(actual) ?? string.Empty, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static bool TryToDouble(object value, out double number)
+        {
+            number = 0.0;
+            if (value == null)
+            {
+                return false;
+            }
+
+            if (value is JValue jValue)
+            {
+                value = jValue.Value;
+            }
+
+            if (value is JToken token)
+            {
+                return double.TryParse(token.ToString(Formatting.None), NumberStyles.Float, CultureInfo.InvariantCulture, out number);
+            }
+
+            try
+            {
+                switch (value)
+                {
+                    case byte _:
+                    case sbyte _:
+                    case short _:
+                    case ushort _:
+                    case int _:
+                    case uint _:
+                    case long _:
+                    case ulong _:
+                    case float _:
+                    case double _:
+                    case decimal _:
+                        number = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+                        return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            return double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out number);
+        }
+
+        static string ValueToComparableString(object value)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            if (value is JValue jValue)
+            {
+                return jValue.Value?.ToString();
+            }
+
+            if (value is JToken token)
+            {
+                return token.Type is JTokenType.String or JTokenType.Integer or JTokenType.Float or JTokenType.Boolean
+                    ? token.ToString()
+                    : token.ToString(Formatting.None);
+            }
+
+            return value is string str ? str : JsonConvert.SerializeObject(value, Formatting.None);
+        }
+
+        static string NormalizeOperator(string value)
+        {
+            var raw = (value ?? string.Empty).Trim().Replace(" ", string.Empty).Replace("-", "_").ToLowerInvariant();
+            return raw switch
+            {
+                "" => "exists",
+                "==" or "=" or "eq" or "equal" or "equals" => "equals",
+                "!=" or "<>" or "ne" or "noteq" or "not_equal" or "not_equals" => "not_equals",
+                ">" or "gt" or "greater" or "greaterthan" or "greater_than" => "greater",
+                ">=" or "gte" or "greaterorequal" or "greater_or_equal" => "greater_or_equal",
+                "<" or "lt" or "less" or "lessthan" or "less_than" => "less",
+                "<=" or "lte" or "lessorequal" or "less_or_equal" => "less_or_equal",
+                "between" or "range" => "between",
+                "null" or "isnull" or "is_null" => "is_null",
+                "notnull" or "not_null" or "isnotnull" or "is_not_null" => "not_null",
+                "exists" or "present" => "exists",
+                "notexists" or "not_exists" or "missing" => "not_exists",
+                "contains" => "contains",
+                "notcontains" or "not_contains" => "not_contains",
+                "regex" or "matches" or "match" => "matches",
+                "changed" or "changes" => "changed",
+                "stable" or "unchanged" => "stable",
+                _ => raw
+            };
+        }
+
+        static string NormalizeMode(string value)
+        {
+            var raw = (value ?? "Last").Trim().Replace(" ", string.Empty).Replace("-", "_").ToLowerInvariant();
+            return raw switch
+            {
+                "first" => "first",
+                "any" => "any",
+                "all" => "all",
+                "changed" => "changed",
+                "stable" or "unchanged" => "stable",
+                _ => "last"
+            };
+        }
+
+        static string GetRuleString(JObject obj, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (obj.TryGetValue(name, StringComparison.OrdinalIgnoreCase, out var token) &&
+                    token.Type != JTokenType.Null)
+                {
+                    var value = token.ToString();
+                    return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+                }
+            }
+
+            return null;
+        }
+
+        static bool GetRuleBool(JObject obj, bool fallback, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (obj.TryGetValue(name, StringComparison.OrdinalIgnoreCase, out var token) &&
+                    token.Type != JTokenType.Null &&
+                    bool.TryParse(token.ToString(), out var value))
+                {
+                    return value;
+                }
+            }
+
+            return fallback;
+        }
+
+        static double GetRuleDouble(JObject obj, double fallback, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (obj.TryGetValue(name, StringComparison.OrdinalIgnoreCase, out var token) &&
+                    TryToDouble(token, out var value))
+                {
+                    return value;
+                }
+            }
+
+            return fallback;
+        }
+
+        static long? GetRuleLong(JObject obj, long? fallback, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (obj.TryGetValue(name, StringComparison.OrdinalIgnoreCase, out var token) &&
+                    long.TryParse(token.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+                {
+                    return value;
+                }
+            }
+
+            return fallback;
+        }
+
+        static string GuessBaseMember(string member)
+        {
+            var inferred = InferValuePath(member);
+            return inferred.HasValuePath ? inferred.Member : null;
+        }
+
+        static (bool HasValuePath, string Member, string ValuePath) InferValuePath(string member)
+        {
+            if (string.IsNullOrWhiteSpace(member))
+            {
+                return (false, member, null);
+            }
+
+            var dot = member.LastIndexOf('.');
+            if (dot <= 0 || dot >= member.Length - 1)
+            {
+                return (false, member, null);
+            }
+
+            var tail = member.Substring(dot + 1);
+            if (!IsCommonValueLeaf(tail))
+            {
+                return (false, member, null);
+            }
+
+            return (true, member.Substring(0, dot), tail);
+        }
+
+        static bool IsCommonValueLeaf(string value)
+        {
+            return value is "x" or "y" or "z" or "w" or "r" or "g" or "b" or "a" or "width" or "height";
+        }
+
         static object SerializeRuntimeValue(object value, ProbeOptions options, int depth = 0)
         {
             if (value == null)
@@ -1338,6 +2129,131 @@ Search aliases: UniBridge Unity runtime state probe watch variables component fi
                     declaringType = DeclaringType,
                     value = Value,
                     error = Error
+                };
+            }
+        }
+
+        sealed class AssertionRule
+        {
+            public int Index;
+            public string Name;
+            public string Member;
+            public string ValuePath;
+            public string Operator;
+            public string Mode;
+            public JToken Expected;
+            public JToken Min;
+            public JToken Max;
+            public bool Required = true;
+            public double Tolerance;
+            public string Component;
+            public string ObjectPath;
+            public long? ObjectId;
+            public string Source;
+            public string ParseError;
+
+            public object ToDto()
+            {
+                return new
+                {
+                    index = Index,
+                    name = Name,
+                    member = Member,
+                    valuePath = ValuePath,
+                    @operator = Operator,
+                    mode = Mode,
+                    expected = Expected,
+                    min = Min,
+                    max = Max,
+                    required = Required,
+                    tolerance = Tolerance,
+                    component = Component,
+                    objectPath = ObjectPath,
+                    objectId = ObjectId,
+                    source = Source,
+                    parseError = ParseError
+                };
+            }
+        }
+
+        sealed class AssertionObservation
+        {
+            public int SampleIndex;
+            public long ObjectId;
+            public string ObjectPath;
+            public int ComponentIndex;
+            public string ComponentType;
+            public string MemberPath;
+            public string Source;
+            public string ValuePath;
+            public object Value;
+            public string Error;
+
+            public object ToDto()
+            {
+                return new
+                {
+                    sampleIndex = SampleIndex,
+                    objectId = ObjectId,
+                    objectPath = ObjectPath,
+                    componentIndex = ComponentIndex,
+                    componentType = ComponentType,
+                    memberPath = MemberPath,
+                    source = Source,
+                    valuePath = ValuePath,
+                    value = Value,
+                    error = Error
+                };
+            }
+        }
+
+        sealed class AssertionResult
+        {
+            public AssertionRule Rule;
+            public bool Passed;
+            public bool Required;
+            public string Message;
+            public List<AssertionObservation> Observations = new();
+
+            public static AssertionResult From(AssertionRule rule, bool passed, string message, IEnumerable<AssertionObservation> observations)
+            {
+                return new AssertionResult
+                {
+                    Rule = rule,
+                    Passed = passed,
+                    Required = rule.Required,
+                    Message = message,
+                    Observations = observations?.ToList() ?? new List<AssertionObservation>()
+                };
+            }
+
+            public static AssertionResult Fail(AssertionRule rule, string message, IEnumerable<AssertionObservation> observations)
+            {
+                return From(rule, false, message, observations);
+            }
+
+            public object ToDto()
+            {
+                var samples = Observations
+                    .Take(10)
+                    .Select(observation => observation.ToDto())
+                    .ToArray();
+
+                var last = Observations.LastOrDefault(observation => string.IsNullOrWhiteSpace(observation.Error))
+                    ?? Observations.LastOrDefault();
+
+                return new
+                {
+                    index = Rule.Index,
+                    name = Rule.Name,
+                    passed = Passed,
+                    required = Required,
+                    message = Message,
+                    rule = Rule.ToDto(),
+                    observedCount = Observations.Count,
+                    lastValue = last?.Value,
+                    lastSampleIndex = last?.SampleIndex,
+                    samples
                 };
             }
         }

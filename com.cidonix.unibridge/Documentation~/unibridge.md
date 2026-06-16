@@ -132,6 +132,39 @@ Useful calls:
 UniBridge_RuntimeStateProbe Action=ListMembers Component=<ComponentOrMonoBehaviour>
 UniBridge_RuntimeStateProbe Action=Snapshot Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty]
 UniBridge_RuntimeStateProbe Action=Sample Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty] SampleFrames=30
+UniBridge_RuntimeStateProbe Action=Assert Target=<objectPathOrId> Component=<component> Assertions=[{member:'field',operator:'==',value:true}]
+```
+
+`Action=Assert` is a read-only watch/assertion workflow. It samples values like
+`Action=Sample`, then evaluates simple rules and returns `passed`,
+`assertionSummary`, per-rule observed samples, and an optional saved raw payload.
+Required failed assertions return `success=false` by default, which makes them a
+useful safety gate inside `UniBridge_BatchActions`.
+
+Assertion rule fields:
+
+```text
+name: optional label
+member/memberPath: SerializedProperty path or reflected field/property
+valuePath: optional sub-value path such as x, y, z, width, or height
+operator: exists, not_exists, ==, !=, >, >=, <, <=, between, contains, matches, is_null, not_null, changed, stable
+value/expected: comparison value
+min/max: range values for between
+mode: Last, First, Any, All, Changed, or Stable
+required: false makes a failed rule informational
+tolerance: numeric equality tolerance
+```
+
+Example:
+
+```text
+UniBridge_RuntimeStateProbe Action=Assert
+  Target=/Player
+  Component=Transform
+  Assertions=[
+    {name:'scale_x_is_one',member:'localScale.x',operator:'==',value:1,tolerance:0.001},
+    {name:'player_above_floor',member:'position.y',operator:'>',value:-10}
+  ]
 ```
 
 Batch aliases include:
@@ -142,13 +175,15 @@ runtime_state
 runtime_state_probe
 state_probe
 watch_variables
+watch_assert
+runtime_assert
 component_state
 monobehaviour_state
 runtime_fields
 ```
 
-`Action=Sample` requires Play Mode by default. Pass `RequirePlayMode=false`
-only for intentional editor-time smoke tests.
+`Action=Sample` and `Action=Assert` require Play Mode by default. Pass
+`RequirePlayMode=false` only for intentional editor-time smoke tests.
 
 Target lookup uses the shared scene resolver, including inactive scene objects,
 Prefab Stage objects, instance IDs, hierarchy paths, component short/full type

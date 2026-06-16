@@ -85,10 +85,21 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.17 Notes
+
+- `UniBridge_RuntimeStateProbe Action=Assert` adds read-only runtime
+  watch/assertion rules on top of the state probe.
+- Assertions can check sampled component values with equals/not-equals,
+  numeric comparisons, ranges, contains/not-contains, regex matches, null
+  checks, `changed`, and `stable` modes.
+- Required failed assertions return `success=false` by default, which lets
+  `UniBridge_BatchActions` stop a workflow before an agent continues from an
+  invalid runtime assumption.
+
 ## Known 0.2.16 Notes
 
 - `UniBridge_RuntimeStateProbe` is a read-only runtime state probe for
-  GameObjects and components. It supports `Snapshot`, `Sample`, and
+  GameObjects and components. It supports `Snapshot`, `Sample`, `Assert`, and
   `ListMembers` without executing arbitrary C# in the project.
 - Target lookup uses the shared scene resolver, including inactive objects,
   Prefab Stage objects, instance IDs, hierarchy paths, component short/full

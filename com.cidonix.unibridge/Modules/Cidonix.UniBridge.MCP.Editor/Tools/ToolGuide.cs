@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -626,14 +626,14 @@ This tool is read-only.";
                 {
                     Key = "runtime_state_probe",
                     Title = "Probe live component state",
-                    When = "Use when a gameplay bug depends on MonoBehaviour flags, counters, references, positions, trigger state, animation state fields, or other component values over several frames.",
+                    When = "Use when a gameplay bug depends on MonoBehaviour flags, counters, references, positions, trigger state, animation state fields, or other component values over several frames, or when a workflow needs pass/fail checks for those values.",
                     FirstCalls = new[] { "UniBridge_ManageEditor Action=GetPlayModeState", "UniBridge_RuntimeStateProbe Action=ListMembers Component=<ComponentOrMonoBehaviour>", "UniBridge_RuntimeStateProbe Action=Snapshot Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty]" },
                     EditCalls = Array.Empty<string>(),
-                    VerifyCalls = new[] { "UniBridge_RuntimeStateProbe Action=Sample Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty] SampleFrames=30", "UniBridge_RuntimeProfiler Action=Sample SampleFrames=60 Metrics=[main_thread_ms,gc_alloc_bytes]", "UniBridge_ReadConsole Action=DiagnosticSummary" },
+                    VerifyCalls = new[] { "UniBridge_RuntimeStateProbe Action=Sample Target=<objectPathOrId> Component=<component> Members=[fieldOrProperty] SampleFrames=30", "UniBridge_RuntimeStateProbe Action=Assert Target=<objectPathOrId> Component=<component> Assertions=[{member:'field',operator:'==',value:true}]", "UniBridge_RuntimeProfiler Action=Sample SampleFrames=60 Metrics=[main_thread_ms,gc_alloc_bytes]", "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     Tools = new[] { "UniBridge_RuntimeStateProbe", "UniBridge_RuntimeProfiler", "UniBridge_SceneObjectView", "UniBridge_UnitySearch", "UniBridge_ManageEditor", "UniBridge_ReadConsole" },
-                    BatchAliases = new[] { "runtime_probe", "runtime_state_probe", "state_probe", "watch_state", "watch_variables", "component_state", "monobehaviour_state", "runtime_fields" },
-                    Notes = new[] { "RuntimeStateProbe is read-only and samples SerializedProperty plus reflected fields/properties; it does not execute arbitrary C# in the project.", "Target lookup uses the shared scene resolver, so inactive objects, Prefab Stage objects, instance IDs, hierarchy paths, component short/full names, MonoScript GUIDs, and serialized editor class identifiers are supported.", "Action=Sample requires Play Mode by default; pass RequirePlayMode=false only for editor-time smoke tests. Full raw samples are saved under Library/UniBridge/RuntimeStateProbe when SaveToFile=true." },
-                    Aliases = new[] { "state_probe", "runtime_state", "watch", "variables", "fields", "monobehaviour", "component_state" }
+                    BatchAliases = new[] { "runtime_probe", "runtime_state_probe", "state_probe", "watch_state", "watch_variables", "watch_assert", "runtime_assert", "component_state", "monobehaviour_state", "runtime_fields" },
+                    Notes = new[] { "RuntimeStateProbe is read-only and samples SerializedProperty plus reflected fields/properties; it does not execute arbitrary C# in the project.", "Action=Assert evaluates simple rules such as equals, greater/less, between, contains, regex matches, changed, stable, isNull, and notNull. Required assertion failures return success=false by default so BatchActions can stop safely.", "Target lookup uses the shared scene resolver, so inactive objects, Prefab Stage objects, instance IDs, hierarchy paths, component short/full names, MonoScript GUIDs, and serialized editor class identifiers are supported.", "Action=Sample and Action=Assert require Play Mode by default; pass RequirePlayMode=false only for editor-time smoke tests. Full raw samples are saved under Library/UniBridge/RuntimeStateProbe when SaveToFile=true." },
+                    Aliases = new[] { "state_probe", "runtime_state", "watch", "assert", "expect", "variables", "fields", "monobehaviour", "component_state" }
                 },
                 new WorkflowGuide
                 {
