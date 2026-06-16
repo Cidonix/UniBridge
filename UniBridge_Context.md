@@ -5,6 +5,63 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.26 Agent Playbook Polish
+
+Фінальний Locus-inspired polish закрито без додавання ще одного великого tool:
+замість дублювання існуючих можливостей дополіровано agent-facing playbooks у
+`ToolGuide`, `DomainCatalog`, `ContextSnapshot`, `Discover` і batch aliases.
+
+Що додано:
+
+- `UniBridge_ToolGuide Action=Workflow Topic=agent_playbook` як компактний
+  default operating protocol для нових агентів;
+- `ToolGuide Overview` тепер повертає `agentPlaybook` з read-before-modify,
+  scope awareness, safe execution і verification ladder;
+- `UniBridge_DomainCatalog` повертає `globalRiskControls`, а кожен домен має
+  локальні `riskControls`;
+- `UniBridge_ContextSnapshot` у `agentBrief` повертає `operatingProtocol` і
+  `verificationLadder`;
+- `UniBridge_Discover Action=Workflows` показує workflow `agent_playbook`;
+- `BatchActions` aliases доповнено:
+  `agent_playbook`, `playbook`, `agent_rules`, `read_before_modify`,
+  `verification_ladder`, `risk_controls`, `operating_protocol`;
+- package/docs оновлено до `0.2.26`.
+
+Навіщо це потрібно:
+
+- новий агент швидше розуміє "як працювати через UniBridge", а не просто бачить
+  довгий список tools;
+- перед ризиковими змінами агент отримує явні правила: спочатку прочитати
+  current state/reference sites/domain schema, потім dry-run, потім verification;
+- Locus-pass можна поки вважати закритим: корисні workflow-ідеї перенесені у
+  нашу архітектуру без копіювання коду і без прив'язки до чужої оболонки.
+
+Testing status:
+
+- `dotnet build UniBridge.Relay/UniBridge.Relay.csproj`: success,
+  `0 warnings`, `0 errors`;
+- пакет синхронізовано у
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`;
+- `UniBridge_ManageEditor Action=WaitForReadyAfterReload`: ready,
+  `isCompiling=false`, `isPlaying=false`;
+- `UniBridge_ManageEditor Action=GetCompilationDiagnostics`: `errors=0`,
+  `warnings=0`;
+- `UniBridge_ReadConsole Action=DiagnosticSummary`: `totalEntries=0`,
+  `warnings=0`, `errors=0`, `exceptions=0`;
+- `UniBridge_ToolGuide Action=Workflow Topic=agent_playbook`: workflow found,
+  aliases і verification calls присутні;
+- `UniBridge_ToolGuide Action=Overview`: `agentPlaybook` і workflow topic
+  `agent_playbook` присутні;
+- `UniBridge_DomainCatalog Action=Overview`: `globalRiskControls` і
+  domain-level `riskControls` присутні;
+- `UniBridge_ContextSnapshot Depth=Brief IncludeAgentBrief=true
+  ConsoleSummaryMode=Compact`: `operatingProtocol`, `verificationLadder` і
+  recommended call до `ToolGuide Workflow=agent_playbook` присутні;
+- `UniBridge_Discover Action=Workflows Query=agent_playbook`: workflow
+  повертається;
+- `UniBridge_BatchActions DryRun=true` з alias `agent_playbook` і
+  `tool_domains`: validation passed, мутацій не було.
+
 ## 2026-06-16: UniBridge 0.2.25 RuntimeProfiler Hierarchy Export
 
 Третій Locus-inspired пункт реалізовано як read-only profiler hierarchy /

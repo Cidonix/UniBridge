@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler profiler hierarchy marker hierarchy frame export top markers performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search asset reference search asset_ref_search reference locations script usages code usages caller scan member callers code member usages serialized member usages ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide agent playbook read before modify verification ladder risk controls WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler profiler hierarchy marker hierarchy frame export top markers performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search asset reference search asset_ref_search reference locations script usages code usages caller scan member callers code member usages serialized member usages ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -74,12 +74,16 @@ This tool is read-only.";
                 coreLoop = new[]
                 {
                     "Orient with ContextSnapshot or ToolGuide.",
+                    "Read before modifying: resolve exact targets, current state, reference sites, and domain-specific schema before editing.",
+                    "Choose the narrowest scope: scene, prefab stage, asset, script, or editor lifecycle.",
                     "Resolve targets with UnitySearch, SceneObjectView, TypeSchema/TypeIndex, AssetIntelligence, or ScriptIntelligence.",
                     "Use WorkflowRecipes for common full workflows, or dry-run custom multi-step changes with BatchActions.",
+                    "Execute with WorkSession/BatchActions safety when touching more than one object, asset, or setting.",
                     "Apply the smallest suitable Manage* tool.",
-                    "Verify with ReadConsole and a capture/inspect tool.",
+                    "Verify with domain inspect tools, ReadConsole, editor events, and visual/runtime captures when relevant.",
                     "Review the WorkSession changed-file report before reporting completion."
                 },
+                agentPlaybook = BuildAgentPlaybook(),
                 workflowTopics = workflows.Select(ToWorkflowSummary).ToArray(),
                 batch = BuildBatchSummary(),
                 registeredTools = parameters.IncludeRegisteredTools == true ? BuildRegisteredToolSummary() : null
@@ -176,6 +180,44 @@ This tool is read-only.";
             };
         }
 
+        static object BuildAgentPlaybook()
+        {
+            return new
+            {
+                purpose = "Default operating protocol for AI agents using UniBridge on real Unity projects.",
+                readBeforeModify = new[]
+                {
+                    "Use ContextSnapshot or DomainCatalog before planning broad edits.",
+                    "Resolve concrete object/asset/script targets with UnitySearch, SceneObjectView, AssetIntelligence, ScriptIntelligence, or TypeSchema before mutating.",
+                    "For large scenes or duplicate names, use SceneHierarchyExport and objectId/indexedPath rather than name-only references.",
+                    "Before moving, renaming, deleting, or changing serialized APIs, inspect reference locations with AssetIntelligence ReferenceGraph/Impact or ScriptIntelligence Usages/MemberUsages/CodeUsages."
+                },
+                scopeAwareness = new[]
+                {
+                    "Check whether Prefab Stage is open before scene or prefab edits.",
+                    "Use ScopedEdit for targeted scene/prefab work when the agent must restore prior editor context.",
+                    "Use EditorSnapshot before temporary scene, selection, camera, window, or Prefab Stage changes.",
+                    "After asset refresh, script compilation, or Play Mode boundaries, use reload-safe wait calls before continuing."
+                },
+                safeExecution = new[]
+                {
+                    "Start WorkSession before broad changes and review it before final reporting.",
+                    "Run BatchActions with DryRun=true before multi-step execution.",
+                    "Keep batches small and domain-focused; include console/editor event deltas when useful.",
+                    "Prefer objectId, GUID, full type names, and indexed paths over ambiguous short names."
+                },
+                verificationLadder = new[]
+                {
+                    "Read compilation diagnostics after script or assembly changes.",
+                    "Read console DiagnosticSummary after every meaningful edit batch.",
+                    "Use domain inspect tools to confirm serialized state.",
+                    "Use CaptureView, CaptureAsset, CaptureUIToolkit, or VisualSceneAudit for visible work.",
+                    "Use RuntimeStateProbe or RuntimeProfiler for Play Mode behavior and performance claims.",
+                    "End with WorkSession Review/Diff when files or assets changed."
+                }
+            };
+        }
+
         static object BuildRegisteredToolSummary()
         {
             var entries = McpToolRegistry.GetAllToolsForSettings()
@@ -268,13 +310,33 @@ This tool is read-only.";
                     Key = "orientation",
                     Title = "Orient in a Unity project",
                     When = "Use at the start of an unfamiliar project or after a long pause.",
-                    FirstCalls = new[] { "UniBridge_ToolGuide Action=Overview", "UniBridge_DomainCatalog Action=Overview", "UniBridge_ContextSnapshot Depth=Standard IncludeConsole=true IncludeTools=true IncludeProjectRoots=true IncludeProjectSettings=true", "UniBridge_WorkSession Action=Begin Name=<task> before broad edits", "UniBridge_EditorEvents Action=Snapshot IncludeSelection=true IncludeDiagnostics=true", "UniBridge_ReadConsole Action=DiagnosticSummary" },
+                    FirstCalls = new[] { "UniBridge_ToolGuide Action=Overview", "UniBridge_ToolGuide Action=Workflow Topic=agent_playbook", "UniBridge_DomainCatalog Action=Overview", "UniBridge_ContextSnapshot Depth=Standard IncludeConsole=true IncludeTools=true IncludeProjectRoots=true IncludeProjectSettings=true", "UniBridge_WorkSession Action=Begin Name=<task> before broad edits", "UniBridge_EditorEvents Action=Snapshot IncludeSelection=true IncludeDiagnostics=true", "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     EditCalls = Array.Empty<string>(),
                     VerifyCalls = new[] { "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     Tools = new[] { ToolName, "UniBridge_Discover", "UniBridge_DomainCatalog", "UniBridge_ContextSnapshot", "UniBridge_WorkSession", "UniBridge_EditorEvents", "UniBridge_RuntimeProfiler", "UniBridge_RuntimeStateProbe", "UniBridge_UnitySearch", "UniBridge_WorkflowRecipes", "UniBridge_ReadConsole", "UniBridge_ExecutionStatus", "UniBridge_EditorSnapshot" },
                     BatchAliases = Array.Empty<string>(),
-                    Notes = new[] { "Use this before planning broad scene, asset, UI, or script edits." },
+                    Notes = new[] { "Use this before planning broad scene, asset, UI, or script edits.", "Open the agent_playbook workflow when a fresh agent needs the default read-before-modify and verification protocol." },
                     Aliases = new[] { "start", "overview", "project" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "agent_playbook",
+                    Title = "Default agent operating protocol",
+                    When = "Use when a new agent needs a compact rulebook for safe Unity work through UniBridge: what to read first, how to scope edits, and how to verify.",
+                    FirstCalls = new[] { "UniBridge_ContextSnapshot Depth=Standard IncludeAgentBrief=true IncludeConsole=true IncludeProjectRoots=true", "UniBridge_DomainCatalog Action=SuggestTools Query=<task domain>", "UniBridge_ReadConsole Action=DiagnosticSummary", "UniBridge_WorkSession Action=Begin Name=<task> before broad edits" },
+                    EditCalls = new[] { "UniBridge_BatchActions DryRun=true IncludeImpact=true for multi-step changes", "UniBridge_ScopedEdit DryRun=true ScopePath=Assets/... for scene/prefab-specific batches", "Use the narrow Manage* tool only after target identity and current state are known" },
+                    VerifyCalls = new[] { "UniBridge_ManageEditor Action=GetCompilationDiagnostics after script/import work", "UniBridge_ReadConsole Action=DiagnosticSummary", "UniBridge_EditorEvents Action=Snapshot IncludeDiagnostics=true IncludeAssetChanges=true", "UniBridge_WorkSession Action=Review", "Domain-specific inspect/capture/runtime tool for the changed area" },
+                    Tools = new[] { ToolName, "UniBridge_ContextSnapshot", "UniBridge_DomainCatalog", "UniBridge_WorkSession", "UniBridge_BatchActions", "UniBridge_ScopedEdit", "UniBridge_EditorSnapshot", "UniBridge_EditorEvents", "UniBridge_ReadConsole", "UniBridge_UnitySearch", "UniBridge_SceneHierarchyExport", "UniBridge_AssetIntelligence", "UniBridge_ScriptIntelligence", "UniBridge_TypeSchema", "UniBridge_CaptureView", "UniBridge_VisualSceneAudit", "UniBridge_RuntimeStateProbe", "UniBridge_RuntimeProfiler" },
+                    BatchAliases = new[] { "guide", "tool_guide", "agent_playbook", "playbook", "read_before_modify", "verification_ladder", "risk_controls", "checkpoint", "context", "console" },
+                    Notes = new[]
+                    {
+                        "Read-before-modify is mandatory for real project work: inspect target identity, current serialized state, references, and domain schema before writing.",
+                        "Scene/prefab scope matters. Check Prefab Stage and use ScopedEdit or EditorSnapshot when temporary context changes are needed.",
+                        "For asset/script moves, deletes, renames, callback renames, or serialized field changes, inspect exact reference locations first.",
+                        "For large scenes, use SceneHierarchyExport and objectId/indexedPath; avoid name-only operations where duplicates are likely.",
+                        "Dry-run multi-step changes, execute with console/editor-event deltas, then verify through diagnostics plus a domain-specific inspect/capture/runtime tool."
+                    },
+                    Aliases = new[] { "playbook", "agent_rules", "read_before_modify", "safe_workflow", "verification_ladder", "risk_controls", "operating_protocol" }
                 },
                 new WorkflowGuide
                 {

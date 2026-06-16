@@ -405,7 +405,14 @@ Use `UniBridge_ToolGuide` when an agent is new to a project or unsure which UniB
 It is read-only and returns:
 
 - the recommended orientation loop;
-- workflow topics such as `ui`, `uitoolkit`, `scene_objects`, `scoped_editing`, `behaviour_context`, `tilemap2d`, `input_actions`, `timeline`, `physics2d`, `physics3d`, `navigation`, `rendering`, `assets_import`, `materials`, `scriptable_objects`, `unity_events`, `visual_capture`, `animator`, `scripts`, `batch`, `console`, and `search`;
+- `agentPlaybook`, a compact operating protocol for read-before-modify,
+  scene/prefab/editor scope awareness, safe execution, and verification;
+- workflow topics such as `agent_playbook`, `ui`, `uitoolkit`,
+  `scene_objects`, `scoped_editing`, `behaviour_context`, `tilemap2d`,
+  `input_actions`, `timeline`, `physics2d`, `physics3d`, `navigation`,
+  `rendering`, `assets_import`, `materials`, `scriptable_objects`,
+  `unity_events`, `visual_capture`, `animator`, `scripts`, `batch`,
+  `console`, and `search`;
 - first calls, edit calls, and verification calls for the selected workflow;
 - batch aliases and allowed tools;
 - optional current tool-registry metadata.
@@ -413,6 +420,8 @@ It is read-only and returns:
 Useful calls:
 
 - `Action=Overview`: get the project-workflow map;
+- `Action=Workflow Topic=agent_playbook`: get the default AI operating
+  protocol for safe Unity edits through UniBridge;
 - `Action=Workflow Topic=ui`: get the recommended uGUI workflow;
 - `Action=Workflow Topic=scoped_editing`: get the safe scene/prefab asset editing workflow;
 - `Action=Workflow Topic=tilemap2d`: get the Grid/Tilemap/Tile authoring workflow;
@@ -423,7 +432,8 @@ Useful calls:
 - `Action=Workflow Topic=navigation`: get the NavMeshAgent/NavMeshObstacle/NavMeshSurface workflow;
 - `Action=Workflow Topic=rendering`: get the Camera/Light/Volume/render settings workflow;
 - `Action=Workflow Topic=uitoolkit`: get the UXML/USS/UIDocument workflow;
-- `UniBridge_DomainCatalog Action=InspectDomain Domain=Rendering`: inspect the domain map directly;
+- `UniBridge_DomainCatalog Action=InspectDomain Domain=Rendering`: inspect the
+  domain map and its `riskControls` directly;
 - `Action=Workflow Topic=assets_import`: get the importer workflow;
 - `Action=Tool Tool=asset_importer`: resolve an alias and see related workflows.
 
@@ -506,7 +516,12 @@ The snapshot returns one structured overview with:
 - risk flags such as compiling/importing, Play Mode, dirty scenes, open Prefab
   Stage, console issues, hierarchy truncation, large loaded scenes, or missing
   WorkSession;
-- guardrails and recommended next UniBridge calls.
+- guardrails and recommended next UniBridge calls;
+- `operatingProtocol`, a short read-before-modify / scope-awareness /
+  execution-safety protocol;
+- `verificationLadder`, a concise post-change checklist covering serialized
+  state, console, editor events, visual captures, runtime probes, profiler
+  samples, and WorkSession review.
 
 Pass `IncludeAgentBrief=false` when an agent wants only the raw snapshot
 sections without the onboarding summary.

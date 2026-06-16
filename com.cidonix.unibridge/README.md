@@ -94,6 +94,22 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.26 Notes
+
+- `UniBridge_ToolGuide Action=Workflow Topic=agent_playbook` now gives fresh
+  agents a compact operating protocol: read before modifying, respect scene /
+  prefab / editor scope, execute with WorkSession and dry-runs, then verify
+  through the right diagnostics and capture/runtime tools.
+- `UniBridge_ContextSnapshot` `agentBrief` now includes `operatingProtocol`
+  and `verificationLadder` in addition to project shape, risk flags,
+  guardrails, and recommended next calls.
+- `UniBridge_DomainCatalog` domain summaries/details now include
+  `riskControls` so agents can see what to inspect before editing, how to
+  execute safely, how to verify, and which red flags matter per domain.
+- New searchable aliases include `agent_playbook`, `playbook`,
+  `read_before_modify`, `verification_ladder`, `risk_controls`, and
+  `operating_protocol`.
+
 ## Known 0.2.24 Notes
 
 - `UniBridge_ScriptIntelligence Action=ChangeImpact` can compare the current

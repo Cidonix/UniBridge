@@ -2,6 +2,24 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.26
+
+### Improved
+
+- Polished agent-facing playbooks for new AI agents working through UniBridge.
+- `UniBridge_ToolGuide` now includes `Workflow Topic=agent_playbook`, a
+  compact read-before-modify, scope-awareness, safe-execution, and
+  verification-ladder protocol.
+- `UniBridge_ContextSnapshot` `agentBrief` now returns `operatingProtocol` and
+  `verificationLadder` beside project shape, risk flags, guardrails, and
+  recommended next calls.
+- `UniBridge_DomainCatalog` now returns per-domain `riskControls` with what to
+  inspect before editing, how to execute safely, how to verify, and which red
+  flags matter for that domain.
+- Added discoverability aliases for `agent_playbook`, `playbook`,
+  `read_before_modify`, `verification_ladder`, `risk_controls`, and
+  `operating_protocol`.
+
 ## 0.2.25
 
 ### Added

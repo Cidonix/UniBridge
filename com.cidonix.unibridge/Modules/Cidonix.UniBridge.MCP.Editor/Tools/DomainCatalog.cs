@@ -26,7 +26,7 @@ public const string Description = @"Return an agent-facing catalog of Unity doma
 
 Use this as a first call when a new agent knows the task domain but not the exact UniBridge tool. It is read-only and optimized for tool discovery, workflow order, and domain-specific type hints.
 
-Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler profiler hierarchy marker hierarchy frame export top markers performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search asset reference search asset_ref_search reference locations script usages code usages caller scan member callers code member usages member usages serialized member usages UnityEvent usages AnimationEvent usages serialized field usages ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
+Search aliases: UniBridge Unity MCP DomainCatalog agent playbook read before modify verification ladder risk controls WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler profiler hierarchy marker hierarchy frame export top markers performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search asset reference search asset_ref_search reference locations script usages code usages caller scan member callers code member usages member usages serialized member usages UnityEvent usages AnimationEvent usages serialized field usages ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
 
 Args:
     Action: Overview, ListDomains, InspectDomain, ListTypes, or SuggestTools.
@@ -110,9 +110,11 @@ Returns:
                 {
                     new { step = 1, tool = ToolName, why = "Pick the Unity work domain and its recommended tool sequence." },
                     new { step = 2, tool = "UniBridge_ToolGuide", why = "Open the workflow guide for the selected topic." },
-                    new { step = 3, tool = "UniBridge_UnitySearch", why = "Resolve concrete scene objects, assets, scripts, or shaders before editing." },
-                    new { step = 4, tool = "UniBridge_TypeSchema", why = "Inspect exact writable properties and use TypeIndex/TypeFingerprint for loaded type lookup before low-level patches." }
+                    new { step = 3, tool = "UniBridge_ToolGuide Workflow=agent_playbook", why = "Read the shared AI operating protocol before broad or risky edits." },
+                    new { step = 4, tool = "UniBridge_UnitySearch", why = "Resolve concrete scene objects, assets, scripts, or shaders before editing." },
+                    new { step = 5, tool = "UniBridge_TypeSchema", why = "Inspect exact writable properties and use TypeIndex/TypeFingerprint for loaded type lookup before low-level patches." }
                 },
+                globalRiskControls = BuildGlobalRiskControls(),
                 domainCount = domains.Length,
                 domains,
                 allDomains = GetDomains().Select(domain => domain.Key).ToArray()
@@ -252,6 +254,7 @@ Returns:
                 authoringTools = includeTools ? domain.AuthoringTools : null,
                 inspectionTools = includeTools ? domain.InspectionTools : null,
                 verificationTools = includeTools ? domain.VerificationTools : null,
+                riskControls = BuildDomainRiskControls(domain, compact: true),
                 aliases = domain.Aliases,
                 typeHints = includeTypes ? BuildTypeSummaries(domain, limit) : null
             };
@@ -274,6 +277,7 @@ Returns:
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(alias => alias, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
+                riskControls = BuildDomainRiskControls(domain, compact: false),
                 typeHints = BuildTypeSummaries(domain, limit),
                 notes = domain.Notes,
                 aliases = domain.Aliases
@@ -287,6 +291,120 @@ Returns:
                 tool,
                 batchAllowed = BatchActionToolCatalog.IsAllowed(tool),
                 aliases = BatchActionToolCatalog.GetAliasesForTool(tool)
+            };
+        }
+
+        static object BuildGlobalRiskControls()
+        {
+            return new
+            {
+                readBeforeModify = new[]
+                {
+                    "Resolve exact target identity before writes: objectId/indexedPath for scene objects, GUID/path for assets, full type names for components.",
+                    "Inspect references before rename/move/delete or serialized API changes.",
+                    "Check Prefab Stage, dirty scenes, Play Mode state, and console diagnostics before broad edits."
+                },
+                executeSafely = new[]
+                {
+                    "Use WorkSession for broad tasks and BatchActions DryRun=true for multi-step edits.",
+                    "Use ScopedEdit for scene/prefab-specific work that should restore prior editor state.",
+                    "Prefer reload-safe editor workflows around refresh, compilation, and Play Mode."
+                },
+                verify = new[]
+                {
+                    "Read compilation diagnostics and console summary.",
+                    "Inspect the touched domain again.",
+                    "Capture/audit visible work or probe runtime state when the result is visual or behavioral."
+                }
+            };
+        }
+
+        static object BuildDomainRiskControls(DomainDefinition domain, bool compact)
+        {
+            var commonBefore = new List<string>
+            {
+                "Resolve target identity and current state before editing.",
+                "Use TypeSchema/DomainCatalog hints when component or asset type names may be ambiguous."
+            };
+            var commonExecute = new List<string>
+            {
+                "Use BatchActions DryRun=true for multi-step domain changes."
+            };
+            var commonVerify = new List<string>
+            {
+                "ReadConsole DiagnosticSummary after edits."
+            };
+            var redFlags = new List<string>();
+
+            switch (domain.Key)
+            {
+                case "LargeScenes":
+                    commonBefore.Add("Export full hierarchy to file and use objectId/indexedPath before reparenting or sorting.");
+                    commonExecute.Add("Use ManageSceneHierarchy dry-run and object-count validation before execution.");
+                    commonVerify.Add("Re-export or compare hierarchy after changes.");
+                    redFlags.Add("Duplicate object names or truncated snapshots make name-only edits unsafe.");
+                    break;
+                case "Scripts":
+                    commonBefore.Add("Run Usages/MemberUsages/CodeUsages/ChangeImpact before deleting, renaming, or changing public/serialized members.");
+                    commonExecute.Add("Use SHA/precondition script edits instead of BatchActions for text mutation.");
+                    commonVerify.Add("ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics.");
+                    redFlags.Add("Serialized UnityEvent/AnimationEvent/field references can break without C# compile errors.");
+                    break;
+                case "Assets":
+                    commonBefore.Add("Use ReferenceGraph/Impact with IncludeReferenceLocations=true before move, rename, delete, or importer changes.");
+                    commonExecute.Add("Use asset snapshots or BatchActions rollback for importer/material/data changes.");
+                    commonVerify.Add("Inspect importer/asset context and refresh reference graph when asset deltas occurred.");
+                    redFlags.Add("Asset paths can be stale; resolve by GUID or ResolveMissing before changing files.");
+                    break;
+                case "Rendering":
+                case "UI":
+                case "UIToolkit":
+                case "VFX":
+                    commonBefore.Add("Inspect layout/render/component state before changing visible objects.");
+                    commonExecute.Add("Keep visual edits scoped and capture after each meaningful batch.");
+                    commonVerify.Add("Use CaptureView/CaptureAsset/CaptureUIToolkit and VisualSceneAudit.");
+                    redFlags.Add("A clean console does not prove visual quality; capture or audit visible output.");
+                    break;
+                case "RuntimeDebug":
+                    commonBefore.Add("Check Play Mode state and list readable members/metrics before sampling.");
+                    commonExecute.Add("Use runtime probes as read-only gates; do not infer gameplay state from static scene data alone.");
+                    commonVerify.Add("Use RuntimeStateProbe assertions or RuntimeProfiler samples plus console diagnostics.");
+                    redFlags.Add("Runtime state disappears when exiting Play Mode; distinguish runtime-only changes from asset/scene changes.");
+                    break;
+                case "EditorOps":
+                    commonBefore.Add("Check editor readiness, compilation/import state, and current selection before lifecycle actions.");
+                    commonExecute.Add("Use reload-safe no-wait plus wait workflows across refresh, compile, and Play Mode boundaries.");
+                    commonVerify.Add("Use EditorEvents deltas and GetCompilationDiagnostics after lifecycle actions.");
+                    redFlags.Add("Domain reload may recreate the bridge; do not treat a reload boundary as a normal in-process wait.");
+                    break;
+                case "Safety":
+                    commonBefore.Add("Start or inspect WorkSession before broad changes.");
+                    commonExecute.Add("Dry-run selective reverts before executing them.");
+                    commonVerify.Add("Review/Diff changed paths before final reporting.");
+                    redFlags.Add("Rollback protects one batch; WorkSession explains the whole agent work window.");
+                    break;
+                default:
+                    commonVerify.Add("Use the domain's inspection tool to verify serialized state.");
+                    break;
+            }
+
+            if (compact)
+            {
+                return new
+                {
+                    beforeEditing = commonBefore.Take(3).ToArray(),
+                    executeSafely = commonExecute.Take(2).ToArray(),
+                    verify = commonVerify.Take(2).ToArray(),
+                    redFlags = redFlags.Take(1).ToArray()
+                };
+            }
+
+            return new
+            {
+                beforeEditing = commonBefore.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                executeSafely = commonExecute.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                verify = commonVerify.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                redFlags = redFlags.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
             };
         }
 

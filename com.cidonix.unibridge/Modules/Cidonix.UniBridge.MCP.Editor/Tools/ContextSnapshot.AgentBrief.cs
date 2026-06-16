@@ -37,6 +37,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 activeWorkSession,
                 riskFlags = risks,
                 guardrails = BuildAgentGuardrails(activeWorkSession, risks),
+                operatingProtocol = BuildAgentOperatingProtocol(risks),
+                verificationLadder = BuildAgentVerificationLadder(risks),
                 recommendedNextCalls = nextCalls
             };
         }
@@ -527,6 +529,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
 
             calls.Add("UniBridge_ToolGuide Action=Overview");
+            calls.Add("UniBridge_ToolGuide Action=Workflow Topic=agent_playbook");
             calls.Add("UniBridge_DomainCatalog Action=SuggestTools Query=<task domain>");
 
             if (HasRisk(risks, "console_errors") || HasRisk(risks, "console_warnings"))
@@ -534,21 +537,28 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 calls.Add("UniBridge_ReadConsole Action=DiagnosticSummary");
             }
 
+            if (HasRisk(risks, "large_loaded_scene") || HasRisk(risks, "hierarchy_truncated_by_count"))
+            {
+                calls.Add("UniBridge_SceneHierarchyExport Action=Export OutputToFile=true IncludeInactive=true IncludeRenderers=true IncludePrefabInfo=true");
+            }
+
             calls.Add("UniBridge_SceneObjectView Action=Hierarchy MaxDepth=2");
             calls.Add("UniBridge_UnitySearch Query=<thing to find> IncludeInactive=true");
             calls.Add("UniBridge_CaptureView Action=SceneView");
 
-            return calls.Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToArray();
+            return calls.Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToArray();
         }
 
         static string[] BuildAgentGuardrails(object activeWorkSession, object[] risks)
         {
             var guardrails = new List<string>
             {
+                "Read before modifying: resolve exact targets, current state, references, and domain schema before writes.",
                 "Before mutating project files, scenes, prefabs, or import settings, start UniBridge_WorkSession and review it after the change.",
                 "Use DryRun=true for BatchActions, ManageSceneHierarchy, prefab, importer, and broad asset operations before execution.",
-                "For large or truncated scenes, prefer SceneHierarchyExport and objectId-based edits over name-only paths.",
-                "After scripts/imports/Play Mode boundaries, use reload-safe editor calls and read compilation/console diagnostics."
+                "For large or truncated scenes, prefer SceneHierarchyExport and objectId/indexedPath-based edits over name-only paths.",
+                "After scripts/imports/Play Mode boundaries, use reload-safe editor calls and read compilation/console diagnostics.",
+                "For visible work, capture or audit the result before saying it is done."
             };
 
             if (HasRisk(risks, "prefab_stage_open"))
@@ -557,6 +567,77 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
 
             return guardrails.ToArray();
+        }
+
+        static object BuildAgentOperatingProtocol(object[] risks)
+        {
+            return new
+            {
+                readBeforeModify = new[]
+                {
+                    "ContextSnapshot/DomainCatalog for project and domain orientation.",
+                    "UnitySearch/SceneObjectView/AssetIntelligence/ScriptIntelligence/TypeSchema to resolve exact targets.",
+                    "ReferenceGraph/Impact or ScriptIntelligence usages before moves, deletes, renames, callback changes, or serialized API changes."
+                },
+                scopeAwareness = new[]
+                {
+                    "Check dirty scenes, Play Mode, Prefab Stage, and active scene before editing.",
+                    "Use ScopedEdit for a specific scene/prefab asset and EditorSnapshot for temporary editor context changes.",
+                    "Use objectId, GUID, full type name, and indexedPath whenever duplicate names or stale paths are possible."
+                },
+                executionSafety = new[]
+                {
+                    "Begin WorkSession for broad work.",
+                    "Dry-run BatchActions or hierarchy/prefab/asset operations before execution.",
+                    "Keep batches small and request console/editor-event deltas when verifying an execution batch."
+                },
+                riskSpecificHint = BuildRiskSpecificHint(risks)
+            };
+        }
+
+        static object BuildAgentVerificationLadder(object[] risks)
+        {
+            var steps = new List<string>
+            {
+                "Use the domain-specific inspect/read tool to confirm serialized state.",
+                "ReadConsole Action=DiagnosticSummary after meaningful edits.",
+                "Use EditorEvents/ExecutionStatus if the edit crossed asset refresh, compile, play-mode, or async editor boundaries.",
+                "Use capture/visual audit for UI, rendering, VFX, camera, material, or scene presentation work.",
+                "Use RuntimeStateProbe/RuntimeProfiler for Play Mode behavior or performance claims.",
+                "Use WorkSession Review/Diff before final reporting when files/assets changed."
+            };
+
+            if (HasRisk(risks, "console_errors") || HasRisk(risks, "console_warnings"))
+            {
+                steps.Insert(0, "Resolve or account for existing console diagnostics before attributing issues to new changes.");
+            }
+
+            if (HasRisk(risks, "large_loaded_scene") || HasRisk(risks, "hierarchy_truncated_by_count"))
+            {
+                steps.Insert(0, "For hierarchy work, re-export or compare the full SceneHierarchyExport after edits.");
+            }
+
+            return steps.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        static string BuildRiskSpecificHint(object[] risks)
+        {
+            if (HasRisk(risks, "editor_compiling"))
+                return "Unity is compiling; wait for reload-safe readiness before code-dependent work.";
+
+            if (HasRisk(risks, "asset_importing"))
+                return "Unity is importing; wait before reading diagnostics or mutating assets.";
+
+            if (HasRisk(risks, "prefab_stage_open"))
+                return "Prefab Stage is open; explicitly choose prefab contents versus loaded scene targets.";
+
+            if (HasRisk(risks, "large_loaded_scene") || HasRisk(risks, "hierarchy_truncated_by_count"))
+                return "Scene scale/truncation detected; use full hierarchy export and objectId/indexedPath for structural edits.";
+
+            if (HasRisk(risks, "console_errors") || HasRisk(risks, "console_warnings"))
+                return "Console diagnostics exist; create/read markers around new work to separate old noise from new issues.";
+
+            return "No special risk override detected; follow read-before-modify, dry-run, and verification ladder.";
         }
 
         static bool HasRisk(object[] risks, string code)

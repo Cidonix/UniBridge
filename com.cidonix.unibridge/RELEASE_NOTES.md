@@ -1,8 +1,47 @@
-# UniBridge 0.2.25 Release Notes
+# UniBridge 0.2.26 Release Notes
 
 Release date: 2026-06-16
 
-This release adds profiler marker hierarchy export to
+This release finishes the Locus-inspired agent-UX pass by polishing the
+guidance that a fresh AI agent sees before it starts editing a Unity project.
+It does not add another large tool; it makes the existing guide and snapshot
+tools clearer, safer, and more directly actionable.
+
+`UniBridge_ToolGuide Action=Workflow Topic=agent_playbook` now returns a
+compact operating protocol:
+
+- read-before-modify rules;
+- scene/prefab/editor scope awareness;
+- safe execution defaults for WorkSession, BatchActions, ScopedEdit, and
+  EditorSnapshot;
+- a verification ladder from serialized state checks through console,
+  editor-event, visual, runtime, profiler, and WorkSession review checks.
+
+`UniBridge_ContextSnapshot` `agentBrief` now includes:
+
+- `operatingProtocol` for what to inspect before writes;
+- `verificationLadder` for what to run after work;
+- risk-specific hints for compiling/importing, Prefab Stage, large scenes,
+  hierarchy truncation, and existing console diagnostics;
+- recommended next calls that point fresh agents at the playbook and full
+  hierarchy export when scene scale requires it.
+
+`UniBridge_DomainCatalog` now adds `riskControls` to domain summaries and
+details. A new agent inspecting domains such as `Scripts`, `Assets`,
+`LargeScenes`, `Rendering`, `UI`, `RuntimeDebug`, `EditorOps`, or `Safety`
+can see what to read before editing, how to execute safely, how to verify, and
+what red flags to watch.
+
+New searchable aliases include:
+
+- `agent_playbook`;
+- `playbook`;
+- `read_before_modify`;
+- `verification_ladder`;
+- `risk_controls`;
+- `operating_protocol`.
+
+The previous 0.2.25 release added profiler marker hierarchy export to
 `UniBridge_RuntimeProfiler`. Agents can now ask for a bounded one-frame or
 short-window view of hot profiler marker paths instead of only seeing counters
 such as frame time, GC, batches, or memory.
