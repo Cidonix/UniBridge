@@ -5,6 +5,75 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.18 BatchActions post-action diagnostics
+
+Додано opt-in self-check прямо в `UniBridge_BatchActions`, щоб агент після
+multi-step workflow одразу бачив нові console/editor сигнали, не роблячи
+окремий ручний marker/read цикл.
+
+Нові top-level параметри `UniBridge_BatchActions`:
+
+- `IncludeConsoleDelta=false` за замовчуванням;
+- `ConsoleDeltaMarkerLabel`;
+- `ConsoleDeltaMaxIssues=5`;
+- `ConsoleDeltaMaxSamples=5`;
+- `IncludeEditorEventDelta=false` за замовчуванням;
+- `EditorEventDeltaLimit=25`.
+
+Поведінка:
+
+- якщо `IncludeConsoleDelta=true`, batch перед виконанням створює
+  `UniBridge_ReadConsole Action=MarkSession`, а після кроків додає
+  `data.postActionDiagnostics.consoleDelta`;
+- console delta повертає compact `DiagnosticSummary` лише для entries після
+  marker: totals, dominant issue, critical groups, warning groups, likely spam,
+  recent samples; `timelineHighlights` навмисно опущено, щоб не роздувати
+  відповідь;
+- якщо `IncludeEditorEventDelta=true`, batch бере
+  `EditorEventHistory.LatestId()` перед виконанням і після кроків додає
+  `data.postActionDiagnostics.editorEventDelta` з bounded snapshot;
+- self-check не має валити весь batch, якщо сам diagnostic read не вдався:
+  помилка йде в `postActionDiagnostics.warnings`.
+
+Навіщо це:
+
+- агент після scene/UI/material/object batch-змін отримує власний короткий
+  “чи я щось зламав у консолі/редакторі” блок;
+- не треба вручну пам'ятати sequence `MarkSession -> BatchActions ->
+  DiagnosticSummary AfterMarkerId`;
+- це доповнює, а не дублює `ReadConsole` і `EditorEvents`.
+
+Discoverability/docs:
+
+- `Discover` має workflow `batch_self_check`;
+- `ToolGuide` batch workflow радить
+  `DryRun=false IncludeConsoleDelta=true IncludeEditorEventDelta=true`;
+- `DomainCatalog` Safety domain згадує console/editor event deltas;
+- search aliases доповнено `console delta`, `post action diagnostics`,
+  `batch self check`;
+- package version піднято до `0.2.18`;
+- оновлено `README.md`, `RELEASE_NOTES.md`, `CHANGELOG.md`,
+  `Documentation~/unibridge.md`, `package.json`.
+
+Перевірка через MCP на
+`H:/Repos/UnityRepos/UniBridge_Test_Project`:
+
+- package 0.2.18 скопійовано в
+  `Packages/com.cidonix.unibridge` без `RelayApp~`;
+- `ManageEditor RefreshAssets WaitForCompletion=true Force=true` пройшов
+  через Unity reload boundary і повернув reload-safe result:
+  `recoveredAfterRefreshReload=true`, `reloadBoundary=true`,
+  `reloadSafe=true`, compile diagnostics errors 0, warnings 0;
+- `UniBridge_BatchActions DryRun=true IncludeConsoleDelta=true
+  IncludeEditorEventDelta=true` повернув `data.postActionDiagnostics`:
+  console marker створено, totals 0 logs/warnings/errors, compact summary
+  порожній, `timelineHighlights` опущено, editor event delta count 0;
+- `UniBridge_BatchActions DryRun=false IncludeImpact=false
+  IncludeWorkSessionReview=false IncludeConsoleDelta=true
+  IncludeEditorEventDelta=true` з read-only editor diagnostics step виконався
+  успішно: rollback committed, console delta 0 logs/warnings/errors,
+  editor event delta clean, compilation diagnostics errors 0, warnings 0.
+
 ## 2026-06-16: UniBridge 0.2.17 RuntimeStateProbe assertions/watch rules
 
 Додано `UniBridge_RuntimeStateProbe Action=Assert` як read-only pass/fail gate

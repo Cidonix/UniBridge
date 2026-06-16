@@ -31,11 +31,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             public bool IncludeImpact;
             public bool IncludeWorkSessionReview;
             public int WorkSessionReviewMaxChanged;
+            public bool IncludeConsoleDelta;
+            public string ConsoleDeltaMarkerLabel;
+            public int ConsoleDeltaMaxIssues;
+            public int ConsoleDeltaMaxSamples;
+            public bool IncludeEditorEventDelta;
+            public int EditorEventDeltaLimit;
 
             public static BatchOptions From(JObject raw)
             {
                 var name = GetString(raw, "Name", "name", "BatchName", "batchName");
                 var dryRun = GetBool(raw, true, "DryRun", "dryRun", "dry_run", "ValidateOnly", "validateOnly", "validate_only");
+                var consoleMarkerLabel = GetString(raw, "ConsoleDeltaMarkerLabel", "consoleDeltaMarkerLabel", "console_delta_marker_label", "ConsoleMarkerLabel", "consoleMarkerLabel");
                 return new BatchOptions
                 {
                     Name = string.IsNullOrWhiteSpace(name) ? "UniBridge Batch Actions" : name.Trim(),
@@ -47,9 +54,23 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     RollbackAssets = GetBool(raw, true, "RollbackAssets", "rollbackAssets", "rollback_assets", "AssetRollback", "assetRollback", "asset_rollback"),
                     IncludeImpact = GetBool(raw, true, "IncludeImpact", "includeImpact", "include_impact", "Impact", "impact", "Plan", "plan"),
                     IncludeWorkSessionReview = GetBool(raw, !dryRun, "IncludeWorkSessionReview", "includeWorkSessionReview", "include_work_session_review", "WorkSessionReview", "workSessionReview", "AutoReview", "autoReview"),
-                    WorkSessionReviewMaxChanged = Math.Max(1, GetInt(raw, 20, "WorkSessionReviewMaxChanged", "workSessionReviewMaxChanged", "work_session_review_max_changed"))
+                    WorkSessionReviewMaxChanged = Math.Max(1, GetInt(raw, 20, "WorkSessionReviewMaxChanged", "workSessionReviewMaxChanged", "work_session_review_max_changed")),
+                    IncludeConsoleDelta = GetBool(raw, false, "IncludeConsoleDelta", "includeConsoleDelta", "include_console_delta", "ConsoleDelta", "consoleDelta", "PostActionConsole", "postActionConsole"),
+                    ConsoleDeltaMarkerLabel = string.IsNullOrWhiteSpace(consoleMarkerLabel) ? null : consoleMarkerLabel.Trim(),
+                    ConsoleDeltaMaxIssues = Math.Max(1, GetInt(raw, 5, "ConsoleDeltaMaxIssues", "consoleDeltaMaxIssues", "console_delta_max_issues")),
+                    ConsoleDeltaMaxSamples = Math.Max(1, GetInt(raw, 5, "ConsoleDeltaMaxSamples", "consoleDeltaMaxSamples", "console_delta_max_samples")),
+                    IncludeEditorEventDelta = GetBool(raw, false, "IncludeEditorEventDelta", "includeEditorEventDelta", "include_editor_event_delta", "EditorEventDelta", "editorEventDelta", "PostActionEditorEvents", "postActionEditorEvents"),
+                    EditorEventDeltaLimit = Math.Max(1, GetInt(raw, 25, "EditorEventDeltaLimit", "editorEventDeltaLimit", "editor_event_delta_limit"))
                 };
             }
+        }
+
+        sealed class BatchObservationStart
+        {
+            public string ConsoleMarkerId;
+            public JObject ConsoleMarkerResult;
+            public long EditorEventSinceId;
+            public readonly List<string> Warnings = new();
         }
 
         static int GetInt(JObject obj, int defaultValue, params string[] names)

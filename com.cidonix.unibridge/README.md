@@ -85,6 +85,15 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.18 Notes
+
+- `UniBridge_BatchActions` can append opt-in post-action diagnostics.
+- Pass `IncludeConsoleDelta=true` to create a console marker before the batch
+  and receive a compact console diagnostic delta for entries emitted during the
+  batch.
+- Pass `IncludeEditorEventDelta=true` to receive a bounded editor event delta
+  for hierarchy/project/compilation/play-mode changes emitted during the batch.
+
 ## Known 0.2.17 Notes
 
 - `UniBridge_RuntimeStateProbe Action=Assert` adds read-only runtime

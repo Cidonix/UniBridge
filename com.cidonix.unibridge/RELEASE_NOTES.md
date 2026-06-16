@@ -1,8 +1,15 @@
-# UniBridge 0.2.17 Release Notes
+# UniBridge 0.2.18 Release Notes
 
 Release date: 2026-06-16
 
-This release adds `UniBridge_RuntimeStateProbe Action=Assert`, a read-only
+This release adds opt-in post-action diagnostics to `UniBridge_BatchActions`.
+Agents can pass `IncludeConsoleDelta=true` to mark the Unity Console before a
+batch and receive a compact diagnostic delta for logs emitted during that
+batch. They can also pass `IncludeEditorEventDelta=true` to receive bounded
+editor event deltas for hierarchy, project/assets, compilation, assembly
+reload, play mode, package, and object-change events.
+
+The previous 0.2.17 release added `UniBridge_RuntimeStateProbe Action=Assert`, a read-only
 runtime assertion/watch workflow for Play Mode debugging. It lets AI agents
 sample selected GameObject/component fields and properties, evaluate simple
 pass/fail rules, and stop a batch workflow when a required runtime assumption is
@@ -66,7 +73,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.17`
+- Version: `0.2.18`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows

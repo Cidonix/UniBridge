@@ -2,6 +2,18 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.18
+
+### Added
+
+- Added opt-in `UniBridge_BatchActions` post-action diagnostics.
+- `IncludeConsoleDelta=true` creates a console marker before the batch and
+  appends a compact `DiagnosticSummary` for console entries emitted during that
+  batch.
+- `IncludeEditorEventDelta=true` appends a bounded editor event delta for
+  hierarchy, project/assets, compilation, assembly reload, play mode, package,
+  and object-change events emitted during that batch.
+
 ## 0.2.17
 
 ### Added

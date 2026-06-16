@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -115,6 +115,18 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                         "UniBridge_WorkSession Action=Diff Paths=[Assets/...]",
                         "UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]",
                         "UniBridge_WorkSession Action=End"
+                    }
+                },
+                new
+                {
+                    key = "batch_self_check",
+                    summary = "Run a validated multi-step batch and ask UniBridge to return only console/editor events emitted during that batch.",
+                    calls = new[]
+                    {
+                        "UniBridge_BatchActions DryRun=true IncludeImpact=true Steps=[...]",
+                        "UniBridge_BatchActions DryRun=false IncludeConsoleDelta=true IncludeEditorEventDelta=true Steps=[...]",
+                        "Inspect data.postActionDiagnostics.consoleDelta totals/criticalIssues/warningIssues",
+                        "Inspect data.postActionDiagnostics.editorEventDelta for project/hierarchy/compile/play-mode events"
                     }
                 },
                 new

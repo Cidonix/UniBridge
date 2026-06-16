@@ -646,6 +646,15 @@ If a nested editor action returns a reload-safe boundary such as queued Play Mod
 
 If a `UniBridge_WorkSession` is active, executing batches (`DryRun=false`) append `data.workSessionReview` by default. This gives agents the current session summary, changed-file counts, risk counts, bounded changed-file samples, warnings, and suggested follow-up calls immediately after the batch. Use `IncludeWorkSessionReview=true` to include the same block in dry-runs, `IncludeWorkSessionReview=false` to suppress it, and `WorkSessionReviewMaxChanged` to tune response size.
 
+For visible scene/UI/material/gameplay edits, pass `IncludeConsoleDelta=true`
+to create a console marker before the batch and append
+`data.postActionDiagnostics.consoleDelta` after the batch. The returned delta
+keeps only compact totals, critical groups, warning groups, likely spam, and
+recent representative samples for entries emitted during the batch. Pass
+`IncludeEditorEventDelta=true` to also append
+`data.postActionDiagnostics.editorEventDelta` with bounded editor events after
+the batch start id.
+
 Batch steps can call a curated set of local UniBridge tools:
 
 - `UniBridge_ManageGameObject`;
@@ -711,6 +720,8 @@ Example transactional execution:
 {
   "DryRun": false,
   "Name": "Create material and place preview",
+  "IncludeConsoleDelta": true,
+  "IncludeEditorEventDelta": true,
   "RollbackOnFailure": true,
   "RollbackAssets": true,
   "Steps": [

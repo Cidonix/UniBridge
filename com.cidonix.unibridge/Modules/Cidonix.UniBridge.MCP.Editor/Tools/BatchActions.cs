@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
+using Cidonix.UniBridge.MCP.Editor.Tools.Parameters;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -49,6 +50,8 @@ Args:
     IncludeImpact: true by default. Adds a planned impact block with likely assets/scenes/settings touched.
     IncludeWorkSessionReview: defaults to true for executing batches and false for dry-runs. If a UniBridge_WorkSession is active, appends changed-file review data.
     WorkSessionReviewMaxChanged: maximum changed files to include in the appended WorkSession review.
+    IncludeConsoleDelta: false by default. Creates a console marker before the batch and appends a compact DiagnosticSummary for entries emitted during the batch.
+    IncludeEditorEventDelta: false by default. Captures the editor event latestId before the batch and appends bounded editor events emitted during the batch.
     Name: Optional human-readable batch name.
     Steps/actions: array of steps.
 
@@ -84,6 +87,12 @@ Returns:
                     IncludeImpact = new { type = "boolean", description = "Return a planned impact block with likely asset, scene, and project-setting touches. Defaults to true.", @default = true },
                     IncludeWorkSessionReview = new { type = "boolean", description = "Append active UniBridge_WorkSession review data after the batch. Defaults to true for executing batches and false for dry-runs." },
                     WorkSessionReviewMaxChanged = new { type = "integer", description = "Maximum changed files to include in appended WorkSession review.", @default = 20 },
+                    IncludeConsoleDelta = new { type = "boolean", description = "Create a console marker before the batch and append compact DiagnosticSummary entries emitted during this batch. Defaults to false.", @default = false },
+                    ConsoleDeltaMarkerLabel = new { type = "string", description = "Optional label for the automatic console marker used by IncludeConsoleDelta." },
+                    ConsoleDeltaMaxIssues = new { type = "integer", description = "Maximum critical/warning/spam groups returned in the batch console delta.", @default = 5 },
+                    ConsoleDeltaMaxSamples = new { type = "integer", description = "Maximum representative entries returned in the batch console delta.", @default = 5 },
+                    IncludeEditorEventDelta = new { type = "boolean", description = "Append a bounded UniBridge_EditorEvents delta captured during this batch. Defaults to false.", @default = false },
+                    EditorEventDeltaLimit = new { type = "integer", description = "Maximum editor events returned when IncludeEditorEventDelta is true.", @default = 25 },
                     Name = new { type = "string", description = "Optional batch name used in reports and the Undo group." },
                     Steps = new
                     {
@@ -140,6 +149,7 @@ Returns:
             var stopReason = (string)null;
             var impact = options.IncludeImpact ? BatchTransaction.BuildImpact(options, steps) : null;
             var transaction = BatchTransaction.Begin(options, steps);
+            var observationStart = BeginPostActionObservation(options);
 
             foreach (var step in steps)
             {
@@ -200,6 +210,7 @@ Returns:
             var workSessionReview = options.IncludeWorkSessionReview
                 ? WorkSession.BuildCompactActiveReview(options.WorkSessionReviewMaxChanged, includeChangedFiles: true)
                 : null;
+            var postActionDiagnostics = BuildPostActionDiagnostics(options, observationStart);
 
             var data = new
             {
@@ -213,6 +224,7 @@ Returns:
                 impact,
                 rollback,
                 workSessionReview,
+                postActionDiagnostics,
                 summary,
                 stopReason,
                 steps = reports,
@@ -370,6 +382,173 @@ Returns:
             }
 
             return parameters;
+        }
+
+        static BatchObservationStart BeginPostActionObservation(BatchOptions options)
+        {
+            var start = new BatchObservationStart();
+            if (options == null)
+            {
+                return start;
+            }
+
+            if (options.IncludeEditorEventDelta)
+            {
+                try
+                {
+                    start.EditorEventSinceId = EditorEventHistory.LatestId();
+                }
+                catch (Exception ex)
+                {
+                    start.Warnings.Add($"Failed to capture editor event start id: {ex.Message}");
+                }
+            }
+
+            if (options.IncludeConsoleDelta)
+            {
+                try
+                {
+                    var markerLabel = string.IsNullOrWhiteSpace(options.ConsoleDeltaMarkerLabel)
+                        ? $"{options.Name} {DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}"
+                        : options.ConsoleDeltaMarkerLabel;
+
+                    var markerResult = ToJObjectSafe(ReadConsole.HandleCommand(new ReadConsoleParams
+                    {
+                        Action = ConsoleAction.MarkSession,
+                        MarkerLabel = markerLabel,
+                        IncludeMarker = false
+                    }));
+
+                    start.ConsoleMarkerResult = markerResult;
+                    start.ConsoleMarkerId = (markerResult["data"] as JObject)?.Value<string>("markerId");
+                    var success = markerResult.Value<bool?>("success") ?? false;
+                    if (!success || string.IsNullOrWhiteSpace(start.ConsoleMarkerId))
+                    {
+                        start.Warnings.Add("Console delta marker could not be created; console delta will report marker creation details only.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    start.Warnings.Add($"Failed to create console delta marker: {ex.Message}");
+                }
+            }
+
+            return start;
+        }
+
+        static object BuildPostActionDiagnostics(BatchOptions options, BatchObservationStart start)
+        {
+            if (options == null ||
+                (!options.IncludeConsoleDelta && !options.IncludeEditorEventDelta))
+            {
+                return null;
+            }
+
+            start ??= new BatchObservationStart();
+
+            return new
+            {
+                enabled = true,
+                consoleDelta = options.IncludeConsoleDelta ? BuildConsoleDelta(options, start) : null,
+                editorEventDelta = options.IncludeEditorEventDelta ? BuildEditorEventDelta(options, start) : null,
+                warnings = start.Warnings.ToArray(),
+                note = "This self-check is opt-in and observes logs/events emitted between the batch start marker and the final response."
+            };
+        }
+
+        static object BuildConsoleDelta(BatchOptions options, BatchObservationStart start)
+        {
+            if (string.IsNullOrWhiteSpace(start.ConsoleMarkerId))
+            {
+                return new
+                {
+                    enabled = true,
+                    markerCreated = false,
+                    markerResult = start.ConsoleMarkerResult,
+                    guidance = "Create a marker with UniBridge_ReadConsole Action=MarkSession before the workflow, then read DiagnosticSummary with AfterMarkerId."
+                };
+            }
+
+            try
+            {
+                var summaryResult = ToJObjectSafe(ReadConsole.HandleCommand(new ReadConsoleParams
+                {
+                    Action = ConsoleAction.DiagnosticSummary,
+                    AfterMarkerId = start.ConsoleMarkerId,
+                    IncludeMarker = false,
+                    IncludeStacktrace = false,
+                    MaxIssues = options.ConsoleDeltaMaxIssues,
+                    MaxSamples = options.ConsoleDeltaMaxSamples,
+                    MaxEvents = options.ConsoleDeltaMaxSamples
+                }));
+
+                var data = summaryResult["data"] as JObject;
+                var summary = data?["summary"] as JObject;
+                var compactSummary = summary == null
+                    ? null
+                    : new JObject
+                    {
+                        ["dominantIssue"] = summary["dominantIssue"]?.DeepClone(),
+                        ["criticalIssues"] = summary["criticalIssues"]?.DeepClone() ?? new JArray(),
+                        ["warningIssues"] = summary["warningIssues"]?.DeepClone() ?? new JArray(),
+                        ["likelySpam"] = summary["likelySpam"]?.DeepClone() ?? new JArray(),
+                        ["recentSamples"] = summary["recentSamples"]?.DeepClone() ?? new JArray()
+                    };
+
+                return new
+                {
+                    enabled = true,
+                    markerCreated = true,
+                    markerId = start.ConsoleMarkerId,
+                    success = summaryResult.Value<bool?>("success") ?? false,
+                    totals = data?["totals"]?.DeepClone(),
+                    summary = compactSummary,
+                    marker = data?["marker"]?.DeepClone(),
+                    omitted = new[] { "timelineHighlights" },
+                    guidance = "If this delta has new errors or warnings, inspect the returned fingerprint with UniBridge_ReadConsole Action=GroupDetails AfterMarkerId=<markerId>."
+                };
+            }
+            catch (Exception ex)
+            {
+                start.Warnings.Add($"Failed to build console delta: {ex.Message}");
+                return new
+                {
+                    enabled = true,
+                    markerCreated = true,
+                    markerId = start.ConsoleMarkerId,
+                    success = false,
+                    error = ex.Message
+                };
+            }
+        }
+
+        static object BuildEditorEventDelta(BatchOptions options, BatchObservationStart start)
+        {
+            try
+            {
+                return new
+                {
+                    enabled = true,
+                    sinceId = start.EditorEventSinceId,
+                    result = EditorEventHistory.Snapshot(
+                        start.EditorEventSinceId,
+                        options.EditorEventDeltaLimit,
+                        includeSelection: false,
+                        includeDiagnostics: true,
+                        includeAssetChanges: true)
+                };
+            }
+            catch (Exception ex)
+            {
+                start.Warnings.Add($"Failed to build editor event delta: {ex.Message}");
+                return new
+                {
+                    enabled = true,
+                    sinceId = start.EditorEventSinceId,
+                    success = false,
+                    error = ex.Message
+                };
+            }
         }
 
         static bool IsReloadBoundaryStop(string stopReason) =>

@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -602,11 +602,11 @@ This tool is read-only.";
                     Title = "Plan and execute multi-step Unity changes",
                     When = "Use when several related Unity tools should run as one validated workflow.",
                     FirstCalls = new[] { "UniBridge_BatchActions DryRun=true IncludeImpact=true", "Inspect validation errors/warnings and per-step impact plans before execution" },
-                    EditCalls = new[] { "UniBridge_BatchActions DryRun=false after a clean dry-run" },
-                    VerifyCalls = new[] { "UniBridge_ReadConsole Action=DiagnosticSummary", "Specialized inspect/capture tools for the touched domain" },
+                    EditCalls = new[] { "UniBridge_BatchActions DryRun=false IncludeConsoleDelta=true IncludeEditorEventDelta=true after a clean dry-run" },
+                    VerifyCalls = new[] { "Inspect data.postActionDiagnostics.consoleDelta and editorEventDelta", "UniBridge_ReadConsole Action=DiagnosticSummary", "Specialized inspect/capture tools for the touched domain" },
                     Tools = new[] { "UniBridge_BatchActions", "UniBridge_WorkflowRecipes", "UniBridge_ReadConsole", ToolName },
                     BatchAliases = new[] { "game_object", "asset", "asset_importer", "material", "scriptable_object", "ui", "unity_event", "capture", "context", "editor", "runtime_profiler", "runtime_probe", "state_probe" },
-                    Notes = new[] { "RollbackOnFailure defaults to true for execution; still keep batches small and domain-focused.", "Impact now includes per-step likely asset paths, project settings, scene object references, and validation provider names." },
+                    Notes = new[] { "RollbackOnFailure defaults to true for execution; still keep batches small and domain-focused.", "Pass IncludeConsoleDelta=true to mark the console before execution and append only new compact console diagnostics.", "Pass IncludeEditorEventDelta=true to append bounded Unity editor event deltas for project/hierarchy/compile/play-mode changes.", "Impact includes per-step likely asset paths, project settings, scene object references, and validation provider names." },
                     Aliases = new[] { "transaction", "rollback", "dry_run", "multi_step" }
                 },
                 new WorkflowGuide
