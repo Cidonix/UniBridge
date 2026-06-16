@@ -254,6 +254,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["sample"] = "Sample",
                         ["samples"] = "Sample",
                         ["profile"] = "Sample",
+                        ["hierarchy"] = "Hierarchy",
+                        ["marker_hierarchy"] = "Hierarchy",
+                        ["profiler_hierarchy"] = "Hierarchy",
+                        ["frame_export"] = "Hierarchy",
+                        ["frame_hierarchy"] = "Hierarchy",
+                        ["hot_markers"] = "Hierarchy",
+                        ["top_markers"] = "Hierarchy",
                         ["metrics"] = "Metrics",
                         ["list"] = "Metrics",
                         ["list_metrics"] = "Metrics"
@@ -261,6 +268,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "Action", "action");
                     CopyAlias(parameters, "Name", "name");
                     CopyAlias(parameters, "Metrics", "metrics", "metric", "Metric");
+                    CopyAlias(parameters, "ProfilerCategories", "profilerCategories", "profiler_categories", "categories", "Categories");
+                    CopyAlias(parameters, "MarkerFilters", "markerFilters", "marker_filters", "filters", "Filters");
+                    CopyAlias(parameters, "ExcludeMarkerFilters", "excludeMarkerFilters", "exclude_marker_filters", "excludeFilters", "exclude_filters");
                     CopyAlias(parameters, "SampleFrames", "sampleFrames", "sample_frames", "frames", "Frames");
                     CopyAlias(parameters, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
                     CopyAlias(parameters, "RequirePlayMode", "requirePlayMode", "require_play_mode");
@@ -270,6 +280,11 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "MaxBehaviourTypes", "maxBehaviourTypes", "max_behaviour_types", "max_behavior_types");
                     CopyAlias(parameters, "MainThreadSpikeThresholdMs", "mainThreadSpikeThresholdMs", "main_thread_spike_threshold_ms", "spike_threshold_ms");
                     CopyAlias(parameters, "MaxSpikes", "maxSpikes", "max_spikes");
+                    CopyAlias(parameters, "MaxProfilerMarkers", "maxProfilerMarkers", "max_profiler_markers", "maxMarkers", "max_markers");
+                    CopyAlias(parameters, "MaxHierarchySamples", "maxHierarchySamples", "max_hierarchy_samples", "top", "limit");
+                    CopyAlias(parameters, "MaxHierarchyDepth", "maxHierarchyDepth", "max_hierarchy_depth", "depth");
+                    CopyAlias(parameters, "MinHierarchySampleMs", "minHierarchySampleMs", "min_hierarchy_sample_ms", "minTimeMs", "min_time_ms");
+                    CopyAlias(parameters, "IncludeCounters", "includeCounters", "include_counters");
                     CopyAlias(parameters, "SaveToFile", "saveToFile", "save_to_file");
                     CopyAlias(parameters, "ReturnSamples", "returnSamples", "return_samples");
                     break;

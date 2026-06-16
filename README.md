@@ -18,6 +18,7 @@ This repository is used as a public project page for overview, documentation lin
 - Provides tools for scenes, assets, scripts, prefabs, UI, captures, validation, animation, rendering, physics, navigation, tilemaps, input actions, timeline, audio, VFX, and more.
 - Lets agents inspect prefab and loaded-scene asset structure with compact hierarchy list/search/read, duplicate-safe indexed paths, and optional serialized field matching before they edit.
 - Lets agents preflight proposed C# source changes before applying them, including syntax, API, serialized field, Unity callback, and reload-risk checks.
+- Lets agents export bounded profiler marker hierarchy/top-sample data to identify likely hot runtime nodes, not just frame counters.
 - Includes visual self-check tools so agents can verify Unity output before reporting success.
 
 ## Requirements

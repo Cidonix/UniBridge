@@ -1,8 +1,43 @@
-# UniBridge 0.2.24 Release Notes
+# UniBridge 0.2.25 Release Notes
 
 Release date: 2026-06-16
 
-This release adds script change-impact preflight to
+This release adds profiler marker hierarchy export to
+`UniBridge_RuntimeProfiler`. Agents can now ask for a bounded one-frame or
+short-window view of hot profiler marker paths instead of only seeing counters
+such as frame time, GC, batches, or memory.
+
+`UniBridge_RuntimeProfiler Action=Hierarchy` reports:
+
+- selected profiler categories, marker filters, and recorder availability;
+- top marker paths by total/max sampled time;
+- category summaries;
+- a compact synthetic hierarchy built from marker category/name paths;
+- optional saved full JSON under `Library/UniBridge/RuntimeProfiler`.
+
+Example:
+
+`UniBridge_RuntimeProfiler Action=Hierarchy SampleFrames=1 MaxHierarchySamples=40 ProfilerCategories=[Internal,Scripts,Render,Physics]`
+
+The workflow is intentionally read-only and based on stable Unity
+`ProfilerRecorder` marker handles. It is a marker hierarchy / top-sample view
+for AI triage, not the Unity Profiler Window's complete call tree.
+
+Useful filters:
+
+- `MarkerFilters=[Update,Render,Physics]`;
+- `ExcludeMarkerFilters=[EditorLoop]`;
+- `MaxProfilerMarkers=160`;
+- `MaxHierarchyDepth=5`;
+- `MinHierarchySampleMs=0.05`;
+- `IncludeCounters=true` when non-time counters are also useful.
+
+Discoverability was updated across `BatchActions`, `Discover`, `ToolGuide`, and
+`DomainCatalog` with aliases such as `profiler_hierarchy`,
+`marker_hierarchy`, `runtime_hierarchy`, `frame_export`, `frame_hierarchy`,
+`top_markers`, and `hot_markers`.
+
+The previous 0.2.24 release added script change-impact preflight to
 `UniBridge_ScriptIntelligence`. Agents can now compare a current C# script with
 `ProposedSource` or `ProposedPath` before applying a larger edit and see what
 the change is likely to affect.

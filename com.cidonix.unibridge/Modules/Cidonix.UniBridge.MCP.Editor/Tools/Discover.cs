@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, asset reference search, asset_ref_search, reference locations, script usages, code usages, caller scan, member callers, code member usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, profiler hierarchy, marker hierarchy, frame export, top markers, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, asset reference search, asset_ref_search, reference locations, script usages, code usages, caller scan, member callers, code member usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -210,13 +210,14 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                 new
                 {
                     key = "runtime_profiler",
-                    summary = "Inspect live runtime/editor state and capture a bounded ProfilerRecorder sample for frame time, GC, memory, rendering, physics, and spike hints.",
+                    summary = "Inspect live runtime/editor state, capture bounded ProfilerRecorder samples, and export top profiler marker hierarchy hints for performance triage.",
                     calls = new[]
                     {
                         "UniBridge_ManageEditor Action=GetPlayModeState",
                         "UniBridge_RuntimeProfiler Action=Snapshot",
                         "UniBridge_RuntimeProfiler Action=Metrics",
                         "UniBridge_RuntimeProfiler Action=Sample SampleFrames=120 Metrics=[main_thread_ms,gc_alloc_bytes,batches_count]",
+                        "UniBridge_RuntimeProfiler Action=Hierarchy SampleFrames=1 MaxHierarchySamples=40 ProfilerCategories=[Internal,Scripts,Render,Physics]",
                         "UniBridge_ReadConsole Action=DiagnosticSummary"
                     }
                 },

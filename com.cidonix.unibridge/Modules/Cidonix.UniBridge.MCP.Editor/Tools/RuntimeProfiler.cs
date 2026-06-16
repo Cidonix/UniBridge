@@ -10,6 +10,8 @@ using Cidonix.UniBridge.MCP.Editor.Tools.Parameters;
 using Cidonix.UniBridge.Toolkit;
 using Newtonsoft.Json;
 using Unity.Profiling;
+using Unity.Profiling.LowLevel;
+using Unity.Profiling.LowLevel.Unsafe;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -29,6 +31,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         const int DefaultTimeoutMs = 30000;
         const int MaxBehaviourTypes = 100;
         const int DefaultMaxSpikes = 5;
+        const int DefaultHierarchyFrames = 1;
+        const int DefaultMaxProfilerMarkers = 160;
+        const int MaxProfilerMarkers = 500;
+        const int DefaultMaxHierarchySamples = 40;
+        const int MaxHierarchySamples = 300;
+        const int DefaultMaxHierarchyDepth = 5;
+        const int MaxHierarchyDepth = 12;
 
         public const string Title = "Inspect runtime state and profiler samples";
 
@@ -39,9 +48,10 @@ Use this when a Play Mode issue needs data instead of guessing: frame time, GC a
 Actions:
     Snapshot: Return current editor/runtime state, loaded-scene object counts, memory, and supported metric hints.
     Sample: In Play Mode by default, sample selected ProfilerRecorder metrics for a bounded number of editor update ticks. Returns compact averages/p95/max/last/spikes and can save full raw samples under Library/UniBridge/RuntimeProfiler.
+    Hierarchy: Sample available profiler marker handles for one frame or a short window, returning top marker paths by time plus a synthetic hierarchy and optional saved JSON export.
     Metrics: List supported metric aliases and category/name pairs.
 
-Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC memory spikes stutter frame time ProfilerRecorder runtime state.";
+Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC memory spikes stutter frame time profiler hierarchy marker hierarchy frame export ProfilerRecorder runtime state.";
 
         [McpTool(ToolName, Description, Title, Groups = new[] { "core", "runtime", "diagnostics", "profiler" }, EnabledByDefault = true, ExecutionPolicy = ToolExecutionPolicy.ReadOnly)]
         public static async Task<object> HandleCommand(RuntimeProfilerParams parameters)
@@ -54,6 +64,8 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
                 {
                     case RuntimeProfilerAction.Metrics:
                         return Response.Success("Listed runtime profiler metrics.", BuildMetricsList(parameters));
+                    case RuntimeProfilerAction.Hierarchy:
+                        return await Hierarchy(parameters);
                     case RuntimeProfilerAction.Sample:
                         return await Sample(parameters);
                     case RuntimeProfilerAction.Snapshot:
@@ -182,6 +194,146 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
             return Response.Success($"Captured runtime profiler sample with {sampleRows.Count} row(s).", responseData);
         }
 
+        static async Task<object> Hierarchy(RuntimeProfilerParams parameters)
+        {
+            var requirePlayMode = parameters.RequirePlayMode ?? true;
+            if (requirePlayMode && !Application.isPlaying)
+            {
+                return Response.Error("PLAY_MODE_REQUIRED", new
+                {
+                    isPlaying = Application.isPlaying,
+                    isPaused = EditorApplication.isPaused,
+                    hint = "Enter Play Mode first, or pass RequirePlayMode=false for editor-time profiler marker sampling."
+                });
+            }
+
+            var frames = Mathf.Clamp(parameters.SampleFrames ?? DefaultHierarchyFrames, 1, MaxSampleFrames);
+            var timeoutMs = Mathf.Clamp(parameters.TimeoutMs ?? DefaultTimeoutMs, 1000, 300000);
+            var maxMarkers = Mathf.Clamp(parameters.MaxProfilerMarkers ?? DefaultMaxProfilerMarkers, 1, MaxProfilerMarkers);
+            var maxSamples = Mathf.Clamp(parameters.MaxHierarchySamples ?? DefaultMaxHierarchySamples, 1, MaxHierarchySamples);
+            var maxDepth = Mathf.Clamp(parameters.MaxHierarchyDepth ?? DefaultMaxHierarchyDepth, 1, MaxHierarchyDepth);
+            var minTimeMs = Math.Max(0, parameters.MinHierarchySampleMs ?? 0);
+            var includeCounters = parameters.IncludeCounters ?? false;
+
+            var markerSelection = BuildHierarchyMarkerSelection(parameters, includeCounters, maxMarkers);
+            if (markerSelection.Selected.Length == 0)
+            {
+                return Response.Error("NO_PROFILER_MARKERS_SELECTED", new
+                {
+                    markerSelection.available,
+                    markerSelection.filtered,
+                    includeCounters,
+                    categories = EffectiveHierarchyCategoryNames(parameters),
+                    markerFilters = parameters.MarkerFilters,
+                    excludeMarkerFilters = parameters.ExcludeMarkerFilters,
+                    hint = "Try fewer filters, IncludeCounters=true, or Action=Metrics for known stable counters."
+                });
+            }
+
+            var recorders = markerSelection.Selected.Select(marker => CreateHierarchyRecorder(marker, frames)).ToArray();
+            var unavailable = recorders
+                .Where(item => !item.Available)
+                .Select(item => new
+                {
+                    category = item.Marker.CategoryName,
+                    marker = item.Marker.Name,
+                    unit = item.Marker.Unit,
+                    flags = item.Marker.Flags,
+                    reason = item.Error ?? "ProfilerRecorder was not valid for this marker in the current Unity session."
+                })
+                .ToArray();
+
+            var startedUtc = DateTime.UtcNow;
+            var startEditorTime = EditorApplication.timeSinceStartup;
+            var deadline = startEditorTime + timeoutMs / 1000.0;
+            var sampledFrames = 0;
+
+            try
+            {
+                while (sampledFrames < frames && EditorApplication.timeSinceStartup <= deadline)
+                {
+                    await EditorTask.Yield();
+                    sampledFrames++;
+                }
+
+                var elapsedMs = Math.Max(0, (EditorApplication.timeSinceStartup - startEditorTime) * 1000.0);
+                var entries = BuildHierarchyEntries(recorders.Where(item => item.Available), minTimeMs, maxDepth)
+                    .OrderByDescending(item => item.SortScore)
+                    .ThenBy(item => item.CategoryName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                var topEntries = entries.Take(maxSamples).ToArray();
+                var payload = new
+                {
+                    schema = "unibridge.runtimeProfiler.hierarchy.v1",
+                    name = string.IsNullOrWhiteSpace(parameters.Name) ? "runtime_hierarchy" : parameters.Name.Trim(),
+                    dataSource = "ProfilerRecorderMarkers",
+                    note = "Unity exposes marker samples through ProfilerRecorder, not the full Profiler Window call tree. This export is a bounded marker hierarchy/top-sample view for AI triage.",
+                    startedUtc = startedUtc.ToString("o"),
+                    endedUtc = DateTime.UtcNow.ToString("o"),
+                    requestedFrames = frames,
+                    sampledFrames,
+                    timedOut = sampledFrames < frames,
+                    elapsedMs,
+                    editor = BuildEditorRuntimeState(),
+                    selection = new
+                    {
+                        markerSelection.available,
+                        markerSelection.filtered,
+                        selected = markerSelection.Selected.Length,
+                        recorderAvailable = recorders.Count(item => item.Available),
+                        recorderUnavailable = unavailable.Length,
+                        includeCounters,
+                        categories = EffectiveHierarchyCategoryNames(parameters),
+                        markerFilters = parameters.MarkerFilters,
+                        excludeMarkerFilters = parameters.ExcludeMarkerFilters,
+                        maxMarkers,
+                        maxDepth,
+                        minTimeMs
+                    },
+                    summary = BuildHierarchySummary(entries),
+                    categorySummary = BuildHierarchyCategorySummary(entries),
+                    topMarkers = topEntries.Select(item => item.ToDto()).ToArray(),
+                    hierarchy = BuildHierarchyTree(topEntries, maxDepth),
+                    unavailableMarkers = unavailable,
+                    allMarkers = entries.Select(item => item.ToDto()).ToArray()
+                };
+
+                string savedPath = null;
+                if (parameters.SaveToFile ?? true)
+                    savedPath = SavePayload(payload, string.IsNullOrWhiteSpace(parameters.Name) ? "runtime-hierarchy" : parameters.Name);
+
+                var responseData = new
+                {
+                    schema = "unibridge.runtimeProfiler.hierarchy.summary.v1",
+                    name = payload.name,
+                    dataSource = payload.dataSource,
+                    note = payload.note,
+                    requestedFrames = frames,
+                    sampledFrames,
+                    timedOut = sampledFrames < frames,
+                    elapsedMs,
+                    savedPath,
+                    editor = payload.editor,
+                    selection = payload.selection,
+                    summary = payload.summary,
+                    categorySummary = payload.categorySummary,
+                    topMarkers = payload.topMarkers,
+                    hierarchy = payload.hierarchy,
+                    unavailableMarkers = unavailable,
+                    allMarkers = parameters.ReturnSamples == true ? payload.allMarkers : null
+                };
+
+                return Response.Success($"Captured profiler marker hierarchy with {topEntries.Length} top marker(s).", responseData);
+            }
+            finally
+            {
+                foreach (var recorder in recorders)
+                    recorder.Dispose();
+            }
+        }
+
         static object BuildMetricsList(RuntimeProfilerParams parameters)
         {
             return new
@@ -200,6 +352,335 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
                     .ToArray(),
                 customMetricSyntax = "Use category/name, for example Internal/Main Thread, Memory/GC.Alloc, Render/Batches Count."
             };
+        }
+
+        static HierarchyMarkerSelection BuildHierarchyMarkerSelection(RuntimeProfilerParams parameters, bool includeCounters, int maxMarkers)
+        {
+            var handles = new List<ProfilerRecorderHandle>();
+            try
+            {
+                ProfilerRecorderHandle.GetAvailable(handles);
+            }
+            catch
+            {
+                return new HierarchyMarkerSelection
+                {
+                    available = 0,
+                    filtered = 0,
+                    Selected = Array.Empty<HierarchyMarkerDefinition>()
+                };
+            }
+
+            var categoryFilters = EffectiveHierarchyCategoryKeys(parameters);
+            var includeFilters = CleanFilters(parameters.MarkerFilters);
+            var excludeFilters = CleanFilters(parameters.ExcludeMarkerFilters);
+            var definitions = new List<HierarchyMarkerDefinition>();
+
+            foreach (var handle in handles)
+            {
+                if (!handle.Valid)
+                    continue;
+
+                ProfilerRecorderDescription description;
+                try
+                {
+                    description = ProfilerRecorderHandle.GetDescription(handle);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                var name = description.Name;
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                var categoryName = description.Category.Name;
+                if (categoryFilters.Length > 0 && !categoryFilters.Contains(NormalizeKey(categoryName)))
+                    continue;
+
+                var unit = description.UnitType.ToString();
+                var isTime = description.UnitType == ProfilerMarkerDataUnit.TimeNanoseconds;
+                var isCounter = description.Flags.HasFlag(MarkerFlags.Counter) || !isTime;
+                if (!includeCounters && !isTime)
+                    continue;
+
+                var searchable = $"{categoryName}/{name} {unit} {description.Flags}";
+                if (includeFilters.Length > 0 && !MatchesAny(searchable, includeFilters))
+                    continue;
+                if (excludeFilters.Length > 0 && MatchesAny(searchable, excludeFilters))
+                    continue;
+
+                definitions.Add(new HierarchyMarkerDefinition
+                {
+                    Category = description.Category,
+                    CategoryName = string.IsNullOrWhiteSpace(categoryName) ? "Unknown" : categoryName,
+                    Name = name,
+                    Unit = unit,
+                    UnitType = description.UnitType,
+                    Flags = description.Flags.ToString(),
+                    IsCounter = isCounter,
+                    IsTime = isTime,
+                    Importance = HierarchyMarkerImportance(categoryName, name)
+                });
+            }
+
+            var selected = definitions
+                .OrderByDescending(item => item.IsTime)
+                .ThenByDescending(item => item.Importance)
+                .ThenBy(item => item.CategoryName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(maxMarkers)
+                .ToArray();
+
+            return new HierarchyMarkerSelection
+            {
+                available = handles.Count,
+                filtered = definitions.Count,
+                Selected = selected
+            };
+        }
+
+        static HierarchyRecorderState CreateHierarchyRecorder(HierarchyMarkerDefinition marker, int frames)
+        {
+            var state = new HierarchyRecorderState { Marker = marker };
+            try
+            {
+                state.Recorder = ProfilerRecorder.StartNew(marker.Category, marker.Name, Mathf.Clamp(frames, 1, MaxSampleFrames), ProfilerRecorderOptions.Default);
+                state.Available = state.Recorder.Valid;
+                if (!state.Available)
+                    state.Error = "ProfilerRecorder.Valid=false";
+            }
+            catch (Exception ex)
+            {
+                state.Available = false;
+                state.Error = ex.Message;
+            }
+
+            return state;
+        }
+
+        static IEnumerable<HierarchyMarkerEntry> BuildHierarchyEntries(IEnumerable<HierarchyRecorderState> recorders, double minTimeMs, int maxDepth)
+        {
+            foreach (var recorder in recorders)
+            {
+                ProfilerRecorderSample[] samples;
+                try
+                {
+                    samples = recorder.Recorder.ToArray();
+                }
+                catch
+                {
+                    samples = Array.Empty<ProfilerRecorderSample>();
+                }
+
+                var values = samples != null && samples.Length > 0
+                    ? samples.Select(sample => ScaleHierarchyValue(sample.Value, recorder.Marker.UnitType)).ToArray()
+                    : Array.Empty<double>();
+                if (values.Length == 0)
+                {
+                    long lastRaw = 0;
+                    try { lastRaw = recorder.Recorder.LastValue; }
+                    catch { lastRaw = 0; }
+                    values = new[] { ScaleHierarchyValue(lastRaw, recorder.Marker.UnitType) };
+                }
+                var nonZero = values.Where(value => Math.Abs(value) > double.Epsilon).ToArray();
+                var basis = nonZero.Length > 0 ? nonZero : values;
+                var total = basis.Sum();
+                var max = basis.Length > 0 ? basis.Max() : 0;
+                var avg = basis.Length > 0 ? basis.Average() : 0;
+                var last = values.Length > 0 ? values[values.Length - 1] : 0;
+
+                if (recorder.Marker.IsTime && max < minTimeMs && total < minTimeMs)
+                    continue;
+
+                var pathParts = BuildHierarchyPathParts(recorder.Marker.CategoryName, recorder.Marker.Name, maxDepth);
+                yield return new HierarchyMarkerEntry
+                {
+                    CategoryName = recorder.Marker.CategoryName,
+                    Name = recorder.Marker.Name,
+                    PathParts = pathParts,
+                    Path = string.Join("/", pathParts),
+                    Unit = recorder.Marker.IsTime ? "ms" : recorder.Marker.Unit,
+                    UnitType = recorder.Marker.Unit,
+                    Flags = recorder.Marker.Flags,
+                    IsCounter = recorder.Marker.IsCounter,
+                    IsTime = recorder.Marker.IsTime,
+                    Samples = values.Length,
+                    NonZeroSamples = nonZero.Length,
+                    TotalValue = total,
+                    AvgValue = avg,
+                    MaxValue = max,
+                    LastValue = last
+                };
+            }
+        }
+
+        static object BuildHierarchySummary(HierarchyMarkerEntry[] entries)
+        {
+            var timeEntries = entries.Where(item => item.IsTime).ToArray();
+            return new
+            {
+                markerCount = entries.Length,
+                timeMarkerCount = timeEntries.Length,
+                counterMarkerCount = entries.Length - timeEntries.Length,
+                totalTimeMs = timeEntries.Sum(item => item.TotalValue),
+                maxMarkerTimeMs = timeEntries.Length > 0 ? timeEntries.Max(item => item.MaxValue) : 0,
+                topMarker = entries.OrderByDescending(item => item.SortScore).FirstOrDefault()?.ToCompactDto()
+            };
+        }
+
+        static object[] BuildHierarchyCategorySummary(HierarchyMarkerEntry[] entries)
+        {
+            return entries
+                .GroupBy(item => item.CategoryName ?? "Unknown", StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var time = group.Where(item => item.IsTime).ToArray();
+                    return new
+                    {
+                        category = group.Key,
+                        markerCount = group.Count(),
+                        timeMarkerCount = time.Length,
+                        totalTimeMs = time.Sum(item => item.TotalValue),
+                        maxMarkerTimeMs = time.Length > 0 ? time.Max(item => item.MaxValue) : 0
+                    };
+                })
+                .OrderByDescending(item => item.totalTimeMs)
+                .ThenBy(item => item.category, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        static object[] BuildHierarchyTree(HierarchyMarkerEntry[] entries, int maxDepth)
+        {
+            var roots = new Dictionary<string, HierarchyTreeNode>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entries)
+            {
+                var parts = entry.PathParts == null || entry.PathParts.Length == 0
+                    ? new[] { entry.CategoryName ?? "Unknown", entry.Name ?? "Marker" }
+                    : entry.PathParts;
+                var depthLimit = Math.Min(parts.Length, maxDepth);
+                Dictionary<string, HierarchyTreeNode> siblings = roots;
+                var parentPath = string.Empty;
+
+                for (var i = 0; i < depthLimit; i++)
+                {
+                    var part = parts[i];
+                    if (!siblings.TryGetValue(part, out var current))
+                    {
+                        var path = string.IsNullOrEmpty(parentPath) ? part : $"{parentPath}/{part}";
+                        current = new HierarchyTreeNode
+                        {
+                            Name = part,
+                            Path = path,
+                            Depth = i
+                        };
+                        siblings[part] = current;
+                    }
+
+                    current.MarkerCount++;
+                    current.TotalTimeMs += entry.IsTime ? entry.TotalValue : 0;
+                    current.MaxTimeMs = Math.Max(current.MaxTimeMs, entry.IsTime ? entry.MaxValue : 0);
+                    current.MaxValue = Math.Max(current.MaxValue, entry.MaxValue);
+                    siblings = current.Children;
+                    parentPath = current.Path;
+                }
+            }
+
+            return roots.Values
+                .OrderByDescending(item => Math.Max(item.TotalTimeMs, item.MaxValue))
+                .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item => item.ToDto())
+                .ToArray();
+        }
+
+        static double ScaleHierarchyValue(long rawValue, ProfilerMarkerDataUnit unit)
+        {
+            return unit == ProfilerMarkerDataUnit.TimeNanoseconds
+                ? rawValue / 1000000.0
+                : rawValue;
+        }
+
+        static string[] BuildHierarchyPathParts(string categoryName, string markerName, int maxDepth)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(categoryName))
+                parts.Add(categoryName.Trim());
+
+            var normalized = (markerName ?? "Marker")
+                .Replace("::", "/")
+                .Replace("\\", "/")
+                .Replace(".", "/");
+            foreach (var raw in normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var part = raw.Trim();
+                if (part.Length == 0)
+                    continue;
+                if (parts.Count > 0 && string.Equals(NormalizeKey(parts[parts.Count - 1]), NormalizeKey(part), StringComparison.OrdinalIgnoreCase))
+                    continue;
+                parts.Add(part);
+            }
+
+            if (parts.Count <= maxDepth)
+                return parts.ToArray();
+
+            var result = parts.Take(Math.Max(1, maxDepth - 1)).ToList();
+            result.Add("...");
+            return result.ToArray();
+        }
+
+        static int HierarchyMarkerImportance(string categoryName, string markerName)
+        {
+            var key = NormalizeKey($"{categoryName}_{markerName}");
+            var score = 0;
+            if (key.Contains("main_thread")) score += 100;
+            if (key.Contains("playerloop")) score += 90;
+            if (key.Contains("script") || key.Contains("behaviour")) score += 80;
+            if (key.Contains("update")) score += 70;
+            if (key.Contains("render") || key.Contains("camera")) score += 60;
+            if (key.Contains("physics")) score += 55;
+            if (key.Contains("animation") || key.Contains("animator")) score += 50;
+            if (key.Contains("canvas") || key.Contains("ui") || key.Contains("gui")) score += 45;
+            if (key.Contains("particle")) score += 40;
+            if (key.Contains("gc") || key.Contains("alloc")) score += 35;
+            if (key.Contains("audio")) score += 25;
+            return score;
+        }
+
+        static string[] EffectiveHierarchyCategoryNames(RuntimeProfilerParams parameters)
+        {
+            var source = parameters.ProfilerCategories != null && parameters.ProfilerCategories.Length > 0
+                ? parameters.ProfilerCategories
+                : DefaultHierarchyCategories;
+            return source
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select(item => item.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        static string[] EffectiveHierarchyCategoryKeys(RuntimeProfilerParams parameters)
+        {
+            return EffectiveHierarchyCategoryNames(parameters)
+                .Select(NormalizeKey)
+                .Where(item => item.Length > 0)
+                .ToArray();
+        }
+
+        static string[] CleanFilters(string[] filters)
+        {
+            return (filters ?? Array.Empty<string>())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select(item => item.Trim())
+                .ToArray();
+        }
+
+        static bool MatchesAny(string value, string[] filters)
+        {
+            if (filters == null || filters.Length == 0)
+                return false;
+
+            return filters.Any(filter => value?.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         static object BuildEditorRuntimeState()
@@ -660,6 +1141,20 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
             "triangles_count"
         };
 
+        static readonly string[] DefaultHierarchyCategories =
+        {
+            "Internal",
+            "Scripts",
+            "Render",
+            "Physics",
+            "Physics2D",
+            "Animation",
+            "Audio",
+            "GUI",
+            "Input",
+            "Loading"
+        };
+
         sealed class MetricDefinition
         {
             public string Key;
@@ -702,6 +1197,129 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
                     // Dispose must not hide the profiler result.
                 }
             }
+        }
+
+        sealed class HierarchyMarkerSelection
+        {
+            public int available;
+            public int filtered;
+            public HierarchyMarkerDefinition[] Selected = Array.Empty<HierarchyMarkerDefinition>();
+        }
+
+        sealed class HierarchyMarkerDefinition
+        {
+            public ProfilerCategory Category;
+            public string CategoryName;
+            public string Name;
+            public string Unit;
+            public ProfilerMarkerDataUnit UnitType;
+            public string Flags;
+            public bool IsCounter;
+            public bool IsTime;
+            public int Importance;
+        }
+
+        sealed class HierarchyRecorderState : IDisposable
+        {
+            public HierarchyMarkerDefinition Marker;
+            public ProfilerRecorder Recorder;
+            public bool Available;
+            public string Error;
+
+            public void Dispose()
+            {
+                try
+                {
+                    if (Available)
+                        Recorder.Dispose();
+                }
+                catch
+                {
+                    // Dispose must not hide the profiler result.
+                }
+            }
+        }
+
+        sealed class HierarchyMarkerEntry
+        {
+            public string CategoryName;
+            public string Name;
+            public string[] PathParts = Array.Empty<string>();
+            public string Path;
+            public string Unit;
+            public string UnitType;
+            public string Flags;
+            public bool IsCounter;
+            public bool IsTime;
+            public int Samples;
+            public int NonZeroSamples;
+            public double TotalValue;
+            public double AvgValue;
+            public double MaxValue;
+            public double LastValue;
+            public double SortScore => IsTime ? TotalValue : MaxValue;
+
+            public object ToDto() => new
+            {
+                category = CategoryName,
+                name = Name,
+                path = Path,
+                depth = PathParts?.Length ?? 0,
+                unit = Unit,
+                unitType = UnitType,
+                flags = Flags,
+                isCounter = IsCounter,
+                samples = Samples,
+                nonZeroSamples = NonZeroSamples,
+                total = TotalValue,
+                avg = AvgValue,
+                max = MaxValue,
+                last = LastValue,
+                totalTimeMs = IsTime ? TotalValue : (double?)null,
+                avgTimeMs = IsTime ? AvgValue : (double?)null,
+                maxTimeMs = IsTime ? MaxValue : (double?)null,
+                lastTimeMs = IsTime ? LastValue : (double?)null
+            };
+
+            public object ToCompactDto() => new
+            {
+                category = CategoryName,
+                name = Name,
+                path = Path,
+                unit = Unit,
+                total = TotalValue,
+                max = MaxValue,
+                totalTimeMs = IsTime ? TotalValue : (double?)null,
+                maxTimeMs = IsTime ? MaxValue : (double?)null
+            };
+        }
+
+        sealed class HierarchyTreeNode
+        {
+            public string Name;
+            public string Path;
+            public int Depth;
+            public int MarkerCount;
+            public double TotalTimeMs;
+            public double MaxTimeMs;
+            public double MaxValue;
+            public Dictionary<string, HierarchyTreeNode> Children = new(StringComparer.OrdinalIgnoreCase);
+
+            public object ToDto() => new
+            {
+                name = Name,
+                path = Path,
+                depth = Depth,
+                markerCount = MarkerCount,
+                totalTimeMs = TotalTimeMs,
+                maxTimeMs = MaxTimeMs,
+                children = Children.Values
+                    .OrderByDescending(item => Math.Max(item.TotalTimeMs, item.MaxValue))
+                    .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .Take(20)
+                    .Select(item => item.ToDto())
+                    .ToArray()
+            };
         }
 
         sealed class SampleRow

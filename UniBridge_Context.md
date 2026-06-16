@@ -5,6 +5,78 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.25 RuntimeProfiler Hierarchy Export
+
+Третій Locus-inspired пункт реалізовано як read-only profiler hierarchy /
+top-sample export у вже існуючому `UniBridge_RuntimeProfiler`, без копіювання
+чужої архітектури й без залежності від внутрішнього ProfilerWindow UI.
+
+Новий режим:
+
+- `UniBridge_RuntimeProfiler Action=Hierarchy`;
+- використовує bounded `ProfilerRecorder` marker handles;
+- повертає compact summary, category summary, top markers і синтетичне дерево
+  marker path;
+- може зберігати повний JSON у
+  `Library/UniBridge/RuntimeProfiler` через `SaveToFile=true`;
+- за замовчуванням потребує Play Mode, але для editor-time smoke можна
+  передати `RequirePlayMode=false`;
+- output явно маркується як `dataSource="ProfilerRecorderMarkers"`, тобто це
+  marker hierarchy/top-sample view, а не повне call tree з Unity ProfilerWindow.
+
+Навіщо це потрібно:
+
+- агент отримує конкретні "гарячі" marker samples кадру замість загальної
+  фрази "поганий frame time / GC / render";
+- результат придатний для AI-debug workflow: спочатку `Snapshot`/`Metrics`,
+  потім `Hierarchy`, потім за потреби bounded `Sample`;
+- великі raw exports не роздувають MCP-відповідь, бо пишуться у файл.
+
+Параметри:
+
+- `ProfilerCategories`, `MarkerFilters`, `ExcludeMarkerFilters`;
+- `MaxProfilerMarkers`, `MaxHierarchySamples`, `MaxHierarchyDepth`;
+- `MinHierarchySampleMs`, `IncludeCounters`, `ReturnSamples`, `SaveToFile`.
+
+Discoverability:
+
+- `BatchActions` aliases:
+  `profiler_hierarchy`, `marker_hierarchy`, `runtime_hierarchy`,
+  `frame_export`, `frame_hierarchy`, `top_markers`, `hot_markers`;
+- `Discover`, `ToolGuide`, `DomainCatalog` runtime/debug workflows тепер
+  показують `RuntimeProfiler Action=Hierarchy`;
+- `ToolGuide Workflow runtime_profiler` окремо пояснює, що це bounded
+  ProfilerRecorder marker view, не повний ProfilerWindow call tree.
+
+Package/docs:
+
+- package version піднято до `0.2.25`;
+- оновлено `CHANGELOG.md`, `RELEASE_NOTES.md`, root/package `README.md`,
+  `Documentation~/unibridge.md`;
+- пакет синхронізовано у
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`.
+
+Testing status:
+
+- `dotnet build UniBridge.Relay/UniBridge.Relay.csproj`: success,
+  `0 warnings`, `0 errors`;
+- `UniBridge_ManageEditor Action=RefreshAssets WaitForCompletion=true`
+  у тестовому проєкті перетнув reload boundary, перепідключився і повернув
+  ready state;
+- compilation diagnostics після refresh: `errors=0`, `warnings=0`;
+- live MCP smoke через `UniBridge_BatchActions`:
+  `runtime_profiler Action=Hierarchy RequirePlayMode=false SampleFrames=1
+  MaxProfilerMarkers=80 MaxHierarchySamples=12 SaveToFile=true`;
+- результат: `Captured profiler marker hierarchy with 12 top marker(s)`,
+  `schema=unibridge.runtimeProfiler.hierarchy.summary.v1`,
+  `dataSource=ProfilerRecorderMarkers`, `available=4394`, `selected=80`,
+  `recorderAvailable=80`, `recorderUnavailable=0`;
+- saved JSON:
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Library/UniBridge/RuntimeProfiler/20260616-174844548-runtime-hierarchy.json`;
+- `ToolGuide Workflow runtime_profiler` показує новий call і aliases;
+- `UniBridge_ReadConsole Action=DiagnosticSummary`: `totalEntries=0`,
+  `warnings=0`, `errors=0`, `exceptions=0`.
+
 ## 2026-06-16: UniBridge 0.2.24 Script ChangeImpact Preflight
 
 Другий Locus-inspired пункт реалізується як read-only preflight у вже

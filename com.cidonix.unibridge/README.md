@@ -219,6 +219,18 @@ Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
   changed-member summaries, and writes full raw payloads under
   `Library/UniBridge/RuntimeStateProbe` when `SaveToFile=true`.
 
+## Known 0.2.25 Notes
+
+- `UniBridge_RuntimeProfiler Action=Hierarchy` exports a bounded profiler
+  marker hierarchy/top-sample view for AI performance triage.
+- It samples available `ProfilerRecorder` marker handles for one frame or a
+  short window, then returns category summaries, top marker paths, and a
+  synthetic hierarchy.
+- `Action=Hierarchy` requires Play Mode by default. Pass
+  `RequirePlayMode=false` only for editor-time smoke tests.
+- Full hierarchy exports are saved under
+  `Library/UniBridge/RuntimeProfiler` when `SaveToFile=true`.
+
 ## Known 0.2.15 Notes
 
 - `UniBridge_RuntimeProfiler` is a read-only runtime/profiler tool for Play

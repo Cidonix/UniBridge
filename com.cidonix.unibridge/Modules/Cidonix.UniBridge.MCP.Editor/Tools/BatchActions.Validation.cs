@@ -165,7 +165,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     report.Info("Context snapshot is read-only and has no additional batch validation.");
                     break;
                 case "UniBridge_RuntimeProfiler":
-                    report.Info("Runtime profiler is read-only and uses bounded sampling. Action=Sample requires Play Mode unless RequirePlayMode=false is passed.");
+                    report.Info("Runtime profiler is read-only and uses bounded sampling. Action=Sample and Action=Hierarchy require Play Mode unless RequirePlayMode=false is passed.");
                     break;
                 case "UniBridge_RuntimeStateProbe":
                     report.Info("Runtime state probe is read-only and samples component fields/properties without executing arbitrary project code. Action=Sample and Action=Assert require Play Mode unless RequirePlayMode=false is passed; Action=Assert can fail the batch when required assertions fail.");

@@ -103,13 +103,22 @@ Useful calls:
 UniBridge_RuntimeProfiler Action=Snapshot
 UniBridge_RuntimeProfiler Action=Metrics
 UniBridge_RuntimeProfiler Action=Sample SampleFrames=120 Metrics=[main_thread_ms,gc_alloc_bytes,batches_count]
+UniBridge_RuntimeProfiler Action=Hierarchy SampleFrames=1 MaxHierarchySamples=40
 ```
 
-`Action=Sample` requires Play Mode by default. Pass `RequirePlayMode=false` only
-when editor-time sampling is intentional.
+`Action=Sample` and `Action=Hierarchy` require Play Mode by default. Pass
+`RequirePlayMode=false` only when editor-time sampling is intentional.
+
+`Action=Hierarchy` samples available Unity profiler marker handles for one
+frame or a short bounded window and returns top marker paths by time, category
+summaries, and a synthetic hierarchy. It is designed for AI triage of "which
+runtime node looks hot?" and is not the Unity Profiler Window's complete call
+tree. Use `ProfilerCategories`, `MarkerFilters`, `ExcludeMarkerFilters`,
+`MaxProfilerMarkers`, `MaxHierarchySamples`, `MaxHierarchyDepth`, and
+`MinHierarchySampleMs` to control noisy projects.
 
 The response includes compact metric summaries and spike samples. When
-`SaveToFile=true`, the full raw sample payload is written under:
+`SaveToFile=true`, the full raw sample or hierarchy payload is written under:
 
 ```text
 Library/UniBridge/RuntimeProfiler

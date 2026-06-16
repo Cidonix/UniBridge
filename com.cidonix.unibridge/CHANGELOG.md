@@ -2,6 +2,28 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.25
+
+### Added
+
+- Added `UniBridge_RuntimeProfiler Action=Hierarchy`, a read-only profiler
+  marker hierarchy export for AI performance triage.
+- `Hierarchy` samples available Unity `ProfilerRecorder` marker handles for
+  one frame or a short bounded window, then returns category summaries, top
+  marker paths, and a synthetic hierarchy.
+- Added controls for `ProfilerCategories`, `MarkerFilters`,
+  `ExcludeMarkerFilters`, `MaxProfilerMarkers`, `MaxHierarchySamples`,
+  `MaxHierarchyDepth`, `MinHierarchySampleMs`, and `IncludeCounters`.
+- Added discoverability and batch aliases for `profiler_hierarchy`,
+  `marker_hierarchy`, `runtime_hierarchy`, `frame_export`, `frame_hierarchy`,
+  `top_markers`, and `hot_markers`.
+
+### Notes
+
+- `Hierarchy` is intentionally based on stable profiler marker handles rather
+  than Unity Profiler Window internals. It is a bounded marker hierarchy /
+  top-sample view, not Unity's full call tree.
+
 ## 0.2.24
 
 ### Added

@@ -7,12 +7,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
     {
         Snapshot,
         Sample,
+        Hierarchy,
         Metrics
     }
 
     public record RuntimeProfilerParams
     {
-        [McpDescription("Operation to perform: Snapshot, Sample, or Metrics.", Required = false, Default = RuntimeProfilerAction.Snapshot)]
+        [McpDescription("Operation to perform: Snapshot, Sample, Hierarchy, or Metrics.", Required = false, Default = RuntimeProfilerAction.Snapshot)]
         public RuntimeProfilerAction Action { get; set; } = RuntimeProfilerAction.Snapshot;
 
         [McpDescription("Optional human-readable sample name used for saved profiler files.", Required = false)]
@@ -20,6 +21,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("Profiler metrics to sample. Use aliases such as main_thread_ms, gc_alloc_bytes, batches_count, or category/name such as Internal/Main Thread.", Required = false)]
         public string[] Metrics { get; set; }
+
+        [McpDescription("For Action=Hierarchy, profiler categories to inspect. Examples: Internal, Scripts, Render, Physics, Physics2D, Animation, Audio. Defaults to common CPU categories.", Required = false)]
+        public string[] ProfilerCategories { get; set; }
+
+        [McpDescription("For Action=Hierarchy, optional case-insensitive marker name filters. If omitted, all selected category markers are considered up to MaxProfilerMarkers.", Required = false)]
+        public string[] MarkerFilters { get; set; }
+
+        [McpDescription("For Action=Hierarchy, optional case-insensitive marker name filters to exclude noisy markers.", Required = false)]
+        public string[] ExcludeMarkerFilters { get; set; }
 
         [McpDescription("Number of editor update ticks to sample for Action=Sample. Default 120, clamped to 1..600.", Required = false, Default = 120)]
         public int? SampleFrames { get; set; }
@@ -47,6 +57,21 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("Maximum spike samples returned in the response. Default 5.", Required = false, Default = 5)]
         public int? MaxSpikes { get; set; }
+
+        [McpDescription("For Action=Hierarchy, maximum profiler markers to sample. Default 160, clamped to 1..500.", Required = false, Default = 160)]
+        public int? MaxProfilerMarkers { get; set; }
+
+        [McpDescription("For Action=Hierarchy, maximum top marker samples returned inline. Default 40, clamped to 1..300.", Required = false, Default = 40)]
+        public int? MaxHierarchySamples { get; set; }
+
+        [McpDescription("For Action=Hierarchy, maximum marker path depth returned in the synthetic hierarchy. Default 5, clamped to 1..12.", Required = false, Default = 5)]
+        public int? MaxHierarchyDepth { get; set; }
+
+        [McpDescription("For Action=Hierarchy, minimum time in milliseconds a marker must report before it appears in top samples. Default 0.", Required = false, Default = 0)]
+        public double? MinHierarchySampleMs { get; set; }
+
+        [McpDescription("For Action=Hierarchy, include non-time profiler counters as well as time samples. Default false.", Required = false, Default = false)]
+        public bool? IncludeCounters { get; set; }
 
         [McpDescription("Save the full sample payload under Library/UniBridge/RuntimeProfiler. Default true.", Required = false, Default = true)]
         public bool? SaveToFile { get; set; }
