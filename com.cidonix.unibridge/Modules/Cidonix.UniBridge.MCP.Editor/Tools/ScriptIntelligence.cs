@@ -987,6 +987,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 return usages;
 
             var maxScan = Clamp(p.MaxScanAssets <= 0 ? DefaultMaxScanAssets : p.MaxScanAssets, 1, MaxScanAssetsHardLimit);
+            var remainingLocations = Clamp(p.MaxUsageLocations <= 0 ? 100 : p.MaxUsageLocations, 1, MaxReferencesHardLimit);
             var paths = AssetDatabase.FindAssets("")
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -1003,12 +1004,19 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     continue;
 
                 var count = CountOccurrences(text, target.Guid, StringComparison.OrdinalIgnoreCase);
+                var locations = p.IncludeUsageLocations && remainingLocations > 0
+                    ? AssetReferenceLocator.FindGuidReferences(path, target.Guid, target.Path, remainingLocations)
+                    : Array.Empty<object>();
+                remainingLocations -= locations.Length;
+
                 usages.Add(new
                 {
                     path,
                     guid = AssetDatabase.AssetPathToGUID(path),
                     type = AssetDatabase.GetMainAssetTypeAtPath(path)?.Name ?? "Unknown",
                     referenceCount = count,
+                    locationCount = locations.Length,
+                    locations = p.IncludeUsageLocations ? locations : null,
                     dependency = AssetDatabase.GetDependencies(path, false).Contains(target.Path),
                     extension = Path.GetExtension(path)
                 });

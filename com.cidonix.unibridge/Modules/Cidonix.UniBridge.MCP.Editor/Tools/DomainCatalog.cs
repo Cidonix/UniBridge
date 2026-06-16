@@ -26,7 +26,7 @@ public const string Description = @"Return an agent-facing catalog of Unity doma
 
 Use this as a first call when a new agent knows the task domain but not the exact UniBridge tool. It is read-only and optimized for tool discovery, workflow order, and domain-specific type hints.
 
-Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
+Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search asset reference search asset_ref_search reference locations script usages code usages ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
 
 Args:
     Action: Overview, ListDomains, InspectDomain, ListTypes, or SuggestTools.
@@ -590,28 +590,28 @@ Returns:
                     Key = "Assets",
                     Title = "Asset import, snapshots, and generic asset authoring",
                     When = "Use for importer settings, asset snapshots, material/shader assets, ScriptableObjects, and allowlisted generic assets.",
-                    FirstCalls = new[] { "UniBridge_EditorEvents Action=Snapshot IncludeAssetChanges=true", "UniBridge_AssetIntelligence Context", "UniBridge_AssetIntelligence Action=Structure for prefab/loaded scene hierarchy search", "UniBridge_ManageAssetImporter Inspect", "UniBridge_TypeSchema InspectAsset IncludePatchExamples=true" },
+                    FirstCalls = new[] { "UniBridge_EditorEvents Action=Snapshot IncludeAssetChanges=true", "UniBridge_AssetIntelligence Context", "UniBridge_AssetIntelligence Action=Structure for prefab/loaded scene hierarchy search", "UniBridge_AssetIntelligence ReferenceGraph/Impact IncludeReferenceLocations=true for exact YAML reference sites", "UniBridge_ManageAssetImporter Inspect", "UniBridge_TypeSchema InspectAsset IncludePatchExamples=true" },
                     AuthoringTools = new[] { "UniBridge_ManageAsset", "UniBridge_ManageAssetImporter", "UniBridge_ManageMaterial", "UniBridge_ManageScriptableObject" },
                     InspectionTools = new[] { "UniBridge_AssetIntelligence", "UniBridge_TypeSchema", "UniBridge_UnitySearch", "UniBridge_EditorEvents" },
                     VerificationTools = new[] { "UniBridge_CaptureAsset", "UniBridge_EditorEvents", "UniBridge_ReadConsole" },
                     CaptureTools = new[] { "UniBridge_CaptureAsset" },
                     TypeNames = new[] { "UnityEngine.Texture2D", "UnityEngine.Sprite", "UnityEngine.Material", "UnityEngine.Shader", "UnityEngine.RenderTexture", "UnityEngine.TerrainLayer", "UnityEngine.AvatarMask", "UnityEngine.ShaderVariantCollection", "UnityEditor.AssetImporter" },
-                    Notes = new[] { "Use AssetIntelligence Impact/ReferenceGraph before risky moves or deletes.", "Use AssetIntelligence Structure for compact prefab or loaded scene hierarchy list/search/read with indexed paths and serialized field matching.", "TypeSchema PatchExamples gives ready-to-call property patches for importers and ScriptableObjects.", "AssetSnapshotSerializer returns compact profiles for noisy materials, textures, clips, particles, TMP fonts, audio mixers, timelines, input actions, UI Toolkit assets, meshes, shaders, atlases, tiles, and related importer data." },
-                    Aliases = new[] { "assets", "import", "importer", "materials", "sprites", "asset_structure", "prefab_structure" }
+                    Notes = new[] { "Use AssetIntelligence Impact/ReferenceGraph before risky moves or deletes; pass IncludeReferenceLocations=true when exact YAML line/property/object context matters.", "Use AssetIntelligence Structure for compact prefab or loaded scene hierarchy list/search/read with indexed paths and serialized field matching.", "TypeSchema PatchExamples gives ready-to-call property patches for importers and ScriptableObjects.", "AssetSnapshotSerializer returns compact profiles for noisy materials, textures, clips, particles, TMP fonts, audio mixers, timelines, input actions, UI Toolkit assets, meshes, shaders, atlases, tiles, and related importer data." },
+                    Aliases = new[] { "assets", "import", "importer", "materials", "sprites", "asset_structure", "prefab_structure", "asset_ref_search", "reference_locations" }
                 },
                 new DomainDefinition
                 {
                     Key = "Scripts",
                     Title = "C# script discovery and source editing",
                     When = "Use for script search, attached behaviour context, safe text edits, validation, and compilation.",
-                    FirstCalls = new[] { "UniBridge_ScriptIntelligence Search", "UniBridge_BehaviourContext IncludeSource=true", "UniBridge_GetSha" },
+                    FirstCalls = new[] { "UniBridge_ScriptIntelligence Search", "UniBridge_ScriptIntelligence Usages IncludeUsageLocations=true", "UniBridge_BehaviourContext IncludeSource=true", "UniBridge_GetSha" },
                     AuthoringTools = new[] { "UniBridge_CreateScript", "UniBridge_ApplyTextEdits", "UniBridge_DeleteScript" },
                     InspectionTools = new[] { "UniBridge_ScriptIntelligence", "UniBridge_BehaviourContext", "UniBridge_TypeSchema" },
                     VerificationTools = new[] { "UniBridge_ManageEditor", "UniBridge_EditorEvents", "UniBridge_ReadConsole" },
                     CaptureTools = Array.Empty<string>(),
                     TypeNames = new[] { "UnityEngine.MonoBehaviour", "UnityEngine.ScriptableObject", "UnityEditor.MonoScript" },
-                    Notes = new[] { "After script edits, validate scripts, refresh assets, request compilation with RequestScriptCompilationNoWait, then wait with WaitForReadyAfterReload before scene work.", "Use EditorEvents IncludeDiagnostics=true to read retained compiler errors/warnings with file/line/column after compilation." },
-                    Aliases = new[] { "scripts", "code", "csharp", "monobehaviour" }
+                    Notes = new[] { "After script edits, validate scripts, refresh assets, request compilation with RequestScriptCompilationNoWait, then wait with WaitForReadyAfterReload before scene work.", "Use ScriptIntelligence Usages IncludeUsageLocations=true to see exact prefab/scene YAML references to a script before deletion or migration.", "Use EditorEvents IncludeDiagnostics=true to read retained compiler errors/warnings with file/line/column after compilation." },
+                    Aliases = new[] { "scripts", "code", "csharp", "monobehaviour", "script_usages", "code_usages" }
                 }
             };
         }

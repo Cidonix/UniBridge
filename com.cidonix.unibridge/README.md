@@ -22,6 +22,9 @@ through an approval-based connection flow.
 - Read-only asset structure workflows for prefab and already-loaded scene
   assets, including compact hierarchy list/search/read with duplicate-safe
   indexed paths and optional serialized field matching.
+- Location-aware asset/script reference workflows that report exact YAML
+  line/property/object context before risky rename, move, delete, or script
+  migration work.
 - `UniBridge_Discover`, a stable read-only ping/workflow entry point for new
   MCP clients and Codex sessions.
 - `UniBridge_WorkSession`, a project-local checkpoint/review/revert layer that
@@ -87,6 +90,20 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## Known 0.2.21 Notes
+
+- `UniBridge_AssetIntelligence Action=ReferenceGraph`, `Dependents`, and
+  `Impact` can now return bounded exact reference locations with
+  `IncludeReferenceLocations=true`.
+- Reference locations include `assetPath`, `line`, `column`, `propertyPath`,
+  YAML document type/fileId, inferred `objectPath`, duplicate-safe
+  `indexedObjectPath`, component/script type, and a short preview.
+- `UniBridge_ScriptIntelligence Action=Usages` can return exact prefab/scene
+  YAML locations for script GUID references with `IncludeUsageLocations=true`.
+- `UniBridge_BatchActions`, `Discover`, `ToolGuide`, and `DomainCatalog`
+  expose aliases such as `asset_ref_search`, `reference_locations`,
+  `script_usages`, `code_usages`, and `unity_code_usages`.
 
 ## Known 0.2.20 Notes
 

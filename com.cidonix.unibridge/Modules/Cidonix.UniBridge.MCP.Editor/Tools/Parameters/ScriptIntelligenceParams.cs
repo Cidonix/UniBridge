@@ -131,6 +131,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Include script asset usage scan in Analyze results. Can be expensive on large projects.", Required = false, Default = false)]
         public bool IncludeUsages { get; set; }
 
+        [McpDescription("For Usages and Analyze IncludeUsages, include bounded YAML locations where the script GUID appears: line, property path, YAML document, and prefab/scene hierarchy context when inferable.", Required = false, Default = true)]
+        public bool IncludeUsageLocations { get; set; } = true;
+
         [McpDescription("Text or regex pattern for References. Defaults to TypeName or Query.", Required = false)]
         public string Pattern { get; set; }
 
@@ -151,6 +154,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("Maximum source/reference matches returned.", Required = false, Default = 200)]
         public int MaxReferences { get; set; } = 200;
+
+        [McpDescription("Maximum YAML script usage locations returned across all usage assets.", Required = false, Default = 100)]
+        public int MaxUsageLocations { get; set; } = 100;
 
         [McpDescription("Maximum source characters returned per script when source is included.", Required = false, Default = 60000)]
         public int MaxTextChars { get; set; } = 60000;

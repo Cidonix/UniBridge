@@ -1,8 +1,31 @@
-# UniBridge 0.2.20 Release Notes
+# UniBridge 0.2.21 Release Notes
 
 Release date: 2026-06-16
 
-This release adds `UniBridge_AssetIntelligence Action=Structure`, a read-only
+This release adds location-aware reference inspection to existing
+`UniBridge_AssetIntelligence` and `UniBridge_ScriptIntelligence` workflows.
+Agents can now ask for exact YAML reference sites instead of only seeing that
+one asset depends on another.
+
+`UniBridge_AssetIntelligence Action=ReferenceGraph`, `Dependents`, and
+`Impact` accept `IncludeReferenceLocations=true` plus
+`MaxReferenceLocations`. Returned locations include the source asset path,
+target GUID/path, line, column, inferred YAML property path, YAML document
+type/class/fileId, inferred prefab/scene object path, duplicate-safe
+`indexedObjectPath`, component/script type, and a short preview line.
+
+`UniBridge_ScriptIntelligence Action=Usages` and
+`Analyze IncludeUsages=true` now support `IncludeUsageLocations=true` and
+`MaxUsageLocations`, so an agent can find exactly which prefab/scene YAML
+objects reference a script GUID before component migration or deletion.
+
+Discoverability was updated across `BatchActions`, `Discover`, `ToolGuide`,
+and `DomainCatalog` with aliases such as `asset_ref_search`,
+`asset_reference_search`, `asset_usages`, `reference_graph`,
+`reference_locations`, `script_usages`, `code_usages`, and
+`unity_code_usages`.
+
+The previous 0.2.20 release added `UniBridge_AssetIntelligence Action=Structure`, a read-only
 asset structure workflow for prefab assets and already-loaded scene assets.
 Agents can call `StructureMode=List` to get a compact hierarchy map with
 duplicate-safe `indexedPath` values, `StructureMode=Search` to find objects by
@@ -18,9 +41,9 @@ aliases such as `asset_structure`, `prefab_structure`,
 `scene_asset_structure`, `structure_search`, `serialized_asset_search`, and
 `read_yaml`.
 
-`UniBridge_Discover Action=Tools` now handles multi-token queries across tool
+`UniBridge_Discover Action=Tools` handles multi-token queries across tool
 names, descriptions, and aliases, and `UniBridge_ToolGuide Action=Workflow`
-now prioritizes exact workflow keys before broader aliases.
+prioritizes exact workflow keys before broader aliases.
 
 The previous 0.2.19 release added cacheable loaded-type maps to `UniBridge_TypeSchema`.
 Agents can call `Action=TypeFingerprint` before reusing a cached type map, then
@@ -103,7 +126,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.20`
+- Version: `0.2.21`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows

@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, asset reference search, asset_ref_search, reference locations, script usages, code usages, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -139,6 +139,17 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                         "UniBridge_TypeSchema Action=TypeIndex Kind=MonoBehaviour Query=<name> Limit=40",
                         "UniBridge_TypeSchema Action=TypeIndex Kind=Any WriteToFile=true Limit=80",
                         "UniBridge_TypeSchema Action=Inspect TypeName=<fullName> IncludePatchExamples=true"
+                    }
+                },
+                new
+                {
+                    key = "asset_reference_locations",
+                    summary = "Find exact YAML locations where an asset or script GUID is referenced, including line, property path, document, and prefab/scene hierarchy context.",
+                    calls = new[]
+                    {
+                        "UniBridge_AssetIntelligence Action=ReferenceGraph Path=Assets/... IncludeReferenceLocations=true MaxReferenceLocations=20",
+                        "UniBridge_AssetIntelligence Action=Impact Path=Assets/... ImpactOperation=Delete IncludeReferenceLocations=true",
+                        "UniBridge_ScriptIntelligence Action=Usages Path=Assets/.../<script>.cs IncludeUsageLocations=true MaxUsageLocations=20"
                     }
                 },
                 new

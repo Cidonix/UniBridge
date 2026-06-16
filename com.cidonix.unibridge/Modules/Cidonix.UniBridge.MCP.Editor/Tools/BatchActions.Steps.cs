@@ -1236,6 +1236,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["types"] = "Types",
                         ["selection"] = "Selection",
                         ["preview"] = "Preview",
+                        ["serialize"] = "Serialize",
+                        ["snapshot"] = "Snapshot",
+                        ["context"] = "Context",
                         ["structure"] = "Structure",
                         ["asset_structure"] = "Structure",
                         ["prefab_structure"] = "Structure",
@@ -1243,7 +1246,16 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["structure_search"] = "Structure",
                         ["serialized_asset_search"] = "Structure",
                         ["read_yaml"] = "Structure",
-                        ["yaml"] = "Structure"
+                        ["yaml"] = "Structure",
+                        ["referencegraph"] = "ReferenceGraph",
+                        ["reference_graph"] = "ReferenceGraph",
+                        ["references"] = "ReferenceGraph",
+                        ["asset_ref_search"] = "ReferenceGraph",
+                        ["asset_reference_search"] = "ReferenceGraph",
+                        ["reference_locations"] = "ReferenceGraph",
+                        ["impact"] = "Impact",
+                        ["resolve_missing"] = "ResolveMissing",
+                        ["resolvemissing"] = "ResolveMissing"
                     });
                     NormalizeAction(parameters, "StructureMode", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
@@ -1280,6 +1292,47 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "MaxFieldDepth", "maxFieldDepth", "max_field_depth");
                     CopyAlias(parameters, "MaxArrayItems", "maxArrayItems", "max_array_items");
                     CopyAlias(parameters, "IncludeSerializedProperties", "includeSerializedProperties", "include_serialized_properties", "serializedProperties", "serialized_properties");
+                    CopyAlias(parameters, "IncludeReferenceLocations", "includeReferenceLocations", "include_reference_locations", "referenceLocations", "reference_locations");
+                    CopyAlias(parameters, "MaxReferenceLocations", "maxReferenceLocations", "max_reference_locations", "maxLocations", "max_locations");
+                    CopyAlias(parameters, "RefreshReferenceIndex", "refreshReferenceIndex", "refresh_reference_index");
+                    CopyAlias(parameters, "UseReferenceIndex", "useReferenceIndex", "use_reference_index");
+                    CopyAlias(parameters, "IncludeReferenceEdges", "includeReferenceEdges", "include_reference_edges");
+                    CopyAlias(parameters, "MaxReferenceEdges", "maxReferenceEdges", "max_reference_edges");
+                    CopyAlias(parameters, "ImpactOperation", "impactOperation", "impact_operation", "operation", "Operation");
+                    break;
+                case "UniBridge_ScriptIntelligence":
+                    NormalizeAction(parameters, "Action", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["catalog"] = "Catalog",
+                        ["search"] = "Catalog",
+                        ["inspect"] = "Analyze",
+                        ["analyze"] = "Analyze",
+                        ["readtypes"] = "ReadTypes",
+                        ["read_types"] = "ReadTypes",
+                        ["references"] = "References",
+                        ["refs"] = "References",
+                        ["usages"] = "Usages",
+                        ["usage"] = "Usages",
+                        ["script_usages"] = "Usages",
+                        ["code_usages"] = "Usages",
+                        ["unity_code_usages"] = "Usages",
+                        ["hotspots"] = "Hotspots",
+                        ["assemblies"] = "Assemblies",
+                        ["selection"] = "Selection",
+                        ["metrics"] = "Metrics"
+                    });
+                    CopyAlias(parameters, "Path", "path", "uri", "Uri", "scriptPath", "script_path");
+                    CopyAlias(parameters, "Paths", "paths", "scriptPaths", "script_paths");
+                    CopyAlias(parameters, "Guid", "guid", "scriptGuid", "script_guid");
+                    CopyAlias(parameters, "Query", "query", "search", "Search");
+                    CopyAlias(parameters, "TypeName", "typeName", "type_name", "className", "class_name");
+                    CopyAlias(parameters, "Pattern", "pattern", "regex");
+                    CopyAlias(parameters, "IncludeUsageLocations", "includeUsageLocations", "include_usage_locations", "usageLocations", "usage_locations");
+                    CopyAlias(parameters, "MaxUsageLocations", "maxUsageLocations", "max_usage_locations", "maxLocations", "max_locations");
+                    CopyAlias(parameters, "IncludeUsages", "includeUsages", "include_usages");
+                    CopyAlias(parameters, "IncludeSource", "includeSource", "include_source");
+                    CopyAlias(parameters, "IncludeMembers", "includeMembers", "include_members");
+                    CopyAlias(parameters, "Limit", "limit");
                     break;
                 case "UniBridge_Discover":
                     NormalizeAction(parameters, "Action", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

@@ -2,6 +2,31 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.21
+
+### Added
+
+- Added bounded YAML reference locations for
+  `UniBridge_AssetIntelligence Action=ReferenceGraph`, `Dependents`, and
+  `Impact` via `IncludeReferenceLocations=true`.
+- Reference locations include asset path, target GUID/path, line, column,
+  property path, YAML document type/fileId, inferred GameObject path,
+  duplicate-safe indexed object path, component/script type, and a short
+  preview line.
+- Added script usage locations for
+  `UniBridge_ScriptIntelligence Action=Usages` and
+  `Analyze IncludeUsages=true` via `IncludeUsageLocations=true`.
+- Added discoverability and batch aliases for `asset_ref_search`,
+  `asset_reference_search`, `asset_usages`, `reference_graph`,
+  `reference_locations`, `script_usages`, `code_usages`, and
+  `unity_code_usages`.
+
+### Improved
+
+- `UniBridge_BatchActions` now normalizes `AssetIntelligence`
+  `ReferenceGraph`/`Impact` aliases and `ScriptIntelligence` usage aliases,
+  making reference-location checks easier to compose in batch workflows.
+
 ## 0.2.20
 
 ### Added

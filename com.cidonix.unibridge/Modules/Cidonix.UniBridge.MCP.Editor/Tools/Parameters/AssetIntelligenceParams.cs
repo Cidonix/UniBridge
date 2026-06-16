@@ -276,6 +276,12 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         [McpDescription("Maximum explicit reference edges returned by ReferenceGraph.", Required = false, Default = 200)]
         public int MaxReferenceEdges { get; set; } = 200;
 
+        [McpDescription("Include bounded YAML reference locations for ReferenceGraph, Dependents, and Impact. Locations include line, property path, YAML document, and prefab/scene hierarchy context when inferable.", Required = false, Default = false)]
+        public bool IncludeReferenceLocations { get; set; }
+
+        [McpDescription("Maximum YAML reference locations returned when IncludeReferenceLocations is true.", Required = false, Default = 50)]
+        public int MaxReferenceLocations { get; set; } = 50;
+
         [McpDescription("Operation name for Impact reports, such as Modify, Move, Rename, Delete, or Reimport.", Required = false, Default = "Modify")]
         public string ImpactOperation { get; set; } = "Modify";
 

@@ -250,6 +250,7 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 .ToList();
 
             var dependents = new List<object>();
+            var dependentPaths = new List<string>();
             foreach (var candidate in candidatePaths)
             {
                 var dependencies = AssetDatabase.GetDependencies(candidate, true);
@@ -260,6 +261,7 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 if (dependsOnTarget)
                 {
                     dependents.Add(BuildAssetSummary(candidate, null, false, AssetPreviewOutputMode.None, p.IncludeImporter, false));
+                    dependentPaths.Add(candidate);
                     if (dependents.Count >= Clamp(p.Limit <= 0 ? DefaultLimit : p.Limit, 1, MaxLimit))
                         break;
                 }
@@ -272,7 +274,10 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 scanned = candidatePaths.Count,
                 maxScan,
                 truncatedScan = candidatePaths.Count >= maxScan,
-                dependents
+                dependents,
+                referenceLocations = p.IncludeReferenceLocations
+                    ? BuildIncomingReferenceLocationGroups(path, dependentPaths, p)
+                    : null
             });
         }
 
@@ -296,7 +301,10 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 index = BuildReferenceIndexSummary(index),
                 returned = dependents.Count,
                 truncated = index.GetDependentCount(path) > dependents.Count,
-                dependents
+                dependents,
+                referenceLocations = p.IncludeReferenceLocations
+                    ? BuildIncomingReferenceLocationGroups(path, dependentPaths, p)
+                    : null
             });
         }
 
@@ -330,9 +338,15 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 .Take(MaxDependencyItems)
                 .Select(dep => BuildAssetSummary(dep, null, false, AssetPreviewOutputMode.None, p.IncludeImporter, false))
                 .ToList();
+            var dependencyPaths = index.GetDependencies(path)
+                .Take(MaxDependencyItems)
+                .ToList();
             var dependents = index.GetDependents(path)
                 .Take(limit)
                 .Select(dep => BuildAssetSummary(dep, null, false, AssetPreviewOutputMode.None, p.IncludeImporter, false))
+                .ToList();
+            var dependentPaths = index.GetDependents(path)
+                .Take(limit)
                 .ToList();
 
             return Response.Success($"Built reference graph slice for '{path}'.", new
@@ -344,7 +358,14 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 dependents,
                 dependencyCount = index.GetDependencyCount(path),
                 dependentCount = index.GetDependentCount(path),
-                edges = p.IncludeReferenceEdges ? index.GetEdgesFor(path, Clamp(p.MaxReferenceEdges <= 0 ? 200 : p.MaxReferenceEdges, 1, 5000)) : null
+                edges = p.IncludeReferenceEdges ? index.GetEdgesFor(path, Clamp(p.MaxReferenceEdges <= 0 ? 200 : p.MaxReferenceEdges, 1, 5000)) : null,
+                referenceLocations = p.IncludeReferenceLocations
+                    ? new
+                    {
+                        incoming = BuildIncomingReferenceLocationGroups(path, dependentPaths, p),
+                        outgoing = BuildOutgoingReferenceLocationGroups(path, dependencyPaths, p)
+                    }
+                    : null
             });
         }
 
@@ -364,9 +385,15 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 .Take(limit)
                 .Select(dep => BuildAssetSummary(dep, null, false, AssetPreviewOutputMode.None, p.IncludeImporter, false))
                 .ToList();
+            var dependentPaths = index.GetDependents(path)
+                .Take(limit)
+                .ToList();
             var dependencies = index.GetDependencies(path)
                 .Take(Math.Min(MaxDependencyItems, limit))
                 .Select(dep => BuildAssetSummary(dep, null, false, AssetPreviewOutputMode.None, p.IncludeImporter, false))
+                .ToList();
+            var dependencyPaths = index.GetDependencies(path)
+                .Take(Math.Min(MaxDependencyItems, limit))
                 .ToList();
 
             return Response.Success($"Impact for {operation} on '{path}': {risk}.", new
@@ -382,6 +409,13 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 returnedDependencies = dependencies.Count,
                 dependents,
                 dependencies,
+                referenceLocations = p.IncludeReferenceLocations
+                    ? new
+                    {
+                        incoming = BuildIncomingReferenceLocationGroups(path, dependentPaths, p),
+                        outgoing = BuildOutgoingReferenceLocationGroups(path, dependencyPaths, p)
+                    }
+                    : null,
                 guidance = BuildImpactGuidance(operation, dependentCount)
             });
         }
@@ -1817,6 +1851,68 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
 
             guidance.Add("RefreshReferenceIndex=true rebuilds the cache after imports, moves, deletes, or package changes.");
             return guidance.ToArray();
+        }
+
+        static object[] BuildIncomingReferenceLocationGroups(string targetPath, IEnumerable<string> dependentPaths, AssetIntelligenceParams p)
+        {
+            var targetGuid = AssetDatabase.AssetPathToGUID(targetPath);
+            return BuildReferenceLocationGroups(
+                dependentPaths,
+                sourcePath => targetPath,
+                sourcePath => targetGuid,
+                "incoming",
+                p);
+        }
+
+        static object[] BuildOutgoingReferenceLocationGroups(string sourcePath, IEnumerable<string> dependencyPaths, AssetIntelligenceParams p)
+        {
+            return BuildReferenceLocationGroups(
+                dependencyPaths,
+                dependencyPath => dependencyPath,
+                AssetDatabase.AssetPathToGUID,
+                "outgoing",
+                p,
+                fixedSourcePath: sourcePath);
+        }
+
+        static object[] BuildReferenceLocationGroups(
+            IEnumerable<string> paths,
+            Func<string, string> targetPathSelector,
+            Func<string, string> targetGuidSelector,
+            string direction,
+            AssetIntelligenceParams p,
+            string fixedSourcePath = null)
+        {
+            var groups = new List<object>();
+            var remaining = Clamp(p.MaxReferenceLocations <= 0 ? 50 : p.MaxReferenceLocations, 1, 500);
+            foreach (var path in paths ?? Enumerable.Empty<string>())
+            {
+                if (remaining <= 0)
+                    break;
+
+                var sourcePath = fixedSourcePath ?? path;
+                var targetPath = targetPathSelector(path);
+                var targetGuid = targetGuidSelector(path);
+                if (string.IsNullOrWhiteSpace(sourcePath) || string.IsNullOrWhiteSpace(targetGuid))
+                    continue;
+
+                var locations = AssetReferenceLocator.FindGuidReferences(sourcePath, targetGuid, targetPath, remaining);
+                if (locations.Length == 0)
+                    continue;
+
+                groups.Add(new
+                {
+                    direction,
+                    source = sourcePath,
+                    target = targetPath,
+                    targetGuid,
+                    count = locations.Length,
+                    locations
+                });
+                remaining -= locations.Length;
+            }
+
+            return groups.ToArray();
         }
 
         static PreviewData BuildPreview(string path, AssetPreviewOutputMode mode, int requestedSize)

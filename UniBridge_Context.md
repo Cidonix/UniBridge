@@ -5,6 +5,81 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.21 Location-Aware Reference Sites
+
+Після аналізу Locus-style workflows додано не новий дублюючий tool, а
+розширення існуючих `UniBridge_AssetIntelligence` і
+`UniBridge_ScriptIntelligence`: agent тепер може бачити точні YAML-місця, де
+asset або script GUID реально використовується.
+
+Навіщо це потрібно:
+
+- перед `rename/move/delete` asset агент бачить не тільки список dependents, а
+  конкретний prefab/scene YAML рядок, property і object path;
+- перед міграцією або видаленням MonoBehaviour script агент бачить, які prefab
+  або scene objects тримають `m_Script` reference;
+- для duplicate sibling names повертається `indexedObjectPath`, щоб агент міг
+  працювати не лише по неунікальному імені;
+- це read-only і bounded, тому підходить як safety-first preflight перед
+  ризиковими змінами.
+
+Нові параметри:
+
+- `UniBridge_AssetIntelligence`:
+  - `IncludeReferenceLocations=true`;
+  - `MaxReferenceLocations`;
+  - працює з `Action=ReferenceGraph`, `Dependents`, `Impact`;
+- `UniBridge_ScriptIntelligence`:
+  - `IncludeUsageLocations=true`;
+  - `MaxUsageLocations`;
+  - працює з `Action=Usages` і `Analyze IncludeUsages=true`.
+
+Reference location payload містить:
+
+- `assetPath`, `targetGuid`, `targetPath`;
+- `line`, `column`, `preview`;
+- `propertyPath`;
+- `yamlDocument.type/classId/fileId`;
+- `objectPath`, `indexedObjectPath`, `gameObjectName`;
+- `componentType`, `scriptType`, `scriptAssetPath`.
+
+Discoverability:
+
+- `BatchActions` aliases:
+  `asset_ref_search`, `asset_reference_search`, `asset_usages`,
+  `reference_graph`, `reference_locations`, `script_usages`, `code_usages`,
+  `unity_code_usages`;
+- `Discover` workflow `asset_reference_locations`;
+- `ToolGuide` workflow `asset_reference_locations`;
+- `DomainCatalog` Assets/Scripts domains mention exact reference locations.
+
+Live smoke у `H:/Repos/UnityRepos/UniBridge_Test_Project` через MCP:
+
+- package sync -> `UniBridge_Discover Action=Ping` показав package version
+  `0.2.21`;
+- `UniBridge_BatchActions` з `RefreshAssets WaitForCompletion=true` потрапив у
+  expected reload boundary, relay reconnect спрацював, editor ready,
+  compilation diagnostics `errors=0`, `warnings=0`;
+- `Discover Action=Workflows Query="asset_reference_locations
+  reference_locations code_usages"` повернув новий workflow;
+- `ToolGuide Workflow asset_reference_locations` повернув правильний workflow,
+  aliases і нотатки;
+- `AssetIntelligence Structure` для
+  `Assets/CorgiEngine/Common/Prefabs/GUI/DialogueBox.prefab` повернув 5
+  objects, `DialogueBox` component summary і чисту консоль;
+- `ScriptIntelligence Usages` для
+  `Assets/CorgiEngine/Common/Scripts/GUI/Dialogue/DialogueBox.cs` повернув
+  usage у `DialogueBox.prefab` з exact location:
+  `line=510`, `column=38`, `propertyPath=MonoBehaviour.m_Script`,
+  `objectPath=/DialogueBox`, `indexedObjectPath=/DialogueBox`,
+  `componentType=MoreMountains.CorgiEngine.DialogueBox`;
+- `AssetIntelligence ReferenceGraph IncludeReferenceLocations=true` для того
+  самого script повернув той самий incoming location у
+  `referenceLocations.incoming`;
+- `UniBridge_ReadConsole DiagnosticSummary`: `totalEntries=0`.
+
+Пакет піднято до `0.2.21`; relay лишився `1.1.0-build.15`.
+
 ## 2026-06-16: UniBridge 0.2.20 AssetIntelligence Structure
 
 Додано read-only `UniBridge_AssetIntelligence Action=Structure` як

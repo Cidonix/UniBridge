@@ -557,7 +557,7 @@ It is read-only and supports:
 - detailed asset inspection with GUID, type, labels, importer metadata, file size, timestamps, and type-specific details;
 - text reading for assets such as `.cs`, `.prefab`, `.unity`, `.mat`, `.asset`, `.json`, `.asmdef`, `.uss`, and `.uxml`;
 - dependency and dependent scans;
-- cached `ReferenceGraph` queries for dependencies, reverse references, top referenced assets, and optional edge samples;
+- cached `ReferenceGraph` queries for dependencies, reverse references, top referenced assets, optional edge samples, and bounded exact YAML reference locations;
 - `Impact` reports before modifying, moving, renaming, deleting, or reimporting an asset;
 - `ResolveMissing` fuzzy recovery for stale or mistyped asset paths;
 - selected Project asset inspection;
@@ -594,6 +594,16 @@ Use `Action=Structure` when an agent needs a map of a prefab or loaded scene ass
 - `StructureMode=Read ObjectPath=<path-or-indexedPath>` drills into one object and returns transform, component details, renderer sorting data, child summaries, and bounded serialized properties;
 - if duplicate names make a plain path ambiguous, pass the returned `indexedPath`;
 - scene assets must already be loaded in the editor. `Action=Structure` is read-only and does not open unloaded scenes automatically. Use `Action=Read` for raw `.unity` YAML text or `SceneHierarchyExport` for full loaded-scene exports.
+
+Use `IncludeReferenceLocations=true` with `Action=ReferenceGraph`, `Action=Dependents`, or `Action=Impact` when asset-level dependency names are not precise enough. UniBridge scans bounded text/YAML reference sites and returns:
+
+- `line` and `column` for the referenced GUID;
+- `propertyPath` inferred from YAML indentation;
+- YAML document type/class/fileId;
+- inferred `objectPath` and duplicate-safe `indexedObjectPath` for prefab/scene references when available;
+- `componentType`, resolved MonoScript type, and a short preview line.
+
+This is especially useful before deleting, renaming, moving, or replacing an asset because the agent can explain exactly which prefab/scene object and property will be affected.
 
 Use `SerializeMode` to control depth:
 
@@ -1058,6 +1068,8 @@ It is read-only and supports:
 - `Metrics`: summarize script counts by kind, assembly, folder, and Unity callback.
 
 Prefer this tool for orientation and impact analysis. Use the dedicated edit tools below when it is time to change code.
+
+For script migration or deletion checks, call `Action=Usages IncludeUsageLocations=true`. Usage locations resolve prefab/scene YAML references to the script GUID and include line/column, property path, YAML document context, inferred object path, duplicate-safe indexed object path, and resolved script type where Unity can load the `MonoScript`.
 
 Use:
 

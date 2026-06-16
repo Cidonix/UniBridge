@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search asset reference search asset_ref_search reference locations script usages code usages ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -307,13 +307,26 @@ This tool is read-only.";
                     Key = "search",
                     Title = "Resolve vague user references",
                     When = "Use when the user names an object, asset, script, shader, menu item, or folder without an exact path.",
-                    FirstCalls = new[] { "UniBridge_UnitySearch with Sources suited to the task", "UniBridge_AssetIntelligence Search/Context/ResolveMissing for asset-heavy tasks", "UniBridge_AssetIntelligence Action=Structure StructureMode=Search for prefab or loaded scene hierarchy/serialized-field lookup", "UniBridge_ScriptIntelligence Search for code/type tasks", "UniBridge_TypeSchema Action=TypeIndex for loaded Unity/C# type lookup" },
+                    FirstCalls = new[] { "UniBridge_UnitySearch with Sources suited to the task", "UniBridge_AssetIntelligence Search/Context/ResolveMissing for asset-heavy tasks", "UniBridge_AssetIntelligence Action=Structure StructureMode=Search for prefab or loaded scene hierarchy/serialized-field lookup", "UniBridge_AssetIntelligence ReferenceGraph/Impact IncludeReferenceLocations=true when exact YAML reference sites matter", "UniBridge_ScriptIntelligence Search/Usages for code/type tasks", "UniBridge_TypeSchema Action=TypeIndex for loaded Unity/C# type lookup" },
                     EditCalls = Array.Empty<string>(),
                     VerifyCalls = new[] { "UniBridge_TypeSchema or SceneObjectView for selected scene targets", "UniBridge_AssetIntelligence Context or Action=Structure StructureMode=Read for selected assets" },
                     Tools = new[] { "UniBridge_UnitySearch", "UniBridge_AssetIntelligence", "UniBridge_ScriptIntelligence", "UniBridge_TypeSchema", "UniBridge_SceneObjectView" },
-                    BatchAliases = new[] { "find", "lookup", "asset_search", "asset_structure", "prefab_structure", "script_search", "schema" },
+                    BatchAliases = new[] { "find", "lookup", "asset_search", "asset_ref_search", "asset_structure", "prefab_structure", "script_search", "code_usages", "schema" },
                     Notes = new[] { "Prefer search before editing when names are ambiguous.", "Use TypeSchema TypeIndex/TypeFingerprint when a component or ScriptableObject short name may be ambiguous across namespaces/assemblies.", "Use AssetIntelligence Context when you want structured one-call asset summary/read/serialize/suggestion output.", "Use AssetIntelligence Structure when you need compact list/search/read over prefab or loaded scene hierarchy, including indexed paths and serialized field matching.", "Use AssetIntelligence ResolveMissing when a user-provided asset path is stale or mistyped." },
-                    Aliases = new[] { "find", "lookup", "resolve", "asset_structure", "prefab_structure" }
+                    Aliases = new[] { "find", "lookup", "resolve", "asset_ref_search", "reference_locations", "asset_structure", "prefab_structure" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "asset_reference_locations",
+                    Title = "Locate asset and script references precisely",
+                    When = "Use before rename, move, delete, prefab cleanup, script cleanup, or when an agent needs exact YAML reference sites instead of only asset-level dependents.",
+                    FirstCalls = new[] { "UniBridge_UnitySearch Sources=[Assets,Scripts] Query=<assetOrScript>", "UniBridge_AssetIntelligence Action=ReferenceGraph Path=Assets/... IncludeReferenceLocations=true MaxReferenceLocations=20", "UniBridge_ScriptIntelligence Action=Usages Path=Assets/.../<script>.cs IncludeUsageLocations=true MaxUsageLocations=20" },
+                    EditCalls = Array.Empty<string>(),
+                    VerifyCalls = new[] { "UniBridge_AssetIntelligence Action=Impact Path=Assets/... ImpactOperation=Delete IncludeReferenceLocations=true", "UniBridge_ReadConsole Action=DiagnosticSummary" },
+                    Tools = new[] { "UniBridge_AssetIntelligence", "UniBridge_ScriptIntelligence", "UniBridge_UnitySearch", "UniBridge_ReadConsole" },
+                    BatchAliases = new[] { "asset_ref_search", "asset_reference_search", "asset_usages", "reference_graph", "reference_locations", "script_usages", "code_usages", "unity_code_usages" },
+                    Notes = new[] { "Reference locations are read-only and bounded. They include assetPath, line, column, propertyPath, YAML document type/fileId, and prefab/scene object path when inferable.", "For script assets, ScriptIntelligence Usages resolves prefab/scene YAML references to the script GUID with line/property/object context.", "Use the returned indexedObjectPath when sibling names are duplicated." },
+                    Aliases = new[] { "asset_ref_search", "asset_reference_search", "reference_locations", "script_usages", "code_usages", "unity_code_usages" }
                 },
                 new WorkflowGuide
                 {
@@ -541,13 +554,13 @@ This tool is read-only.";
                     Key = "assets_import",
                     Title = "Inspect and tune asset import settings",
                     When = "Use for textures, sprites, models, audio, and importer serialized properties.",
-                    FirstCalls = new[] { "UniBridge_UnitySearch Sources=[Assets]", "UniBridge_AssetIntelligence Context for asset summary/read/serialize, Structure for prefab/loaded scene hierarchy, or ReferenceGraph for reference maps", "UniBridge_ManageAssetImporter Inspect IncludeSerializedProperties=true" },
+                    FirstCalls = new[] { "UniBridge_UnitySearch Sources=[Assets]", "UniBridge_AssetIntelligence Context for asset summary/read/serialize, Structure for prefab/loaded scene hierarchy, or ReferenceGraph/Impact IncludeReferenceLocations=true for exact reference maps", "UniBridge_ManageAssetImporter Inspect IncludeSerializedProperties=true" },
                     EditCalls = new[] { "UniBridge_ManageAssetImporter SetProperties", "UniBridge_ManageAsset for folders/copy/move/delete/CreateOrUpdate allowlisted assets", "UniBridge_BatchActions DryRun=true for folder-wide edits" },
                     VerifyCalls = new[] { "UniBridge_ManageAssetImporter Inspect", "UniBridge_CaptureAsset", "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     Tools = new[] { "UniBridge_UnitySearch", "UniBridge_AssetIntelligence", "UniBridge_WorkflowRecipes", "UniBridge_ManageAssetImporter", "UniBridge_ManageAsset", "UniBridge_CaptureAsset", "UniBridge_ReadConsole" },
-                    BatchAliases = new[] { "asset_importer", "importer", "import_settings", "asset_capture" },
-                    Notes = new[] { "Use project context before deciding what optimal import settings mean.", "Use AssetIntelligence ContextProfile=Deep when an asset's importer, sub-assets, serialized fields, or text chunks are central to the task.", "Use AssetIntelligence Structure for prefab/scene hierarchy and serialized-field searches without reading a giant snapshot.", "Before move/rename/delete, call AssetIntelligence Impact or ReferenceGraph to see dependents and reference risk.", "ManageAsset CreateOrUpdate supports an allowlist: PhysicsMaterial2D, RenderTexture, TerrainLayer, AvatarMask, ShaderVariantCollection." },
-                    Aliases = new[] { "import", "importer", "sprites", "textures", "assets", "asset_structure" }
+                    BatchAliases = new[] { "asset_importer", "importer", "import_settings", "asset_capture", "asset_ref_search" },
+                    Notes = new[] { "Use project context before deciding what optimal import settings mean.", "Use AssetIntelligence ContextProfile=Deep when an asset's importer, sub-assets, serialized fields, or text chunks are central to the task.", "Use AssetIntelligence Structure for prefab/scene hierarchy and serialized-field searches without reading a giant snapshot.", "Before move/rename/delete, call AssetIntelligence Impact or ReferenceGraph with IncludeReferenceLocations=true to see exact YAML line/property/object sites, not only asset-level dependents.", "ManageAsset CreateOrUpdate supports an allowlist: PhysicsMaterial2D, RenderTexture, TerrainLayer, AvatarMask, ShaderVariantCollection." },
+                    Aliases = new[] { "import", "importer", "sprites", "textures", "assets", "asset_structure", "asset_ref_search", "reference_locations" }
                 },
                 new WorkflowGuide
                 {
@@ -619,13 +632,13 @@ This tool is read-only.";
                     Key = "scripts",
                     Title = "Search, create, and safely edit scripts",
                     When = "Use for C# discovery and text changes that need SHA/precondition safety.",
-                    FirstCalls = new[] { "UniBridge_ScriptIntelligence Search/Inspect", "UniBridge_GetSha before direct text edits" },
+                    FirstCalls = new[] { "UniBridge_ScriptIntelligence Search/Inspect", "UniBridge_ScriptIntelligence Usages IncludeUsageLocations=true when prefab/scene references matter", "UniBridge_GetSha before direct text edits" },
                     EditCalls = new[] { "UniBridge_CreateScript", "UniBridge_ApplyTextEdits", "UniBridge_DeleteScript" },
                     VerifyCalls = new[] { "UniBridge_ValidateScript IncludeDiagnostics=true", "UniBridge_ManageEditor Action=RefreshAssets WaitForCompletion=true", "UniBridge_ManageEditor Action=RequestScriptCompilationNoWait Force=true", "UniBridge_ManageEditor Action=WaitForReadyAfterReload", "UniBridge_ManageEditor Action=GetCompilationDiagnostics", "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     Tools = new[] { "UniBridge_ScriptIntelligence", "UniBridge_ValidateScript", "UniBridge_GetSha", "UniBridge_ApplyTextEdits", "UniBridge_CreateScript", "UniBridge_DeleteScript", "UniBridge_ManageEditor", "UniBridge_ReadConsole" },
-                    BatchAliases = new[] { "script_intelligence", "script_search", "validate_script", "script_validate", "cs_validation" },
-                    Notes = new[] { "BatchActions supports read-only script validation; script text editing still uses dedicated SHA/precondition tools.", "For compile verification, prefer RequestScriptCompilationNoWait followed by WaitForReadyAfterReload, then read compilation diagnostics and console output." },
-                    Aliases = new[] { "code", "csharp", "cs", "script" }
+                    BatchAliases = new[] { "script_intelligence", "script_search", "script_usages", "code_usages", "validate_script", "script_validate", "cs_validation" },
+                    Notes = new[] { "BatchActions supports read-only script validation; script text editing still uses dedicated SHA/precondition tools.", "Use ScriptIntelligence Usages IncludeUsageLocations=true to find exact prefab/scene YAML references to a script GUID before deleting or migrating a component script.", "For compile verification, prefer RequestScriptCompilationNoWait followed by WaitForReadyAfterReload, then read compilation diagnostics and console output." },
+                    Aliases = new[] { "code", "csharp", "cs", "script", "script_usages", "code_usages" }
                 },
                 new WorkflowGuide
                 {
