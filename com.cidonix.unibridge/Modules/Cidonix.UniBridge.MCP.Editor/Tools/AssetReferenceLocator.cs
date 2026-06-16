@@ -23,6 +23,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         static readonly Regex FatherRegex = new(@"\bm_Father:\s*\{fileID:\s*(?<id>-?\d+)", RegexOptions.Compiled);
         static readonly Regex ComponentRegex = new(@"\bcomponent:\s*\{fileID:\s*(?<id>-?\d+)", RegexOptions.Compiled);
         static readonly Regex ScriptRegex = new(@"\bm_Script:\s*\{[^}]*guid:\s*(?<guid>[0-9a-fA-F]{32})", RegexOptions.Compiled);
+        static readonly Regex UnityEventMethodRegex = new(@"^\s*(?:-\s*)?m_MethodName:\s*(?<value>.*)$", RegexOptions.Compiled);
+        static readonly Regex UnityEventTargetRegex = new(@"\bm_Target:\s*\{fileID:\s*(?<id>-?\d+)", RegexOptions.Compiled);
+        static readonly Regex UnityEventTargetTypeRegex = new(@"^\s*(?:-\s*)?m_TargetAssemblyTypeName:\s*(?<value>.*)$", RegexOptions.Compiled);
+        static readonly Regex AnimationEventFunctionRegex = new(@"^\s*(?:-\s*)?functionName:\s*(?<value>.*)$", RegexOptions.Compiled);
 
         public static object[] FindGuidReferences(string assetPath, string targetGuid, string targetPath, int requestedLimit)
         {
@@ -93,6 +97,374 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
 
             return results.ToArray();
+        }
+
+        static bool TryAddSerializedFieldMemberReference(
+            string assetPath,
+            string targetGuid,
+            string targetPath,
+            string memberName,
+            string[] lines,
+            int lineIndex,
+            YamlDocumentInfo doc,
+            HierarchyIndex hierarchy,
+            List<object> results)
+        {
+            var line = lines[lineIndex];
+            var fieldMatch = FieldRegex.Match(line);
+            if (!fieldMatch.Success || !string.Equals(fieldMatch.Groups["name"].Value, memberName, StringComparison.Ordinal))
+                return false;
+
+            var propertyPath = BuildPropertyPath(lines, doc.StartLine + 1, lineIndex);
+            if (!PropertyPathStartsWithMember(propertyPath, memberName))
+                return false;
+
+            results.Add(BuildMemberReferenceResult(
+                assetPath,
+                targetGuid,
+                targetPath,
+                memberName,
+                "SerializedField",
+                "Exact",
+                "Field is serialized inside the target script component.",
+                lines,
+                lineIndex,
+                doc,
+                hierarchy,
+                propertyPath,
+                null));
+
+            return true;
+        }
+
+        static bool TryAddUnityEventMemberReference(
+            string assetPath,
+            string targetGuid,
+            string targetPath,
+            string targetTypeName,
+            string targetFullName,
+            string memberName,
+            bool includePossibleMatches,
+            string[] lines,
+            int lineIndex,
+            YamlDocumentInfo doc,
+            List<YamlDocumentInfo> documents,
+            HierarchyIndex hierarchy,
+            List<object> results)
+        {
+            var line = lines[lineIndex];
+            var methodMatch = UnityEventMethodRegex.Match(line);
+            if (!methodMatch.Success || !string.Equals(Unquote(methodMatch.Groups["value"].Value), memberName, StringComparison.Ordinal))
+                return false;
+
+            var propertyPath = BuildPropertyPath(lines, doc.StartLine + 1, lineIndex);
+            var target = ResolveUnityEventTarget(lines, lineIndex, documents, hierarchy, targetGuid, targetTypeName, targetFullName);
+            var exact = target != null && target.IsTargetScript;
+            if (!exact && !includePossibleMatches)
+                return false;
+
+            results.Add(BuildMemberReferenceResult(
+                assetPath,
+                targetGuid,
+                targetPath,
+                memberName,
+                "UnityEventMethod",
+                exact ? "Exact" : "Possible",
+                exact
+                    ? "UnityEvent persistent call resolves to the target script."
+                    : "UnityEvent method name matches, but the target script could not be proven. Verify before renaming/removing.",
+                lines,
+                lineIndex,
+                doc,
+                hierarchy,
+                propertyPath,
+                target));
+
+            return true;
+        }
+
+        static bool TryAddAnimationEventMemberReference(
+            string assetPath,
+            string targetGuid,
+            string targetPath,
+            string memberName,
+            bool includePossibleMatches,
+            string[] lines,
+            int lineIndex,
+            YamlDocumentInfo doc,
+            HierarchyIndex hierarchy,
+            List<object> results)
+        {
+            if (!includePossibleMatches)
+                return false;
+
+            var isAnimationAsset = string.Equals(Path.GetExtension(assetPath), ".anim", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(doc.TypeName, "AnimationClip", StringComparison.Ordinal);
+            if (!isAnimationAsset)
+                return false;
+
+            var line = lines[lineIndex];
+            var functionMatch = AnimationEventFunctionRegex.Match(line);
+            if (!functionMatch.Success || !string.Equals(Unquote(functionMatch.Groups["value"].Value), memberName, StringComparison.Ordinal))
+                return false;
+
+            var propertyPath = BuildPropertyPath(lines, doc.StartLine + 1, lineIndex);
+            results.Add(BuildMemberReferenceResult(
+                assetPath,
+                targetGuid,
+                targetPath,
+                memberName,
+                "AnimationEventFunction",
+                "RuntimeResolved",
+                "AnimationEvent receiver is resolved by Unity at runtime; inspect the animated object before removing this member.",
+                lines,
+                lineIndex,
+                doc,
+                hierarchy,
+                propertyPath,
+                null));
+
+            return true;
+        }
+
+        static object BuildMemberReferenceResult(
+            string assetPath,
+            string targetGuid,
+            string targetPath,
+            string memberName,
+            string usageKind,
+            string confidence,
+            string note,
+            string[] lines,
+            int lineIndex,
+            YamlDocumentInfo doc,
+            HierarchyIndex hierarchy,
+            string propertyPath,
+            UnityEventTargetInfo eventTarget)
+        {
+            var objectPath = ResolveObjectPath(doc, hierarchy);
+            var indexedObjectPath = ResolveIndexedObjectPath(doc, hierarchy);
+            var componentType = ResolveComponentType(doc);
+            return new
+            {
+                assetPath,
+                targetGuid,
+                targetPath,
+                member = memberName,
+                usageKind,
+                confidence,
+                note,
+                line = lineIndex + 1,
+                column = FindMemberColumn(lines[lineIndex], memberName),
+                refPath = BuildReferencePath(objectPath, componentType, propertyPath, doc.TypeName),
+                propertyPath,
+                yamlDocument = new
+                {
+                    type = doc.TypeName,
+                    classId = doc.ClassId,
+                    fileId = doc.FileId
+                },
+                objectPath,
+                indexedObjectPath,
+                gameObjectName = !string.IsNullOrWhiteSpace(doc.GameObjectFileId)
+                    ? hierarchy.GetName(doc.GameObjectFileId)
+                    : doc.TypeName == "GameObject" ? doc.Name : null,
+                componentType,
+                scriptType = doc.ScriptType,
+                eventTarget = eventTarget == null ? null : new
+                {
+                    fileId = eventTarget.FileId,
+                    objectPath = eventTarget.ObjectPath,
+                    indexedObjectPath = eventTarget.IndexedObjectPath,
+                    componentType = eventTarget.ComponentType,
+                    scriptType = eventTarget.ScriptType,
+                    assemblyTypeName = eventTarget.AssemblyTypeName,
+                    isTargetScript = eventTarget.IsTargetScript
+                },
+                preview = TrimPreview(lines[lineIndex])
+            };
+        }
+
+        public static object[] FindSerializedMemberReferences(
+            string assetPath,
+            string targetGuid,
+            string targetPath,
+            string targetTypeName,
+            string targetFullName,
+            string memberName,
+            bool includePossibleMatches,
+            int requestedLimit)
+        {
+            var limit = Clamp(requestedLimit <= 0 ? DefaultLimit : requestedLimit, 1, HardLimit);
+            if (string.IsNullOrWhiteSpace(assetPath) || string.IsNullOrWhiteSpace(memberName))
+                return Array.Empty<object>();
+
+            var fullPath = AssetPathToFullPath(assetPath);
+            if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
+                return Array.Empty<object>();
+
+            string[] lines;
+            try
+            {
+                lines = File.ReadAllLines(fullPath);
+            }
+            catch
+            {
+                return Array.Empty<object>();
+            }
+
+            var documents = ParseDocuments(lines);
+            var hierarchy = HierarchyIndex.Build(documents);
+            var results = new List<object>();
+
+            for (var docIndex = 0; docIndex < documents.Count && results.Count < limit; docIndex++)
+            {
+                var doc = documents[docIndex];
+                var isTargetScriptDocument = IsTargetScriptDocument(doc, targetGuid, targetTypeName, targetFullName);
+                for (var lineIndex = doc.StartLine; lineIndex <= doc.EndLine && lineIndex < lines.Length && results.Count < limit; lineIndex++)
+                {
+                    if (isTargetScriptDocument &&
+                        TryAddSerializedFieldMemberReference(assetPath, targetGuid, targetPath, memberName, lines, lineIndex, doc, hierarchy, results))
+                    {
+                        continue;
+                    }
+
+                    if (TryAddUnityEventMemberReference(assetPath, targetGuid, targetPath, targetTypeName, targetFullName, memberName, includePossibleMatches, lines, lineIndex, doc, documents, hierarchy, results))
+                        continue;
+
+                    TryAddAnimationEventMemberReference(assetPath, targetGuid, targetPath, memberName, includePossibleMatches, lines, lineIndex, doc, hierarchy, results);
+                }
+            }
+
+            return results.ToArray();
+        }
+
+        static UnityEventTargetInfo ResolveUnityEventTarget(
+            string[] lines,
+            int methodLineIndex,
+            List<YamlDocumentInfo> documents,
+            HierarchyIndex hierarchy,
+            string targetGuid,
+            string targetTypeName,
+            string targetFullName)
+        {
+            string targetFileId = null;
+            string assemblyTypeName = null;
+            var firstLine = Math.Max(0, methodLineIndex - 16);
+            for (var i = methodLineIndex - 1; i >= firstLine; i--)
+            {
+                var line = lines[i];
+
+                if (targetFileId == null)
+                {
+                    var targetMatch = UnityEventTargetRegex.Match(line);
+                    if (targetMatch.Success)
+                        targetFileId = targetMatch.Groups["id"].Value;
+                }
+
+                if (assemblyTypeName == null)
+                {
+                    var typeMatch = UnityEventTargetTypeRegex.Match(line);
+                    if (typeMatch.Success)
+                        assemblyTypeName = Unquote(typeMatch.Groups["value"].Value);
+                }
+
+                if (targetFileId != null && assemblyTypeName != null)
+                    break;
+            }
+
+            var targetDoc = !string.IsNullOrWhiteSpace(targetFileId)
+                ? documents.FirstOrDefault(doc => string.Equals(doc.FileId, targetFileId, StringComparison.Ordinal))
+                : null;
+
+            var targetIsScript = IsTargetScriptDocument(targetDoc, targetGuid, targetTypeName, targetFullName) ||
+                                 AssemblyTypeMatches(assemblyTypeName, targetTypeName, targetFullName);
+
+            return new UnityEventTargetInfo
+            {
+                FileId = targetFileId,
+                ObjectPath = targetDoc == null ? null : ResolveObjectPath(targetDoc, hierarchy),
+                IndexedObjectPath = targetDoc == null ? null : ResolveIndexedObjectPath(targetDoc, hierarchy),
+                ComponentType = targetDoc == null ? null : ResolveComponentType(targetDoc),
+                ScriptType = targetDoc?.ScriptType,
+                AssemblyTypeName = assemblyTypeName,
+                IsTargetScript = targetIsScript
+            };
+        }
+
+        static bool IsTargetScriptDocument(YamlDocumentInfo document, string targetGuid, string targetTypeName, string targetFullName)
+        {
+            if (document == null)
+                return false;
+
+            if (!string.IsNullOrWhiteSpace(targetGuid) &&
+                string.Equals(document.ScriptGuid, targetGuid, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return TypeNameMatches(document.ScriptType, targetTypeName, targetFullName);
+        }
+
+        static bool AssemblyTypeMatches(string assemblyTypeName, string targetTypeName, string targetFullName)
+        {
+            if (string.IsNullOrWhiteSpace(assemblyTypeName))
+                return false;
+
+            var typePart = assemblyTypeName.Split(',')[0].Trim();
+            return TypeNameMatches(typePart, targetTypeName, targetFullName);
+        }
+
+        static bool TypeNameMatches(string actual, string targetTypeName, string targetFullName)
+        {
+            if (string.IsNullOrWhiteSpace(actual))
+                return false;
+
+            var normalizedActual = actual.Trim();
+            if (!string.IsNullOrWhiteSpace(targetFullName) &&
+                string.Equals(normalizedActual, targetFullName.Trim(), StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetTypeName))
+            {
+                var targetSimple = targetTypeName.Trim();
+                var actualSimple = normalizedActual.Split('.').LastOrDefault() ?? normalizedActual;
+                if (string.Equals(normalizedActual, targetSimple, StringComparison.Ordinal) ||
+                    string.Equals(actualSimple, targetSimple, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool PropertyPathStartsWithMember(string propertyPath, string memberName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyPath) || string.IsNullOrWhiteSpace(memberName))
+                return false;
+
+            return string.Equals(propertyPath, memberName, StringComparison.Ordinal) ||
+                   propertyPath.StartsWith(memberName + ".", StringComparison.Ordinal);
+        }
+
+        static string Unquote(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            return value.Trim().Trim('"');
+        }
+
+        static int FindMemberColumn(string line, string memberName)
+        {
+            if (string.IsNullOrEmpty(line) || string.IsNullOrEmpty(memberName))
+                return 1;
+
+            var index = line.IndexOf(memberName, StringComparison.Ordinal);
+            return index < 0 ? 1 : index + 1;
         }
 
         static List<YamlDocumentInfo> ParseDocuments(string[] lines)
@@ -350,6 +722,17 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 string.Equals(ClassId, "224", StringComparison.Ordinal) ||
                 string.Equals(TypeName, "Transform", StringComparison.Ordinal) ||
                 string.Equals(TypeName, "RectTransform", StringComparison.Ordinal);
+        }
+
+        sealed class UnityEventTargetInfo
+        {
+            public string FileId;
+            public string ObjectPath;
+            public string IndexedObjectPath;
+            public string ComponentType;
+            public string ScriptType;
+            public string AssemblyTypeName;
+            public bool IsTargetScript;
         }
 
         readonly struct PropertyStackItem

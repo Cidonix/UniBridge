@@ -1,8 +1,28 @@
-# UniBridge 0.2.21 Release Notes
+# UniBridge 0.2.22 Release Notes
 
 Release date: 2026-06-16
 
-This release adds location-aware reference inspection to existing
+This release adds serialized member usage inspection to
+`UniBridge_ScriptIntelligence`. Agents can now ask where a specific script
+member is referenced from Unity serialized assets before renaming or removing
+callbacks and inspector fields.
+
+`UniBridge_ScriptIntelligence Action=MemberUsages` accepts a target script plus
+`Member=<methodOrField>`. It scans bounded Unity asset YAML and reports
+`UnityEvent` persistent method bindings, `AnimationEvent` function names, and
+serialized field entries on target script components. Results include asset
+path, line/column, property path, YAML document info, object path,
+duplicate-safe `indexedObjectPath`, component/script type, usage kind,
+confidence, note, and preview text.
+
+Discoverability was updated across `BatchActions`, `Discover`, `ToolGuide`,
+and `DomainCatalog` with aliases such as `member_usages`,
+`serialized_member_usages`, `serialized_member_search`,
+`unity_event_usages`, `animation_event_usages`, and
+`serialized_field_usages`. `UniBridge_BatchActions` also normalizes
+`member`/`method`/`field`/`function` parameter aliases for the new workflow.
+
+The previous 0.2.21 release added location-aware reference inspection to existing
 `UniBridge_AssetIntelligence` and `UniBridge_ScriptIntelligence` workflows.
 Agents can now ask for exact YAML reference sites instead of only seeing that
 one asset depends on another.
@@ -22,8 +42,8 @@ objects reference a script GUID before component migration or deletion.
 Discoverability was updated across `BatchActions`, `Discover`, `ToolGuide`,
 and `DomainCatalog` with aliases such as `asset_ref_search`,
 `asset_reference_search`, `asset_usages`, `reference_graph`,
-`reference_locations`, `script_usages`, `code_usages`, and
-`unity_code_usages`.
+`reference_locations`, `script_usages`, `asset_script_usages`, and
+`guid_usages`.
 
 The previous 0.2.20 release added `UniBridge_AssetIntelligence Action=Structure`, a read-only
 asset structure workflow for prefab assets and already-loaded scene assets.
@@ -126,7 +146,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.21`
+- Version: `0.2.22`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows

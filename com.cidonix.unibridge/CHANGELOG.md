@@ -2,6 +2,34 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.22
+
+### Added
+
+- Added `UniBridge_ScriptIntelligence Action=MemberUsages`, a read-only
+  serialized member usage scan for Unity assets.
+- `MemberUsages` finds:
+  - `UnityEvent` persistent method bindings by `m_MethodName`;
+  - `AnimationEvent` function names in animation clips;
+  - serialized field entries on target `MonoBehaviour`/script components.
+- Member usage results include `assetPath`, `line`, `column`,
+  `propertyPath`, YAML document info, inferred object path,
+  duplicate-safe `indexedObjectPath`, component/script type, usage kind,
+  confidence, note, and preview text.
+- Added discoverability and batch aliases for `member_usages`,
+  `serialized_member_usages`, `serialized_member_search`,
+  `unity_event_usages`, `animation_event_usages`, and
+  `serialized_field_usages`.
+
+### Improved
+
+- `UniBridge_BatchActions` now normalizes `ScriptIntelligence`
+  `MemberUsages` action aliases plus `member`/`method`/`field`/`function`
+  parameter aliases.
+- Script reference workflows now cover both script GUID references and
+  serialized member-level references, making callback/field rename preflight
+  checks safer for agents.
+
 ## 0.2.21
 
 ### Added
@@ -18,8 +46,8 @@ All notable UniBridge package changes will be documented in this file.
   `Analyze IncludeUsages=true` via `IncludeUsageLocations=true`.
 - Added discoverability and batch aliases for `asset_ref_search`,
   `asset_reference_search`, `asset_usages`, `reference_graph`,
-  `reference_locations`, `script_usages`, `code_usages`, and
-  `unity_code_usages`.
+  `reference_locations`, `script_usages`, `asset_script_usages`, and
+  `guid_usages`.
 
 ### Improved
 

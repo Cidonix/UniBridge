@@ -1062,6 +1062,7 @@ It is read-only and supports:
 - `ReadTypes`: return source and summaries for specific component or ScriptableObject types;
 - `References`: search C# files for a type, member, text, or regex pattern;
 - `Usages`: find scenes, prefabs, and assets that reference a script asset;
+- `MemberUsages`: find Unity serialized references to one script member, including UnityEvent method bindings, AnimationEvent function names, and serialized fields;
 - `Hotspots`: find likely cleanup points such as TODO/FIXME, file/class mismatches, obsolete Unity APIs, large files, or `UnityEditor` references in runtime folders;
 - `Assemblies`: summarize Unity compilation assemblies and asmdefs;
 - `Selection`: analyze selected script assets;
@@ -1070,6 +1071,10 @@ It is read-only and supports:
 Prefer this tool for orientation and impact analysis. Use the dedicated edit tools below when it is time to change code.
 
 For script migration or deletion checks, call `Action=Usages IncludeUsageLocations=true`. Usage locations resolve prefab/scene YAML references to the script GUID and include line/column, property path, YAML document context, inferred object path, duplicate-safe indexed object path, and resolved script type where Unity can load the `MonoScript`.
+
+For member rename/delete checks, use:
+
+- `Action=MemberUsages Path=Assets/.../<script>.cs Member=<methodOrField>` to find serialized UnityEvent, AnimationEvent, and inspector-field references in Unity assets;
 
 Use:
 

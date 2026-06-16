@@ -1314,8 +1314,17 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["usages"] = "Usages",
                         ["usage"] = "Usages",
                         ["script_usages"] = "Usages",
+                        ["asset_script_usages"] = "Usages",
+                        ["guid_usages"] = "Usages",
                         ["code_usages"] = "Usages",
                         ["unity_code_usages"] = "Usages",
+                        ["memberusages"] = "MemberUsages",
+                        ["member_usages"] = "MemberUsages",
+                        ["serialized_member_usages"] = "MemberUsages",
+                        ["serialized_member_search"] = "MemberUsages",
+                        ["unity_event_usages"] = "MemberUsages",
+                        ["animation_event_usages"] = "MemberUsages",
+                        ["serialized_field_usages"] = "MemberUsages",
                         ["hotspots"] = "Hotspots",
                         ["assemblies"] = "Assemblies",
                         ["selection"] = "Selection",
@@ -1326,8 +1335,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "Guid", "guid", "scriptGuid", "script_guid");
                     CopyAlias(parameters, "Query", "query", "search", "Search");
                     CopyAlias(parameters, "TypeName", "typeName", "type_name", "className", "class_name");
+                    CopyAlias(parameters, "Member", "member", "method", "Method", "field", "Field", "function", "Function");
                     CopyAlias(parameters, "Pattern", "pattern", "regex");
                     CopyAlias(parameters, "IncludeUsageLocations", "includeUsageLocations", "include_usage_locations", "usageLocations", "usage_locations");
+                    CopyAlias(parameters, "IncludePossibleMemberUsages", "includePossibleMemberUsages", "include_possible_member_usages", "includePossibleMatches", "include_possible_matches");
                     CopyAlias(parameters, "MaxUsageLocations", "maxUsageLocations", "max_usage_locations", "maxLocations", "max_locations");
                     CopyAlias(parameters, "IncludeUsages", "includeUsages", "include_usages");
                     CopyAlias(parameters, "IncludeSource", "includeSource", "include_source");

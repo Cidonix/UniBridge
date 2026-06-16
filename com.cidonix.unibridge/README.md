@@ -91,6 +91,20 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.22 Notes
+
+- `UniBridge_ScriptIntelligence Action=MemberUsages` can find serialized
+  references to one script member in Unity assets.
+- It reports `UnityEvent` persistent method bindings, `AnimationEvent`
+  function names, and serialized field entries with bounded YAML
+  line/property/object context.
+- Use it before renaming or removing callback methods and inspector fields:
+  `Action=MemberUsages Path=Assets/.../<script>.cs Member=<methodOrField>`.
+- `BatchActions`, `Discover`, `ToolGuide`, and `DomainCatalog` expose aliases
+  such as `member_usages`, `serialized_member_usages`,
+  `unity_event_usages`, `animation_event_usages`, and
+  `serialized_field_usages`.
+
 ## Known 0.2.21 Notes
 
 - `UniBridge_AssetIntelligence Action=ReferenceGraph`, `Dependents`, and
@@ -103,7 +117,7 @@ Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
   YAML locations for script GUID references with `IncludeUsageLocations=true`.
 - `UniBridge_BatchActions`, `Discover`, `ToolGuide`, and `DomainCatalog`
   expose aliases such as `asset_ref_search`, `reference_locations`,
-  `script_usages`, `code_usages`, and `unity_code_usages`.
+  `script_usages`, `asset_script_usages`, and `guid_usages`.
 
 ## Known 0.2.20 Notes
 

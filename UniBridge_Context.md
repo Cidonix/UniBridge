@@ -5,6 +5,69 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.22 Serialized Member Usages
+
+Після звірки з Locus-style `unity_code_usages` додано не окремий дублюючий
+tool, а новий read-only режим в існуючий `UniBridge_ScriptIntelligence`:
+`Action=MemberUsages`.
+
+Навіщо це потрібно:
+
+- перед перейменуванням або видаленням callback/method/field агент може знайти
+  serialized Unity references, які звичайний C# text search не бачить;
+- покриває `UnityEvent` persistent method bindings, `AnimationEvent`
+  `functionName` і serialized field entries у prefab/scene/asset YAML;
+- exact-match позначається тільки коли UnityEvent target резолвиться до
+  MonoBehaviour з потрібним script GUID;
+- possible/runtime matches лишаються окремо позначеними, щоб агент не робив
+  небезпечних висновків без перевірки;
+- результат містить `assetPath`, `line`, `column`, `propertyPath`,
+  `objectPath`, `indexedObjectPath`, `componentType`, `scriptType`,
+  `usageKind`, `confidence`, `note`, preview і resolved event target.
+
+Нові параметри:
+
+- `UniBridge_ScriptIntelligence Action=MemberUsages`;
+- `Member=<methodOrField>`;
+- `IncludePossibleMemberUsages=true|false`;
+- існуючі bounds: `MaxScanAssets`, `MaxUsageLocations`.
+
+Discoverability:
+
+- `BatchActions` aliases:
+  `member_usages`, `serialized_member_usages`, `serialized_member_search`,
+  `unity_event_usages`, `animation_event_usages`, `serialized_field_usages`;
+- `ToolGuide` workflows `asset_reference_locations`, `scripts`, `search`
+  тепер явно радять `ScriptIntelligence MemberUsages`;
+- `DomainCatalog` Scripts domain показує `MemberUsages` у first calls.
+
+Live smoke у `H:/Repos/UnityRepos/UniBridge_Test_Project` через MCP:
+
+- package sync -> `UniBridge_Discover Action=Ping` показав package version
+  `0.2.22`;
+- після очищення помилкової вкладеної копії пакета
+  `Packages/com.cidonix.unibridge/com.cidonix.unibridge` refresh пройшов через
+  expected reload boundary, relay reconnect спрацював, editor ready;
+- compilation diagnostics: `errors=0`, `warnings=0`;
+- `ToolGuide Workflow asset_reference_locations` і `ToolGuide Workflow scripts`
+  повернули нові `MemberUsages` calls/aliases/notes;
+- `Discover Tools Query="ScriptIntelligence MemberUsages member_usages"`
+  повернув `UniBridge_ScriptIntelligence` з новими aliases;
+- batch smoke:
+  `script_intelligence Action=MemberUsages Path=.../AIActionDoNothing.cs
+  Member=PerformAction` виконався успішно, bounded scan без помилок;
+- positive exact smoke:
+  `script_intelligence Action=MemberUsages
+  Path=Assets/CorgiEngine/Common/Scripts/Managers/InputManager.cs
+  Member=RunButtonDown MaxScanAssets=12000 MaxUsageLocations=10`
+  знайшов 10 serialized UnityEvent usages: 9 `Exact`, 1 `Possible`;
+  приклад exact location:
+  `Assets/CorgiEngine/Common/Prefabs/GUI/UICamera.prefab`, `line=421`,
+  `objectPath=/UICamera/Canvas/Buttons/ButtonX`,
+  `componentType=MoreMountains.Tools.MMTouchButton`,
+  event target `MoreMountains.CorgiEngine.InputManager`;
+- `UniBridge_ReadConsole DiagnosticSummary`: `totalEntries=0`.
+
 ## 2026-06-16: UniBridge 0.2.21 Location-Aware Reference Sites
 
 Після аналізу Locus-style workflows додано не новий дублюючий tool, а
@@ -47,8 +110,8 @@ Discoverability:
 
 - `BatchActions` aliases:
   `asset_ref_search`, `asset_reference_search`, `asset_usages`,
-  `reference_graph`, `reference_locations`, `script_usages`, `code_usages`,
-  `unity_code_usages`;
+  `reference_graph`, `reference_locations`, `script_usages`,
+  `asset_script_usages`, `guid_usages`;
 - `Discover` workflow `asset_reference_locations`;
 - `ToolGuide` workflow `asset_reference_locations`;
 - `DomainCatalog` Assets/Scripts domains mention exact reference locations.
@@ -61,7 +124,7 @@ Live smoke у `H:/Repos/UnityRepos/UniBridge_Test_Project` через MCP:
   expected reload boundary, relay reconnect спрацював, editor ready,
   compilation diagnostics `errors=0`, `warnings=0`;
 - `Discover Action=Workflows Query="asset_reference_locations
-  reference_locations code_usages"` повернув новий workflow;
+  reference_locations asset_script_usages"` повернув новий workflow;
 - `ToolGuide Workflow asset_reference_locations` повернув правильний workflow,
   aliases і нотатки;
 - `AssetIntelligence Structure` для

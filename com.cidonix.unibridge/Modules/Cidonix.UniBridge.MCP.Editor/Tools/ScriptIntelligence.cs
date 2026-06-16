@@ -66,12 +66,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
 Use this when you need to understand code before editing: list MonoBehaviours and ScriptableObjects, inspect one script, read code for known component types, find references, locate prefab/scene usages, summarize assemblies, or detect maintenance hotspots.
 
+Search aliases: script search, script usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, prefab script references, scene script references.
+
 Actions:
     Catalog: List scripts and compiled types with path, kind, assembly, and Unity role. Set IncludeMembers=true only when you need member summaries.
     Analyze: Detail one script by path, GUID, query, or type name.
     ReadTypes: Return source and summaries for requested type names.
     References: Search C# source files for a type/member/text/regex pattern.
     Usages: Find scenes, prefabs, and assets that reference a script asset GUID.
+    MemberUsages: Find serialized uses of a specific script member in Unity assets: UnityEvent method bindings, AnimationEvent function names, and serialized fields.
     Hotspots: Scan scripts for TODO/FIXME, missing compiled types, file/class mismatches, obsolete Unity APIs, and large files.
     Assemblies: Summarize Unity compilation assemblies and script counts.
     Selection: Analyze selected MonoScript assets.
@@ -93,6 +96,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     ScriptIntelligenceAction.ReadTypes => ReadTypes(parameters),
                     ScriptIntelligenceAction.References => References(parameters),
                     ScriptIntelligenceAction.Usages => Usages(parameters),
+                    ScriptIntelligenceAction.MemberUsages => MemberUsages(parameters),
                     ScriptIntelligenceAction.Hotspots => Hotspots(parameters),
                     ScriptIntelligenceAction.Assemblies => Assemblies(parameters),
                     ScriptIntelligenceAction.Selection => Selection(parameters),
@@ -257,6 +261,41 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 action = "Usages",
                 target = BuildScriptSummary(record, p, false, false),
                 usages
+            });
+        }
+
+        static object MemberUsages(ScriptIntelligenceParams p)
+        {
+            var record = ResolveSingleScript(p);
+            if (record == null)
+                return Response.Error("No script found for member usage scan. Provide Path, Guid, TypeName, or Query.");
+
+            var member = FirstNonEmpty(p.Member, p.Pattern);
+            if (string.IsNullOrWhiteSpace(member))
+                return Response.Error("MemberUsages requires Member, for example Member=OnClick or Member=health.");
+
+            member = member.Trim();
+            var result = FindScriptMemberUsages(record, member, p);
+            return Response.Success($"Found {result.Matches.Count} serialized member usage(s) for '{record.Name}.{member}'.", new
+            {
+                action = "MemberUsages",
+                target = BuildScriptSummary(record, p, false, false),
+                member,
+                scanned = new
+                {
+                    result.CandidateAssets,
+                    result.ReferencingAssets,
+                    result.AnimationClips,
+                    result.Truncated
+                },
+                counts = new
+                {
+                    total = result.Matches.Count,
+                    exact = result.Matches.Count(IsExactMemberUsage),
+                    possible = result.Matches.Count(IsPossibleMemberUsage),
+                    byKind = CountMemberUsageKinds(result.Matches)
+                },
+                matches = result.Matches
             });
         }
 
@@ -1028,6 +1067,95 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 .ToList();
         }
 
+        static MemberUsageScanResult FindScriptMemberUsages(ScriptRecord target, string member, ScriptIntelligenceParams p)
+        {
+            var result = new MemberUsageScanResult();
+            if (string.IsNullOrWhiteSpace(target.Guid) || string.IsNullOrWhiteSpace(member))
+                return result;
+
+            var maxScan = Clamp(p.MaxScanAssets <= 0 ? DefaultMaxScanAssets : p.MaxScanAssets, 1, MaxScanAssetsHardLimit);
+            var remaining = Clamp(p.MaxUsageLocations <= 0 ? 100 : p.MaxUsageLocations, 1, MaxReferencesHardLimit);
+            var allCandidatePaths = AssetDatabase.FindAssets("")
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Where(path => ShouldIncludePath(path, p.IncludePackages))
+                .Where(path => !string.Equals(path, target.Path, StringComparison.OrdinalIgnoreCase))
+                .Where(path => k_AssetReferenceExtensions.Contains(Path.GetExtension(path)))
+                .ToList();
+
+            var paths = allCandidatePaths.Take(maxScan).ToList();
+            result.CandidateAssets = paths.Count;
+            result.Truncated = allCandidatePaths.Count > maxScan;
+
+            foreach (var path in paths)
+            {
+                if (remaining <= 0)
+                    break;
+
+                var text = ReadAssetText(path);
+                if (string.IsNullOrEmpty(text))
+                    continue;
+
+                var extension = Path.GetExtension(path);
+                var isAnimationClip = string.Equals(extension, ".anim", StringComparison.OrdinalIgnoreCase);
+                var referencesScript = text.IndexOf(target.Guid, StringComparison.OrdinalIgnoreCase) >= 0;
+                var canContainAnimationEvent = isAnimationClip && text.IndexOf(member, StringComparison.Ordinal) >= 0;
+                if (!referencesScript && !canContainAnimationEvent)
+                    continue;
+
+                if (referencesScript)
+                    result.ReferencingAssets++;
+                if (isAnimationClip)
+                    result.AnimationClips++;
+
+                var locations = AssetReferenceLocator.FindSerializedMemberReferences(
+                    path,
+                    target.Guid,
+                    target.Path,
+                    target.TypeName ?? target.Name,
+                    target.FullName,
+                    member,
+                    p.IncludePossibleMemberUsages,
+                    remaining);
+
+                foreach (var location in locations)
+                    result.Matches.Add(location);
+
+                remaining -= locations.Length;
+            }
+
+            result.Matches = result.Matches
+                .OrderBy(item => GetAnonymousString(item, "assetPath"), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => GetAnonymousInt(item, "line"))
+                .Cast<object>()
+                .ToList();
+
+            return result;
+        }
+
+        static bool IsExactMemberUsage(object usage)
+        {
+            return string.Equals(GetAnonymousString(usage, "confidence"), "Exact", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsPossibleMemberUsage(object usage)
+        {
+            var confidence = GetAnonymousString(usage, "confidence");
+            return string.Equals(confidence, "Possible", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(confidence, "RuntimeResolved", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static object[] CountMemberUsageKinds(IEnumerable<object> usages)
+        {
+            return usages
+                .GroupBy(item => GetAnonymousString(item, "usageKind") ?? "Unknown", StringComparer.OrdinalIgnoreCase)
+                .Select(group => new { kind = group.Key, count = group.Count() })
+                .OrderByDescending(item => item.count)
+                .ThenBy(item => item.kind, StringComparer.OrdinalIgnoreCase)
+                .Cast<object>()
+                .ToArray();
+        }
+
         static void AddSourceMatches(ScriptRecord record, string text, string pattern, Regex regex, bool useRegex, int maxReferences, List<object> matches)
         {
             var lines = SplitLines(text);
@@ -1733,6 +1861,15 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             return item?.GetType().GetProperty(propertyName)?.GetValue(item) as string;
         }
 
+        static int GetAnonymousInt(object item, string propertyName)
+        {
+            var value = item?.GetType().GetProperty(propertyName)?.GetValue(item);
+            if (value is int intValue)
+                return intValue;
+
+            return value != null && int.TryParse(value.ToString(), out var parsed) ? parsed : 0;
+        }
+
         sealed class ScriptRecord
         {
             public string Path;
@@ -1763,6 +1900,15 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
 
                 return m_SourceText ?? string.Empty;
             }
+        }
+
+        sealed class MemberUsageScanResult
+        {
+            public int CandidateAssets;
+            public int ReferencingAssets;
+            public int AnimationClips;
+            public bool Truncated;
+            public List<object> Matches = new();
         }
 
         sealed class SourceAnalysis

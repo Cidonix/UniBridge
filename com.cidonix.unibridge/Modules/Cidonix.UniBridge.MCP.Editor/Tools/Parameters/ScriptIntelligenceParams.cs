@@ -33,6 +33,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         Usages,
 
         /// <summary>
+        /// Find serialized Unity asset usages of one script member, such as UnityEvent methods, AnimationEvent functions, and serialized fields.
+        /// </summary>
+        MemberUsages,
+        /// <summary>
         /// Scan scripts for likely cleanup or maintenance hotspots.
         /// </summary>
         Hotspots,
@@ -86,7 +90,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
     /// </summary>
     public record ScriptIntelligenceParams
     {
-        [McpDescription("Operation to perform: Catalog, Analyze, ReadTypes, References, Usages, Hotspots, Assemblies, Selection, or Metrics.", Required = false, Default = ScriptIntelligenceAction.Catalog)]
+        [McpDescription("Operation to perform: Catalog, Analyze, ReadTypes, References, Usages, MemberUsages, Hotspots, Assemblies, Selection, or Metrics.", Required = false, Default = ScriptIntelligenceAction.Catalog)]
         public ScriptIntelligenceAction Action { get; set; } = ScriptIntelligenceAction.Catalog;
 
         [McpDescription("Script asset path, folder scope, or readable project path. Accepts Assets/..., Packages/..., unity://path/..., or a path relative to Assets/.", Required = false)]
@@ -106,6 +110,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("Specific type names for ReadTypes.", Required = false)]
         public string[] TypeNames { get; set; }
+
+        [McpDescription("Specific script member name for MemberUsages, for example a UnityEvent handler method, AnimationEvent function, or serialized field name.", Required = false)]
+        public string Member { get; set; }
 
         [McpDescription("Filter by script role: Any, MonoBehaviour, ScriptableObject, Component, Editor, EditorWindow, PlainCSharp, or Uncompiled.", Required = false, Default = ScriptKindFilter.Any)]
         public ScriptKindFilter Kind { get; set; } = ScriptKindFilter.Any;
@@ -134,6 +141,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("For Usages and Analyze IncludeUsages, include bounded YAML locations where the script GUID appears: line, property path, YAML document, and prefab/scene hierarchy context when inferable.", Required = false, Default = true)]
         public bool IncludeUsageLocations { get; set; } = true;
 
+        [McpDescription("For MemberUsages, include same-named UnityEvent/AnimationEvent matches that cannot be fully resolved to the target script and mark them as possible/needsVerification. Default true.", Required = false, Default = true)]
+        public bool IncludePossibleMemberUsages { get; set; } = true;
         [McpDescription("Text or regex pattern for References. Defaults to TypeName or Query.", Required = false)]
         public string Pattern { get; set; }
 
