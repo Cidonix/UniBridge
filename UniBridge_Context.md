@@ -5,6 +5,72 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.27 Semantic Asset Diff
+
+Закрито останній Locus-inspired read-only polish: `UniBridge_AssetIntelligence`
+отримав `Action=SemanticDiff` для порівняння Unity YAML/text assets без
+мутацій проекту.
+
+Що додано:
+
+- `AssetIntelligenceAction.SemanticDiff`;
+- параметри `OtherPath`, `OtherGuid`, `MaxDiffItems`,
+  `MaxChangedPropertiesPerDocument`, `IncludeLineDiff`, `MaxLineDiffs`,
+  `MaxGuidReferenceDiffs`;
+- read-only helper `AssetSemanticDiff`, який підтримує `Assets/...`,
+  `Packages/...`, `ProjectSettings/...`, `unity://path/...` і абсолютні paths;
+- semantic YAML parsing за document headers `--- !u!<classId> &<fileId>`;
+- result summary: created/deleted/modified YAML documents, class/fileID
+  changes, changed properties, GUID/script reference deltas, risk summary і
+  bounded line diff hunks;
+- discoverability aliases:
+  `semantic_asset_diff`, `asset_semantic_diff`, `yaml_semantic_diff`,
+  `unity_yaml_diff`, `prefab_semantic_diff`, `asset_diff`, `semantic_diff`;
+- `ToolGuide`, `Discover`, `DomainCatalog`, package docs і release notes
+  оновлені під новий workflow.
+
+Навіщо це потрібно:
+
+- агент може перевірити prefab/scene/material/.asset YAML зміни семантично, не
+  читаючи шумний raw diff;
+- перед звітом або ризиковою asset-правкою видно, чи змінились `m_Script`,
+  GUID references, component/fileID blocks, transform/hierarchy/sorting поля;
+- це закриває практичну прогалину між `WorkSession Diff` як text diff і
+  Unity-aware asset review.
+
+Testing status:
+
+- `dotnet build UniBridge.Relay/UniBridge.Relay.csproj`: success,
+  `0 warnings`, `0 errors`;
+- пакет синхронізовано у
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Packages/com.cidonix.unibridge`
+  і `H:/Repos/UnityRepos/Domovyk/Packages/com.cidonix.unibridge`;
+- перший live Unity refresh виявив compile error `CS0136` у
+  `AssetSemanticDiff.cs`, змінну `fileId` перейменовано на `referencedFileId`;
+- повторний `UniBridge_ManageEditor Action=RefreshAssets WaitForCompletion=true`
+  у тестовому проекті перетнув reload boundary, reconnect відпрацював, Unity
+  повернула ready;
+- `UniBridge_ManageEditor Action=GetCompilationDiagnostics`: `errors=0`,
+  `warnings=0`;
+- `UniBridge_BatchActions DryRun=true` з nested
+  `asset_intelligence Action=SemanticDiff`: validation passed;
+- `UniBridge_BatchActions DryRun=false IncludeConsoleDelta=true` на двох real
+  prefab YAML assets:
+  `Assets/UniBridgeManual/Prefabs/UB_Override_Source_20260511_031211.prefab`
+  ->
+  `Assets/UniBridgeManual/Prefabs/UB_Override_Source_20260511_031305.prefab`
+  повернув semantic result:
+  `4 created`, `4 deleted`, `0 modified` YAML document(s), GUID delta,
+  risk summary і bounded line hunks;
+- batch console delta: `warnings=0`, `errors=0`, `exceptions=0`;
+- `ToolGuide Workflow Topic=asset_semantic_diff` знаходиться;
+- `DomainCatalog InspectDomain Assets` показує `SemanticDiff` у first calls,
+  risk controls і aliases;
+- `Discover Aliases Query=semantic` повертає aliases для
+  `UniBridge_AssetIntelligence`;
+- фінальний `ReadConsole DiagnosticSummary`: `totalEntries=0`, `warnings=0`,
+  `errors=0`, `exceptions=0`.
+
 ## 2026-06-16: UniBridge 0.2.26 Agent Playbook Polish
 
 Фінальний Locus-inspired polish закрито без додавання ще одного великого tool:

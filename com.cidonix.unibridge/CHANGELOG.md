@@ -2,6 +2,20 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.27
+
+### Added
+
+- Added `UniBridge_AssetIntelligence Action=SemanticDiff`, a read-only
+  semantic diff for Unity YAML/text assets such as prefabs, scenes, materials,
+  controllers, `.asset` files, and `.meta` files.
+- `SemanticDiff` reports YAML document created/deleted/modified counts,
+  class/fileID changes, changed properties, GUID/script reference deltas,
+  risk summary, and bounded line diff samples.
+- Added discoverability and batch aliases for `semantic_asset_diff`,
+  `asset_semantic_diff`, `yaml_semantic_diff`, `unity_yaml_diff`,
+  `prefab_semantic_diff`, `asset_diff`, and `semantic_diff`.
+
 ## 0.2.26
 
 ### Improved

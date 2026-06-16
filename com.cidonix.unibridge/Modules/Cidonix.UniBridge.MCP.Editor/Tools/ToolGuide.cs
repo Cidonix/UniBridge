@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide agent playbook read before modify verification ladder risk controls WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler profiler hierarchy marker hierarchy frame export top markers performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search asset reference search asset_ref_search reference locations script usages code usages caller scan member callers code member usages serialized member usages ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide agent playbook read before modify verification ladder risk controls WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler profiler hierarchy marker hierarchy frame export top markers performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search semantic asset diff asset semantic diff yaml semantic diff unity yaml diff prefab semantic diff asset diff asset reference search asset_ref_search reference locations script usages code usages caller scan member callers code member usages serialized member usages ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -402,6 +402,19 @@ This tool is read-only.";
                     BatchAliases = new[] { "asset_structure", "prefab_structure", "scene_asset_structure", "structure_search", "serialized_asset_search" },
                     Notes = new[] { "Structure is read-only and does not open unloaded scenes automatically.", "Use indexedPath from List/Search when duplicate sibling names make plain paths ambiguous.", "For unloaded scene assets, load/open the scene first or use AssetIntelligence Read for raw YAML text." },
                     Aliases = new[] { "asset_structure", "prefab_structure", "serialized_asset_search", "read_yaml" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "asset_semantic_diff",
+                    Title = "Compare Unity YAML/text assets semantically",
+                    When = "Use before or after prefab, scene, material, controller, or .asset YAML changes when a raw git diff is too noisy for an AI agent.",
+                    FirstCalls = new[] { "UniBridge_AssetIntelligence Action=SemanticDiff Path=Assets/.../<before>.prefab OtherPath=Assets/.../<after>.prefab", "UniBridge_AssetIntelligence Action=SemanticDiff Paths=[Assets/.../before.unity,Assets/.../after.unity] IncludeLineDiff=true MaxDiffItems=120" },
+                    EditCalls = Array.Empty<string>(),
+                    VerifyCalls = new[] { "Review changedGuidReferences, changedScriptReferences, riskSummary, and changedProperties before applying or reporting asset edits.", "UniBridge_ReadConsole Action=DiagnosticSummary after actual Unity edits." },
+                    Tools = new[] { "UniBridge_AssetIntelligence", "UniBridge_WorkSession", "UniBridge_ReadConsole" },
+                    BatchAliases = new[] { "semantic_asset_diff", "asset_semantic_diff", "yaml_semantic_diff", "unity_yaml_diff", "prefab_semantic_diff", "asset_diff", "semantic_diff" },
+                    Notes = new[] { "SemanticDiff is read-only. It compares YAML document headers, class/fileID blocks, property signatures, GUID/script references, and bounded line hunks.", "Use this for compact self-review of prefab/scene/material deltas; use WorkSession Diff when you need changed-file text diff across a whole task." },
+                    Aliases = new[] { "asset_semantic_diff", "semantic_asset_diff", "yaml_semantic_diff", "unity_yaml_diff", "prefab_semantic_diff", "asset_diff", "semantic_diff" }
                 },
                 new WorkflowGuide
                 {

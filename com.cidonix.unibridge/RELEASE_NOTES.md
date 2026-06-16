@@ -1,8 +1,43 @@
-# UniBridge 0.2.26 Release Notes
+# UniBridge 0.2.27 Release Notes
 
 Release date: 2026-06-16
 
-This release finishes the Locus-inspired agent-UX pass by polishing the
+This release adds a read-only semantic diff for Unity YAML/text assets, closing
+the last useful Locus-inspired asset review idea in UniBridge's own MCP
+architecture.
+
+`UniBridge_AssetIntelligence Action=SemanticDiff` compares two text-like Unity
+assets such as `.prefab`, `.unity`, `.mat`, `.controller`, `.asset`, or `.meta`
+files and returns an AI-readable review instead of only a noisy raw text diff.
+
+SemanticDiff reports:
+
+- YAML document created/deleted/modified counts;
+- Unity class/fileID document changes;
+- changed serialized properties with before/after values and line numbers;
+- GUID reference deltas with resolved asset paths when Unity can resolve them;
+- `m_Script` reference changes as a separate high-signal section;
+- risk summary for script reference, GUID, component list, hierarchy, transform,
+  sorting, and broad document changes;
+- bounded line diff hunks when the files are small enough for an exact LCS pass.
+
+Examples:
+
+`UniBridge_AssetIntelligence Action=SemanticDiff Path=Assets/.../Before.prefab OtherPath=Assets/.../After.prefab`
+
+`UniBridge_AssetIntelligence Action=SemanticDiff Paths=[Assets/.../old.unity,Assets/.../new.unity] IncludeLineDiff=true MaxDiffItems=120`
+
+New searchable aliases include:
+
+- `semantic_asset_diff`;
+- `asset_semantic_diff`;
+- `yaml_semantic_diff`;
+- `unity_yaml_diff`;
+- `prefab_semantic_diff`;
+- `asset_diff`;
+- `semantic_diff`.
+
+The previous 0.2.26 release finished the Locus-inspired agent-UX pass by polishing the
 guidance that a fresh AI agent sees before it starts editing a Unity project.
 It does not add another large tool; it makes the existing guide and snapshot
 tools clearer, safer, and more directly actionable.

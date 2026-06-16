@@ -584,6 +584,7 @@ It is read-only and supports:
 - cached `ReferenceGraph` queries for dependencies, reverse references, top referenced assets, optional edge samples, and bounded exact YAML reference locations;
 - `Impact` reports before modifying, moving, renaming, deleting, or reimporting an asset;
 - `ResolveMissing` fuzzy recovery for stale or mistyped asset paths;
+- `SemanticDiff` for read-only semantic comparison of Unity YAML/text asset revisions;
 - selected Project asset inspection;
 - project asset statistics by type, extension, folder, largest files, and recent files;
 - PNG previews written under `~/.unibridge/asset-previews/<project>` when Unity can generate them;
@@ -618,6 +619,38 @@ Use `Action=Structure` when an agent needs a map of a prefab or loaded scene ass
 - `StructureMode=Read ObjectPath=<path-or-indexedPath>` drills into one object and returns transform, component details, renderer sorting data, child summaries, and bounded serialized properties;
 - if duplicate names make a plain path ambiguous, pass the returned `indexedPath`;
 - scene assets must already be loaded in the editor. `Action=Structure` is read-only and does not open unloaded scenes automatically. Use `Action=Read` for raw `.unity` YAML text or `SceneHierarchyExport` for full loaded-scene exports.
+
+Use `Action=SemanticDiff` when an agent needs to review two Unity YAML/text
+asset revisions without drowning in raw text diff noise:
+
+```text
+UniBridge_AssetIntelligence Action=SemanticDiff
+  Path=Assets/.../Before.prefab
+  OtherPath=Assets/.../After.prefab
+```
+
+You can also pass two paths through `Paths`:
+
+```text
+UniBridge_AssetIntelligence Action=SemanticDiff
+  Paths=[Assets/.../old.unity,Assets/.../new.unity]
+  IncludeLineDiff=true
+  MaxDiffItems=120
+```
+
+`SemanticDiff` is read-only. It reports:
+
+- created, deleted, modified, and unchanged YAML document counts;
+- Unity class/fileID document changes;
+- changed serialized property paths with before/after values and line numbers;
+- changed GUID references with resolved asset paths where Unity can resolve them;
+- changed `m_Script` references as a separate high-signal section;
+- compact risk summary;
+- bounded line diff hunks for files small enough for exact line comparison.
+
+Useful aliases include `semantic_asset_diff`, `asset_semantic_diff`,
+`yaml_semantic_diff`, `unity_yaml_diff`, `prefab_semantic_diff`, `asset_diff`,
+and `semantic_diff`.
 
 Use `IncludeReferenceLocations=true` with `Action=ReferenceGraph`, `Action=Dependents`, or `Action=Impact` when asset-level dependency names are not precise enough. UniBridge scans bounded text/YAML reference sites and returns:
 

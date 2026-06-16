@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, agent playbook, read before modify, verification ladder, risk controls, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, profiler hierarchy, marker hierarchy, frame export, top markers, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, asset reference search, asset_ref_search, reference locations, script usages, code usages, caller scan, member callers, code member usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, agent playbook, read before modify, verification ladder, risk controls, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, profiler hierarchy, marker hierarchy, frame export, top markers, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, semantic asset diff, asset semantic diff, yaml semantic diff, unity yaml diff, prefab semantic diff, asset diff, asset reference search, asset_ref_search, reference locations, script usages, code usages, caller scan, member callers, code member usages, member usages, serialized member usages, UnityEvent usages, AnimationEvent usages, serialized field usages, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -179,6 +179,17 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                         "UniBridge_AssetIntelligence Action=Structure StructureMode=List Path=Assets/.../<prefab>.prefab MaxStructureDepth=4",
                         "UniBridge_AssetIntelligence Action=Structure StructureMode=Search Path=Assets/.../<prefab>.prefab Query=<nameOrField> MatchFields=all Limit=20",
                         "UniBridge_AssetIntelligence Action=Structure StructureMode=Read Path=Assets/.../<prefab>.prefab ObjectPath=<indexedPath> IncludeSerializedProperties=true"
+                    }
+                },
+                new
+                {
+                    key = "asset_semantic_diff",
+                    summary = "Compare two Unity YAML/text assets semantically: YAML documents, fileIDs, changed properties, GUID/script references, and bounded line diff samples.",
+                    calls = new[]
+                    {
+                        "UniBridge_AssetIntelligence Action=SemanticDiff Path=Assets/.../<before>.prefab OtherPath=Assets/.../<after>.prefab",
+                        "UniBridge_AssetIntelligence Action=SemanticDiff Paths=[Assets/.../before.unity,Assets/.../after.unity] IncludeLineDiff=true MaxDiffItems=120",
+                        "UniBridge_BatchActions DryRun=true steps=[asset_intelligence SemanticDiff, console DiagnosticSummary]"
                     }
                 },
                 new

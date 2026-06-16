@@ -59,6 +59,7 @@ Actions:
     ReferenceGraph: Build or query a cached project asset reference graph for dependencies and reverse references.
     Impact: Estimate references affected by changing, moving, renaming, deleting, or reimporting an asset.
     ResolveMissing: Resolve a missing or mistyped asset path with fuzzy suggestions.
+    SemanticDiff: Compare two Unity YAML/text assets semantically, including YAML documents, fileIDs, GUID/script references, changed properties, and bounded line diff samples.
 
 This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePrefab, or UniBridge_BatchActions for changes.";
 
@@ -87,6 +88,7 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                     AssetIntelligenceAction.ReferenceGraph => ReferenceGraph(parameters),
                     AssetIntelligenceAction.Impact => Impact(parameters),
                     AssetIntelligenceAction.ResolveMissing => ResolveMissing(parameters),
+                    AssetIntelligenceAction.SemanticDiff => AssetSemanticDiff.Handle(parameters),
                     _ => Response.Error($"Unsupported action: {parameters.Action}")
                 };
             }

@@ -86,7 +86,12 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         /// <summary>
         /// Resolve a missing or mistyped asset path with fuzzy suggestions.
         /// </summary>
-        ResolveMissing
+        ResolveMissing,
+
+        /// <summary>
+        /// Compare two Unity YAML/text assets semantically before or after edits.
+        /// </summary>
+        SemanticDiff
     }
 
     /// <summary>
@@ -168,7 +173,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     /// </summary>
     public record AssetIntelligenceParams
     {
-        [McpDescription("Operation to perform: Search, Inspect, Read, Dependencies, Dependents, Stats, Types, Selection, Preview, Serialize, Snapshot, Context, Structure, ReferenceGraph, Impact, or ResolveMissing.", Required = false, Default = AssetIntelligenceAction.Search)]
+        [McpDescription("Operation to perform: Search, Inspect, Read, Dependencies, Dependents, Stats, Types, Selection, Preview, Serialize, Snapshot, Context, Structure, ReferenceGraph, Impact, ResolveMissing, or SemanticDiff.", Required = false, Default = AssetIntelligenceAction.Search)]
         public AssetIntelligenceAction Action { get; set; } = AssetIntelligenceAction.Search;
 
         [McpDescription("Natural search text or AssetDatabase query fragment. Examples: 'player controller', 't:Prefab enemy', 'l:ui'.", Required = false)]
@@ -183,8 +188,14 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         [McpDescription("Asset GUID for Inspect/Read/Dependencies/Dependents/Preview when path is not known.", Required = false)]
         public string Guid { get; set; }
 
+        [McpDescription("For Action=SemanticDiff: right/after asset GUID when OtherPath is not known.", Required = false)]
+        public string OtherGuid { get; set; }
+
         [McpDescription("Optional paths for multi-asset inspection, dependency checks, or search scopes.", Required = false)]
         public string[] Paths { get; set; }
+
+        [McpDescription("For Action=SemanticDiff: right/after asset path. Path is left/before. If omitted, Paths[0] and Paths[1] are used.", Required = false)]
+        public string OtherPath { get; set; }
 
         [McpDescription("Asset type filters. Examples: Prefab, Texture2D, Material, AudioClip, SceneAsset, MonoScript.", Required = false)]
         public string[] Types { get; set; }
@@ -257,6 +268,21 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
 
         [McpDescription("Maximum text characters returned by Read.", Required = false, Default = 60000)]
         public int MaxTextChars { get; set; } = 60000;
+
+        [McpDescription("For Action=SemanticDiff: maximum semantic change rows returned.", Required = false, Default = 120)]
+        public int MaxDiffItems { get; set; } = 120;
+
+        [McpDescription("For Action=SemanticDiff: maximum changed properties returned per modified YAML document.", Required = false, Default = 20)]
+        public int MaxChangedPropertiesPerDocument { get; set; } = 20;
+
+        [McpDescription("For Action=SemanticDiff: include bounded line-level diff samples beside semantic document/property changes.", Required = false, Default = true)]
+        public bool IncludeLineDiff { get; set; } = true;
+
+        [McpDescription("For Action=SemanticDiff: maximum line diff hunks/samples returned.", Required = false, Default = 40)]
+        public int MaxLineDiffs { get; set; } = 40;
+
+        [McpDescription("For Action=SemanticDiff: maximum changed GUID reference samples returned.", Required = false, Default = 80)]
+        public int MaxGuidReferenceDiffs { get; set; } = 80;
 
         [McpDescription("Recursive dependency scan. Default true.", Required = false, Default = true)]
         public bool Recursive { get; set; } = true;

@@ -22,6 +22,9 @@ through an approval-based connection flow.
 - Read-only asset structure workflows for prefab and already-loaded scene
   assets, including compact hierarchy list/search/read with duplicate-safe
   indexed paths and optional serialized field matching.
+- Read-only semantic asset diff for Unity YAML/text assets, including
+  document/class/fileID changes, serialized property deltas, GUID/script
+  reference changes, risk summary, and bounded line diff samples.
 - Location-aware asset/script reference workflows that report exact YAML
   line/property/object context before risky rename, move, delete, or script
   migration work.
@@ -93,6 +96,20 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## Known 0.2.27 Notes
+
+- `UniBridge_AssetIntelligence Action=SemanticDiff` compares two Unity
+  YAML/text assets without modifying the project.
+- It reports created/deleted/modified YAML documents, class/fileID changes,
+  changed serialized properties, GUID/script reference deltas, risk summary,
+  and bounded line diff samples.
+- Use it before or after prefab/scene/material/controller/data asset edits when
+  raw text diffs are too noisy:
+  `Action=SemanticDiff Path=Assets/.../Before.prefab OtherPath=Assets/.../After.prefab`.
+- Batch/search aliases include `semantic_asset_diff`, `asset_semantic_diff`,
+  `yaml_semantic_diff`, `unity_yaml_diff`, `prefab_semantic_diff`,
+  `asset_diff`, and `semantic_diff`.
 
 ## Known 0.2.26 Notes
 
