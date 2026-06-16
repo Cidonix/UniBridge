@@ -26,7 +26,7 @@ public const string Description = @"Return an agent-facing catalog of Unity doma
 
 Use this as a first call when a new agent knows the task domain but not the exact UniBridge tool. It is read-only and optimized for tool discovery, workflow order, and domain-specific type hints.
 
-Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
+Search aliases: UniBridge Unity MCP DomainCatalog WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema ValidateAdditiveSceneRegistration additive scene validation scenesManager BuildSettings.
 
 Args:
     Action: Overview, ListDomains, InspectDomain, ListTypes, or SuggestTools.
@@ -111,7 +111,7 @@ Returns:
                     new { step = 1, tool = ToolName, why = "Pick the Unity work domain and its recommended tool sequence." },
                     new { step = 2, tool = "UniBridge_ToolGuide", why = "Open the workflow guide for the selected topic." },
                     new { step = 3, tool = "UniBridge_UnitySearch", why = "Resolve concrete scene objects, assets, scripts, or shaders before editing." },
-                    new { step = 4, tool = "UniBridge_TypeSchema", why = "Inspect exact writable properties before low-level patches." }
+                    new { step = 4, tool = "UniBridge_TypeSchema", why = "Inspect exact writable properties and use TypeIndex/TypeFingerprint for loaded type lookup before low-level patches." }
                 },
                 domainCount = domains.Length,
                 domains,

@@ -2390,6 +2390,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
             if (normalizedAction is not ("inspect" or "schema" or "get" or "info" or
                                          "listtypes" or "types" or "search" or "catalog" or
+                                         "typeindex" or "index" or "typemap" or "map" or
+                                         "typefingerprint" or "fingerprint" or
                                          "inspectshader" or "shaderschema" or
                                          "inspectasset" or "assetschema" or
                                          "inspectgameobject" or "gameobjectschema" or "components"))
@@ -2411,6 +2413,16 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 case "search":
                 case "catalog":
                     ValidateTypeSchemaLimit(parameters, report);
+                    return;
+                case "typeindex":
+                case "index":
+                case "typemap":
+                case "map":
+                    ValidateTypeSchemaLimit(parameters, report);
+                    ValidateOptionalLimit(parameters, report, "MaxTypeIndexEntries", 1, 100000, "TypeSchema MaxTypeIndexEntries is clamped to 1..100000.");
+                    return;
+                case "typefingerprint":
+                case "fingerprint":
                     return;
                 case "inspectshader":
                 case "shaderschema":

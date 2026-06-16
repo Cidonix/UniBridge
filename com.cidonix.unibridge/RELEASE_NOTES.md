@@ -1,8 +1,18 @@
-# UniBridge 0.2.18 Release Notes
+# UniBridge 0.2.19 Release Notes
 
 Release date: 2026-06-16
 
-This release adds opt-in post-action diagnostics to `UniBridge_BatchActions`.
+This release adds cacheable loaded-type maps to `UniBridge_TypeSchema`.
+Agents can call `Action=TypeFingerprint` before reusing a cached type map, then
+call `Action=TypeIndex` to resolve component, ScriptableObject, AssetImporter,
+asset, and shader type names without guessing namespaces or assemblies.
+`TypeIndex` keeps the MCP response compact and can write a bounded full JSON
+index under `Library/UniBridge/TypeIndex` with `WriteToFile=true`.
+`UniBridge_BatchActions` validation and normalization also support
+`TypeIndex` / `TypeFingerprint`, so agents can include type resolution inside
+larger dry-run or execution workflows.
+
+The previous 0.2.18 release added opt-in post-action diagnostics to `UniBridge_BatchActions`.
 Agents can pass `IncludeConsoleDelta=true` to mark the Unity Console before a
 batch and receive a compact diagnostic delta for logs emitted during that
 batch. They can also pass `IncludeEditorEventDelta=true` to receive bounded
@@ -73,7 +83,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.18`
+- Version: `0.2.19`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows

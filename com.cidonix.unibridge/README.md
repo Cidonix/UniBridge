@@ -85,6 +85,20 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.19 Notes
+
+- `UniBridge_TypeSchema` now includes `Action=TypeIndex` for compact loaded
+  Unity type lookup.
+- Pass `WriteToFile=true` to write a bounded full type index under
+  `Library/UniBridge/TypeIndex` while keeping the MCP response compact.
+- `Action=TypeFingerprint` returns a stable loaded-assembly fingerprint and
+  index key so an agent can decide whether a cached type index is still valid.
+- Type index entries include simple/full names, assembly, kind, domain tags,
+  base type, ambiguity hints, and inspect/add-component/create-asset hints.
+- `UniBridge_BatchActions` validates and normalizes `TypeIndex` /
+  `TypeFingerprint` steps, so agents can include type resolution in larger
+  workflows.
+
 ## Known 0.2.18 Notes
 
 - `UniBridge_BatchActions` can append opt-in post-action diagnostics.

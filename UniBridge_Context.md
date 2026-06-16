@@ -5,6 +5,73 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.19 TypeSchema TypeIndex/Fingerprint
+
+Додано cacheable loaded-type map у вже існуючий `UniBridge_TypeSchema`, щоб
+майбутній агент міг швидко знайти правильний Unity/C# тип перед
+`AddComponent`, ScriptableObject/importer/asset authoring або generic property
+patching.
+
+Нові actions:
+
+- `Action=TypeFingerprint`: повертає fingerprint завантажених assemblies,
+  `assemblyCount`, `kind/query/indexKey` і підказку, чи можна повторно
+  використовувати збережений type index після reload;
+- `Action=TypeIndex`: повертає compact sample типів і summary:
+  `kindCounts`, `topAssemblies`, `topAmbiguousSimpleNames`;
+- `TypeIndex WriteToFile=true`: пише bounded full JSON index у
+  `Library/UniBridge/TypeIndex`, а MCP-відповідь лишає компактною;
+- entries містять `simpleName`, `fullName`, `assembly`,
+  `assemblyQualifiedName`, `kind`, `domainTags`, `baseType`, flags і
+  `resolveHints` для наступного `TypeSchema Inspect`, `AddComponent` або
+  ScriptableObject authoring.
+
+Додатково:
+
+- `TypeSchemaParams` отримав `IncludeNonPublicTypes`, `WriteToFile`,
+  `MaxTypeIndexEntries`;
+- `Discover` має workflow `type_index`;
+- `ToolGuide` має workflow `type_schema`;
+- `DomainCatalog` і search aliases згадують `TypeIndex`, `type map`,
+  `type fingerprint`;
+- `BatchActions` validation/normalization приймає `TypeIndex` /
+  `TypeFingerprint` і aliases `type_index`, `type_map`, `fingerprint`.
+
+Smoke-test caveat:
+
+- перший MCP smoke у тестовому проекті показав regression у batch layer:
+  `UniBridge_BatchActions` відхилив `TypeFingerprint` як unsupported, хоча
+  сам `TypeSchema` вже мав новий enum;
+- виправлено `BatchActions.Validation.cs` whitelist і
+  `BatchActions.Steps.cs` normalization aliases.
+
+Перевірка через MCP на
+`H:/Repos/UnityRepos/UniBridge_Test_Project`:
+
+- package 0.2.19 скопійовано в
+  `Packages/com.cidonix.unibridge` без `RelayApp~`;
+- `ManageEditor RefreshAssets WaitForCompletion=true Force=true` двічі
+  пройшов reload boundary і повернув reload-safe reconnect result;
+- retained compilation diagnostics: errors 0, warnings 0;
+- `UniBridge_BatchActions DryRun=false IncludeImpact=false
+  IncludeWorkSessionReview=false` з 4 read-only `UniBridge_TypeSchema` steps
+  виконався успішно:
+  - `TypeFingerprint` повернув fingerprint `250fa2b9fe626638`,
+    `assemblyCount=302`;
+  - `TypeIndex Kind=Component Query=Camera Limit=5` знайшов 33 types,
+    включно з `UnityEngine.Camera`, і виявив ambiguity для
+    `PixelPerfectCamera`;
+  - `TypeIndex Kind=Any Query=Camera WriteToFile=true MaxTypeIndexEntries=200`
+    записав файл
+    `H:/Repos/UnityRepos/UniBridge_Test_Project/Library/UniBridge/TypeIndex/20260616-004943-Any-Camera-250fa2b9fe626638.json`;
+  - `Inspect TypeName=UnityEngine.Camera IncludePatchExamples=true`
+    повернув schema та patch hint;
+- `Discover Action=Workflows Query=type_index` повернув workflow
+  `type_index`;
+- `ToolGuide Action=Workflow Topic=type_schema` повернув workflow з
+  `TypeFingerprint`, `TypeIndex`, `WriteToFile`;
+- `ReadConsole DiagnosticSummary`: totals 0 logs/warnings/errors.
+
 ## 2026-06-16: UniBridge 0.2.18 BatchActions post-action diagnostics
 
 Додано opt-in self-check прямо в `UniBridge_BatchActions`, щоб агент після

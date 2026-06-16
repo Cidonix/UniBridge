@@ -984,6 +984,11 @@ Use `UniBridge_TypeSchema` before patching component, ScriptableObject, AssetImp
 Available actions:
 
 - `ListTypes`: find loaded Unity types by `Kind` and `Query`;
+- `TypeFingerprint`: return the loaded-assembly fingerprint and index key for
+  deciding whether a cached type index is still valid;
+- `TypeIndex`: return a compact loaded Unity type map and, with
+  `WriteToFile=true`, write a bounded full JSON index under
+  `Library/UniBridge/TypeIndex`;
 - `Inspect`: inspect `TypeName` / `TypeNames`, or dispatch to asset, shader, or GameObject inspection when `Path` / `Guid`, `Shader`, or `Target` is provided;
 - `InspectShader`: return shader property names, types, default values, ranges, flags, attributes, texture dimensions, and material current values when the source is a material;
 - `InspectAsset`: return the main asset schema, importer schema, material shader schema, or shader schema for `Path` / `Guid`;
@@ -995,7 +1000,21 @@ Useful options:
 - `IncludeSerializedProperties`: include exact `SerializedObject` property paths for live objects/assets/importers;
 - `IncludeValues`: include current serialized values when cheap and safe to serialize;
 - `IncludePrivateSerialized`, `IncludeInherited`, `IncludeReadOnly`, `IncludeObsolete`: control how much reflection data is returned;
+- `IncludeNonPublicTypes`: include non-public loaded types in `ListTypes` and
+  `TypeIndex` when a focused lookup needs them;
+- `WriteToFile` and `MaxTypeIndexEntries`: save a bounded full `TypeIndex`
+  JSON file while returning only compact samples through MCP;
 - `Limit` and `MaxSerializedProperties`: bound large type catalogs and serialized snapshots.
+
+`TypeIndex` entries include `simpleName`, `fullName`, `assembly`, `kind`,
+`domainTags`, `baseType`, ambiguity summaries, and follow-up hints for
+`TypeSchema Inspect`, `ManageGameObject AddComponent`, or ScriptableObject
+authoring.
+
+`UniBridge_BatchActions` accepts `UniBridge_TypeSchema` steps for
+`TypeIndex`, `TypeFingerprint`, and aliases such as `type_index`, `type_map`,
+and `fingerprint`. This lets an agent resolve types inside a larger dry-run or
+execution workflow before authoring components or assets.
 
 Serialized property schemas include `domainTags` on type summaries and support JSON-safe `AnimationCurve` / `Gradient` values. Those values can be passed back through generic property patchers as:
 

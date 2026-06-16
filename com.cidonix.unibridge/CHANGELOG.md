@@ -2,6 +2,26 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.19
+
+### Added
+
+- Added `UniBridge_TypeSchema Action=TypeIndex` for compact loaded Unity type
+  lookup before component, ScriptableObject, importer, asset, and shader
+  authoring.
+- `TypeIndex` can write a bounded full JSON index under
+  `Library/UniBridge/TypeIndex` with `WriteToFile=true`, while returning only
+  compact samples through MCP.
+- Added `UniBridge_TypeSchema Action=TypeFingerprint`, which reports a loaded
+  assembly fingerprint plus index key so agents can safely reuse cached type
+  maps across reload-sensitive workflows.
+- Type index entries include simple/full names, assembly hints, domain tags,
+  base type, ambiguity summaries, and direct hints for follow-up
+  `TypeSchema Inspect` calls.
+- `UniBridge_BatchActions` validation and normalization now accept
+  `TypeIndex` / `TypeFingerprint` steps and common aliases such as
+  `type_index`, `type_map`, and `fingerprint`.
+
 ## 0.2.18
 
 ### Added

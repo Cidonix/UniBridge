@@ -24,6 +24,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
     {
         const int DefaultLimit = 80;
         const int MaxLimit = 500;
+        const int DefaultTypeIndexFileEntries = 50000;
+        const int MaxTypeIndexFileEntries = 100000;
         const int DefaultSerializedPropertyLimit = 160;
         const int MaxSerializedPropertyLimit = 1000;
 
@@ -31,18 +33,20 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         public const string Description = @"Inspect Unity types and return MCP-native JSON schemas for AI-safe property editing.
 
-Use this before setting component, ScriptableObject, AssetImporter, or Material properties. It returns JSON schema data for writable fields/properties, serialized property paths, enum values, object-reference hints, UnityEvent hints, and shader property metadata.
+Use this before setting component, ScriptableObject, AssetImporter, or Material properties. It returns JSON schema data for writable fields/properties, serialized property paths, enum values, object-reference hints, UnityEvent hints, shader property metadata, and a cacheable loaded-type index.
 
 Args:
-    Action: Inspect, ListTypes, InspectShader, InspectAsset, InspectGameObject, or PatchExamples.
+    Action: Inspect, ListTypes, TypeIndex, TypeFingerprint, InspectShader, InspectAsset, InspectGameObject, or PatchExamples.
     Kind: Any, Component, MonoBehaviour, ScriptableObject, AssetImporter, Asset, or Shader.
     TypeName/TypeNames: Type names to inspect.
+    Query: Type search text for ListTypes/TypeIndex.
     Path/Guid: Asset path for InspectAsset or InspectShader.
     Shader: Shader path or Shader.Find name for InspectShader.
     Target/SearchMethod: Scene GameObject target for InspectGameObject.
     IncludeInactive: Include inactive scene and Prefab Stage objects for InspectGameObject target lookup.
     ComponentTypes: Optional component type filters for InspectGameObject.
     IncludeSerializedProperties/IncludeValues: Include SerializedObject property paths and optional current values.
+    WriteToFile: For TypeIndex, write the complete bounded type map under Library/UniBridge/TypeIndex.
 
 Returns:
     success, message, and schema data with exact member names/property paths that UniBridge tools can use for property patches.";
@@ -57,6 +61,8 @@ Returns:
                 return parameters.Action switch
                 {
                     TypeSchemaAction.ListTypes => ListTypes(parameters),
+                    TypeSchemaAction.TypeIndex => TypeIndex(parameters),
+                    TypeSchemaAction.TypeFingerprint => TypeFingerprint(parameters),
                     TypeSchemaAction.InspectShader => InspectShader(parameters),
                     TypeSchemaAction.InspectAsset => InspectAsset(parameters),
                     TypeSchemaAction.InspectGameObject => InspectGameObject(parameters),
@@ -129,8 +135,11 @@ Returns:
             var query = (parameters.Query ?? parameters.TypeName ?? string.Empty).Trim();
             var types = EnumerateTypes(parameters.Kind)
                 .Where(type => parameters.IncludeAbstract || !type.IsAbstract)
+                .Where(type => parameters.IncludeNonPublicTypes || type.IsVisible)
                 .Where(type => MatchesTypeQuery(type, query))
-                .OrderBy(type => type.FullName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(type => type.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(type => type.Namespace, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(type => type.Assembly.GetName().Name, StringComparer.OrdinalIgnoreCase)
                 .Take(limit)
                 .Select(type => BuildTypeSummary(type))
                 .ToArray();
@@ -143,6 +152,83 @@ Returns:
                 limit,
                 returned = types.Length,
                 types
+            });
+        }
+
+        static object TypeFingerprint(TypeSchemaParams parameters)
+        {
+            var fingerprint = ComputeTypeIndexFingerprint();
+            var assemblies = GetIndexedAssemblies().ToArray();
+            return Response.Success("Computed loaded type index fingerprint.", new
+            {
+                action = "TypeFingerprint",
+                fingerprint,
+                assemblyCount = assemblies.Length,
+                kind = parameters.Kind.ToString(),
+                query = (parameters.Query ?? parameters.TypeName ?? string.Empty).Trim(),
+                indexKey = BuildTypeIndexKey(parameters),
+                guidance = "If fingerprint and indexKey are unchanged, a previously saved TypeIndex file is still a useful loaded-type map for this Unity session."
+            });
+        }
+
+        static object TypeIndex(TypeSchemaParams parameters)
+        {
+            var responseLimit = Clamp(parameters.Limit <= 0 ? 120 : parameters.Limit, 1, MaxLimit);
+            var fileLimit = Clamp(parameters.MaxTypeIndexEntries <= 0 ? DefaultTypeIndexFileEntries : parameters.MaxTypeIndexEntries, 1, MaxTypeIndexFileEntries);
+            var query = (parameters.Query ?? parameters.TypeName ?? string.Empty).Trim();
+            var fingerprint = ComputeTypeIndexFingerprint();
+
+            var matchingTypes = EnumerateTypes(parameters.Kind)
+                .Where(type => parameters.IncludeAbstract || !type.IsAbstract)
+                .Where(type => parameters.IncludeNonPublicTypes || type.IsVisible)
+                .Where(type => MatchesTypeQuery(type, query))
+                .OrderBy(type => type.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(type => type.Namespace, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(type => type.Assembly.GetName().Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(type => type.FullName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var totalMatching = matchingTypes.Length;
+            var responseTypes = matchingTypes
+                .Take(responseLimit)
+                .Select(BuildTypeIndexEntry)
+                .ToArray();
+
+            var filePath = (string)null;
+            var fileTruncated = false;
+            if (parameters.WriteToFile)
+            {
+                var fileTypes = matchingTypes
+                    .Take(fileLimit)
+                    .Select(BuildTypeIndexEntry)
+                    .ToArray();
+                fileTruncated = totalMatching > fileTypes.Length;
+                filePath = WriteTypeIndexFile(parameters, fingerprint, query, totalMatching, fileTruncated, fileTypes);
+            }
+
+            var summary = BuildTypeIndexSummary(matchingTypes);
+            return Response.Success($"Built type index sample with {responseTypes.Length} of {totalMatching} matching type(s).", new
+            {
+                action = "TypeIndex",
+                kind = parameters.Kind.ToString(),
+                query,
+                fingerprint,
+                indexKey = BuildTypeIndexKey(parameters),
+                totalMatching,
+                returned = responseTypes.Length,
+                limit = responseLimit,
+                writeToFile = parameters.WriteToFile,
+                filePath,
+                fileEntryLimit = parameters.WriteToFile ? fileLimit : (int?)null,
+                fileTruncated = parameters.WriteToFile ? fileTruncated : (bool?)null,
+                summary,
+                types = responseTypes,
+                guidance = new[]
+                {
+                    "Use fullName when simpleName is ambiguous.",
+                    "Use Action=Inspect TypeName=<fullName> after TypeIndex to get serialized fields and patch examples.",
+                    "Use Action=TypeFingerprint before reusing a cached TypeIndex file."
+                }
             });
         }
 
@@ -570,6 +656,253 @@ Returns:
                 isNested = type.IsNested,
                 obsolete = type.GetCustomAttribute<ObsoleteAttribute>()?.Message
             };
+        }
+
+        static object BuildTypeIndexEntry(Type type)
+        {
+            var assemblyName = type.Assembly.GetName().Name;
+            return new
+            {
+                simpleName = StripGenericArity(type.Name),
+                name = type.Name,
+                namespaceName = type.Namespace,
+                fullName = type.FullName,
+                assembly = assemblyName,
+                assemblyQualifiedName = string.IsNullOrWhiteSpace(type.FullName)
+                    ? null
+                    : $"{type.FullName}, {assemblyName}",
+                kind = ClassifyType(type),
+                domainTags = DomainCatalog.GetDomainTagsForType(type),
+                baseType = type.BaseType?.FullName,
+                isPublic = type.IsVisible,
+                isAbstract = type.IsAbstract,
+                isGeneric = type.IsGenericType,
+                isNested = type.IsNested,
+                obsolete = type.GetCustomAttribute<ObsoleteAttribute>()?.Message,
+                resolveHints = new
+                {
+                    inspect = $"UniBridge_TypeSchema Action=Inspect TypeName={type.FullName ?? type.Name}",
+                    addComponentTypeName = typeof(Component).IsAssignableFrom(type) ? (type.FullName ?? type.Name) : null,
+                    scriptableObjectTypeName = typeof(ScriptableObject).IsAssignableFrom(type) ? (type.FullName ?? type.Name) : null
+                }
+            };
+        }
+
+        static object BuildTypeIndexKey(TypeSchemaParams parameters)
+        {
+            return new
+            {
+                kind = parameters.Kind.ToString(),
+                query = (parameters.Query ?? parameters.TypeName ?? string.Empty).Trim(),
+                includeAbstract = parameters.IncludeAbstract,
+                includeNonPublicTypes = parameters.IncludeNonPublicTypes
+            };
+        }
+
+        static object BuildTypeIndexSummary(Type[] matchingTypes)
+        {
+            var kindCounts = matchingTypes
+                .GroupBy(ClassifyType)
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new { kind = group.Key, count = group.Count() })
+                .ToArray();
+
+            var topAssemblies = matchingTypes
+                .GroupBy(type => type.Assembly.GetName().Name)
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(20)
+                .Select(group => new { assembly = group.Key, count = group.Count() })
+                .ToArray();
+
+            var ambiguousSimpleNames = matchingTypes
+                .GroupBy(type => StripGenericArity(type.Name), StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Select(type => type.FullName).Distinct(StringComparer.Ordinal).Count() > 1)
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(20)
+                .Select(group => new
+                {
+                    simpleName = group.Key,
+                    count = group.Count(),
+                    samples = group
+                        .Take(5)
+                        .Select(type => new
+                        {
+                            fullName = type.FullName,
+                            assembly = type.Assembly.GetName().Name,
+                            kind = ClassifyType(type)
+                        })
+                        .ToArray()
+                })
+                .ToArray();
+
+            return new
+            {
+                total = matchingTypes.Length,
+                publicTypes = matchingTypes.Count(type => type.IsVisible),
+                abstractTypes = matchingTypes.Count(type => type.IsAbstract),
+                genericTypes = matchingTypes.Count(type => type.IsGenericType),
+                nestedTypes = matchingTypes.Count(type => type.IsNested),
+                kindCounts,
+                topAssemblies,
+                ambiguousSimpleNameGroupCount = matchingTypes
+                    .GroupBy(type => StripGenericArity(type.Name), StringComparer.OrdinalIgnoreCase)
+                    .Count(group => group.Select(type => type.FullName).Distinct(StringComparer.Ordinal).Count() > 1),
+                topAmbiguousSimpleNames = ambiguousSimpleNames
+            };
+        }
+
+        static string WriteTypeIndexFile(TypeSchemaParams parameters, string fingerprint, string query, int totalMatching, bool truncated, object[] entries)
+        {
+            var directory = Path.Combine(Directory.GetCurrentDirectory(), "Library", "UniBridge", "TypeIndex");
+            Directory.CreateDirectory(directory);
+
+            var slug = NormalizeTypeIndexFileSegment($"{parameters.Kind}-{(string.IsNullOrWhiteSpace(query) ? "all" : query)}");
+            var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{slug}-{fingerprint}.json";
+            var fullPath = Path.Combine(directory, fileName);
+            var payload = new
+            {
+                tool = "UniBridge_TypeSchema",
+                action = "TypeIndex",
+                createdUtc = DateTime.UtcNow.ToString("o"),
+                fingerprint,
+                indexKey = BuildTypeIndexKey(parameters),
+                totalMatching,
+                returned = entries.Length,
+                truncated,
+                entries
+            };
+            File.WriteAllText(fullPath, JObject.FromObject(payload).ToString());
+            return fullPath.Replace('\\', '/');
+        }
+
+        static string ComputeTypeIndexFingerprint()
+        {
+            var hash = 1469598103934665603UL;
+            foreach (var assembly in GetIndexedAssemblies())
+            {
+                hash = HashString(hash, SafeAssemblyName(assembly));
+                hash = HashString(hash, SafeAssemblyLocation(assembly));
+                hash = HashString(hash, SafeAssemblyMvid(assembly));
+                hash = HashString(hash, SafeAssemblyWriteStamp(assembly));
+            }
+
+            return hash.ToString("x16");
+        }
+
+        static IEnumerable<Assembly> GetIndexedAssemblies()
+        {
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .Where(assembly => assembly != null && !assembly.IsDynamic)
+                .Where(assembly => !ShouldSkipTypeIndexAssembly(SafeAssemblyName(assembly)))
+                .OrderBy(SafeAssemblyName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        static bool ShouldSkipTypeIndexAssembly(string assemblyName)
+        {
+            if (string.IsNullOrWhiteSpace(assemblyName))
+                return true;
+
+            return assemblyName.StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal) ||
+                   assemblyName == "System.Collections.Immutable" ||
+                   assemblyName == "System.Reflection.Metadata";
+        }
+
+        static string SafeAssemblyName(Assembly assembly)
+        {
+            try
+            {
+                return assembly == null ? string.Empty : assembly.GetName().Name ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        static string SafeAssemblyLocation(Assembly assembly)
+        {
+            try
+            {
+                return assembly == null || assembly.IsDynamic ? string.Empty : assembly.Location ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        static string SafeAssemblyMvid(Assembly assembly)
+        {
+            try
+            {
+                return assembly?.ManifestModule.ModuleVersionId.ToString("N") ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        static string SafeAssemblyWriteStamp(Assembly assembly)
+        {
+            var location = SafeAssemblyLocation(assembly);
+            if (string.IsNullOrWhiteSpace(location) || !File.Exists(location))
+                return string.Empty;
+
+            try
+            {
+                return File.GetLastWriteTimeUtc(location).Ticks.ToString();
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        static ulong HashString(ulong hash, string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return HashByte(hash, 0);
+
+            for (var i = 0; i < value.Length; i++)
+            {
+                hash = HashByte(hash, (byte)(value[i] & 0xff));
+                hash = HashByte(hash, (byte)((value[i] >> 8) & 0xff));
+            }
+
+            return hash;
+        }
+
+        static ulong HashByte(ulong hash, byte value)
+        {
+            hash ^= value;
+            hash *= 1099511628211UL;
+            return hash;
+        }
+
+        static string StripGenericArity(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return string.Empty;
+
+            var tick = name.IndexOf('`');
+            return tick >= 0 ? name.Substring(0, tick) : name;
+        }
+
+        static string NormalizeTypeIndexFileSegment(string value)
+        {
+            var text = new string((value ?? "types")
+                .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' ? ch : '-')
+                .ToArray())
+                .Trim('-');
+
+            if (string.IsNullOrWhiteSpace(text))
+                text = "types";
+
+            return text.Length <= 80 ? text : text.Substring(0, 80);
         }
 
         static object BuildUsageHints(Type type)

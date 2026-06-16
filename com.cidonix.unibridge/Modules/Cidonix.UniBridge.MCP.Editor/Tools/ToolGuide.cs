@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -74,7 +74,7 @@ This tool is read-only.";
                 coreLoop = new[]
                 {
                     "Orient with ContextSnapshot or ToolGuide.",
-                    "Resolve targets with UnitySearch, SceneObjectView, TypeSchema, AssetIntelligence, or ScriptIntelligence.",
+                    "Resolve targets with UnitySearch, SceneObjectView, TypeSchema/TypeIndex, AssetIntelligence, or ScriptIntelligence.",
                     "Use WorkflowRecipes for common full workflows, or dry-run custom multi-step changes with BatchActions.",
                     "Apply the smallest suitable Manage* tool.",
                     "Verify with ReadConsole and a capture/inspect tool.",
@@ -302,13 +302,26 @@ This tool is read-only.";
                     Key = "search",
                     Title = "Resolve vague user references",
                     When = "Use when the user names an object, asset, script, shader, menu item, or folder without an exact path.",
-                    FirstCalls = new[] { "UniBridge_UnitySearch with Sources suited to the task", "UniBridge_AssetIntelligence Search/Context/ResolveMissing for asset-heavy tasks", "UniBridge_ScriptIntelligence Search for code/type tasks" },
+                    FirstCalls = new[] { "UniBridge_UnitySearch with Sources suited to the task", "UniBridge_AssetIntelligence Search/Context/ResolveMissing for asset-heavy tasks", "UniBridge_ScriptIntelligence Search for code/type tasks", "UniBridge_TypeSchema Action=TypeIndex for loaded Unity/C# type lookup" },
                     EditCalls = Array.Empty<string>(),
                     VerifyCalls = new[] { "UniBridge_TypeSchema or SceneObjectView for selected scene targets", "UniBridge_AssetIntelligence Context for selected assets" },
                     Tools = new[] { "UniBridge_UnitySearch", "UniBridge_AssetIntelligence", "UniBridge_ScriptIntelligence", "UniBridge_TypeSchema", "UniBridge_SceneObjectView" },
                     BatchAliases = new[] { "find", "lookup", "asset_search", "script_search", "schema" },
-                    Notes = new[] { "Prefer search before editing when names are ambiguous.", "Use AssetIntelligence Context when you want structured one-call asset summary/read/serialize/suggestion output.", "Use AssetIntelligence ResolveMissing when a user-provided asset path is stale or mistyped." },
+                    Notes = new[] { "Prefer search before editing when names are ambiguous.", "Use TypeSchema TypeIndex/TypeFingerprint when a component or ScriptableObject short name may be ambiguous across namespaces/assemblies.", "Use AssetIntelligence Context when you want structured one-call asset summary/read/serialize/suggestion output.", "Use AssetIntelligence ResolveMissing when a user-provided asset path is stale or mistyped." },
                     Aliases = new[] { "find", "lookup", "resolve" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "type_schema",
+                    Title = "Resolve and inspect Unity/C# types",
+                    When = "Use before AddComponent, ScriptableObject creation, serialized property patching, or any task where a short type name may be ambiguous.",
+                    FirstCalls = new[] { "UniBridge_TypeSchema Action=TypeFingerprint", "UniBridge_TypeSchema Action=TypeIndex Kind=Any Query=<name> Limit=50", "UniBridge_TypeSchema Action=TypeIndex Kind=Any WriteToFile=true Limit=80 for a cacheable project type map" },
+                    EditCalls = Array.Empty<string>(),
+                    VerifyCalls = new[] { "UniBridge_TypeSchema Action=Inspect TypeName=<fullName> IncludePatchExamples=true", "UniBridge_TypeSchema Action=InspectGameObject Target=<object> IncludeValues=true" },
+                    Tools = new[] { "UniBridge_TypeSchema", "UniBridge_DomainCatalog", "UniBridge_ScriptIntelligence", "UniBridge_UnitySearch" },
+                    BatchAliases = new[] { "type_schema", "component_schema", "schema" },
+                    Notes = new[] { "TypeFingerprint lets an agent decide whether a saved TypeIndex file is still current after assembly reloads.", "TypeIndex can write the full bounded map under Library/UniBridge/TypeIndex while keeping the MCP response compact.", "Use fullName from TypeIndex when simpleName is ambiguous." },
+                    Aliases = new[] { "schema", "type_schema", "type_index", "type_map", "component_schema", "scriptableobject_schema" }
                 },
                 new WorkflowGuide
                 {

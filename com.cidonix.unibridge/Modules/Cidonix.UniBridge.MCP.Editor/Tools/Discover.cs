@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -127,6 +127,18 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                         "UniBridge_BatchActions DryRun=false IncludeConsoleDelta=true IncludeEditorEventDelta=true Steps=[...]",
                         "Inspect data.postActionDiagnostics.consoleDelta totals/criticalIssues/warningIssues",
                         "Inspect data.postActionDiagnostics.editorEventDelta for project/hierarchy/compile/play-mode events"
+                    }
+                },
+                new
+                {
+                    key = "type_index",
+                    summary = "Build a cacheable loaded Unity/C# type map so agents can resolve component, ScriptableObject, importer, asset, and shader type names before patching.",
+                    calls = new[]
+                    {
+                        "UniBridge_TypeSchema Action=TypeFingerprint",
+                        "UniBridge_TypeSchema Action=TypeIndex Kind=MonoBehaviour Query=<name> Limit=40",
+                        "UniBridge_TypeSchema Action=TypeIndex Kind=Any WriteToFile=true Limit=80",
+                        "UniBridge_TypeSchema Action=Inspect TypeName=<fullName> IncludePatchExamples=true"
                     }
                 },
                 new

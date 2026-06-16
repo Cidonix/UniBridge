@@ -1080,6 +1080,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["types"] = "ListTypes",
                         ["search"] = "ListTypes",
                         ["catalog"] = "ListTypes",
+                        ["typeindex"] = "TypeIndex",
+                        ["type_index"] = "TypeIndex",
+                        ["index"] = "TypeIndex",
+                        ["typemap"] = "TypeIndex",
+                        ["type_map"] = "TypeIndex",
+                        ["map"] = "TypeIndex",
+                        ["typefingerprint"] = "TypeFingerprint",
+                        ["type_fingerprint"] = "TypeFingerprint",
+                        ["fingerprint"] = "TypeFingerprint",
                         ["inspectshader"] = "InspectShader",
                         ["inspect_shader"] = "InspectShader",
                         ["shader_schema"] = "InspectShader",
@@ -1132,7 +1141,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "IncludeSerializedProperties", "includeSerializedProperties", "include_serialized_properties");
                     CopyAlias(parameters, "IncludeValues", "includeValues", "include_values");
                     CopyAlias(parameters, "IncludeAbstract", "includeAbstract", "include_abstract");
+                    CopyAlias(parameters, "IncludeNonPublicTypes", "includeNonPublicTypes", "include_non_public_types", "includeNonPublic", "include_non_public");
+                    CopyAlias(parameters, "WriteToFile", "writeToFile", "write_to_file", "saveToFile", "save_to_file");
                     CopyAlias(parameters, "Limit", "limit", "maxResults", "max_results");
+                    CopyAlias(parameters, "MaxTypeIndexEntries", "maxTypeIndexEntries", "max_type_index_entries", "maxEntries", "max_entries");
                     CopyAlias(parameters, "MaxSerializedProperties", "maxSerializedProperties", "max_serialized_properties");
                     break;
                 case "UniBridge_UnitySearch":

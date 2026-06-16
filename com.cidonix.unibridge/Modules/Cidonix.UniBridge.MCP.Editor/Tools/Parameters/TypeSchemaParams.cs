@@ -7,6 +7,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
     {
         Inspect,
         ListTypes,
+        TypeIndex,
+        TypeFingerprint,
         InspectShader,
         InspectAsset,
         InspectGameObject,
@@ -29,7 +31,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
     /// </summary>
     public record TypeSchemaParams
     {
-        [McpDescription("Operation to perform: Inspect, ListTypes, InspectShader, InspectAsset, InspectGameObject, or PatchExamples.", Required = false, Default = TypeSchemaAction.Inspect)]
+        [McpDescription("Operation to perform: Inspect, ListTypes, TypeIndex, TypeFingerprint, InspectShader, InspectAsset, InspectGameObject, or PatchExamples.", Required = false, Default = TypeSchemaAction.Inspect)]
         public TypeSchemaAction Action { get; set; } = TypeSchemaAction.Inspect;
 
         [McpDescription("Type family to search or inspect: Any, Component, MonoBehaviour, ScriptableObject, AssetImporter, Asset, or Shader.", Required = false, Default = TypeSchemaKind.Any)]
@@ -92,8 +94,17 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Include abstract types in ListTypes results.", Required = false, Default = false)]
         public bool IncludeAbstract { get; set; } = false;
 
+        [McpDescription("Include non-public loaded types in TypeIndex/ListTypes results. Default false keeps agent-facing type maps cleaner.", Required = false, Default = false)]
+        public bool IncludeNonPublicTypes { get; set; } = false;
+
         [McpDescription("Maximum ListTypes results.", Required = false, Default = 80)]
         public int Limit { get; set; } = 80;
+
+        [McpDescription("For TypeIndex, write the complete bounded index under Library/UniBridge/TypeIndex and return the file path plus compact samples.", Required = false, Default = false)]
+        public bool WriteToFile { get; set; } = false;
+
+        [McpDescription("Maximum TypeIndex entries written to file. The MCP response still uses Limit for compact samples.", Required = false, Default = 50000)]
+        public int MaxTypeIndexEntries { get; set; } = 50000;
 
         [McpDescription("Maximum serialized properties to return per object/importer/asset.", Required = false, Default = 160)]
         public int MaxSerializedProperties { get; set; } = 160;
