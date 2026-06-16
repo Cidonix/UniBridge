@@ -55,6 +55,7 @@ Actions:
     Preview: Save or return a PNG preview when Unity can render one.
     Serialize / Snapshot: Build bounded AI-friendly upload envelopes with text/YAML, prefab hierarchy, component serialized fields, importer data, and asset metadata.
     Context: Build a structured one-call asset context envelope with summary, optional text chunks, serialized data, and fuzzy missing-path suggestions.
+    Structure: List/search/read prefab or already-loaded scene hierarchy structure with indexed paths, components, and optional serialized field matching.
     ReferenceGraph: Build or query a cached project asset reference graph for dependencies and reverse references.
     Impact: Estimate references affected by changing, moving, renaming, deleting, or reimporting an asset.
     ResolveMissing: Resolve a missing or mistyped asset path with fuzzy suggestions.
@@ -82,6 +83,7 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                     AssetIntelligenceAction.Serialize => Serialize(parameters, "Serialize"),
                     AssetIntelligenceAction.Snapshot => Serialize(parameters, "Snapshot"),
                     AssetIntelligenceAction.Context => Context(parameters),
+                    AssetIntelligenceAction.Structure => Structure(parameters),
                     AssetIntelligenceAction.ReferenceGraph => ReferenceGraph(parameters),
                     AssetIntelligenceAction.Impact => Impact(parameters),
                     AssetIntelligenceAction.ResolveMissing => ResolveMissing(parameters),
@@ -197,6 +199,15 @@ This tool does not modify assets. Use UniBridge_ManageAsset, UniBridge_ManagePre
                 lengthBytes = new FileInfo(absolutePath).Length,
                 sha256 = ComputeSha256(absolutePath)
             });
+        }
+
+        static object Structure(AssetIntelligenceParams p)
+        {
+            var path = ResolveSingleTargetPath(p);
+            if (string.IsNullOrEmpty(path))
+                return MissingTargetError("Structure", p);
+
+            return AssetStructureReader.Handle(path, p);
         }
 
         static object Dependencies(AssetIntelligenceParams p)

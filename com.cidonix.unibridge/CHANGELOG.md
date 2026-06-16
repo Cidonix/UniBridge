@@ -2,6 +2,32 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.20
+
+### Added
+
+- Added `UniBridge_AssetIntelligence Action=Structure`, a read-only
+  prefab/loaded-scene asset structure workflow for agents that need a compact
+  hierarchy map before editing.
+- `StructureMode=List` returns bounded hierarchy nodes with normal paths,
+  duplicate-safe `indexedPath` values, active/tag/layer data, components,
+  missing-script counts, prefab source hints, and duplicate/component summary
+  data.
+- `StructureMode=Search` finds objects by path, name, component, tag, layer,
+  prefab source, and optional serialized field names/values with
+  `MatchFields=fields` or `MatchFields=all`.
+- `StructureMode=Read` drills into one `ObjectPath`/`indexedPath` and returns
+  transform, component details, renderer sorting data, child summaries, and
+  bounded serialized properties.
+- Added `BatchActions` and discoverability aliases such as `asset_structure`,
+  `prefab_structure`, `scene_asset_structure`, `structure_search`,
+  `serialized_asset_search`, and `read_yaml`.
+- Improved `UniBridge_Discover Action=Tools` query matching so multi-token
+  searches such as `AssetIntelligence Structure asset_structure` match across
+  tool names, descriptions, and aliases.
+- Improved `UniBridge_ToolGuide Action=Workflow` matching so exact workflow
+  keys win before broader alias matches.
+
 ## 0.2.19
 
 ### Added

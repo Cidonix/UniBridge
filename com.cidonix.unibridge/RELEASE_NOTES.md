@@ -1,8 +1,28 @@
-# UniBridge 0.2.19 Release Notes
+# UniBridge 0.2.20 Release Notes
 
 Release date: 2026-06-16
 
-This release adds cacheable loaded-type maps to `UniBridge_TypeSchema`.
+This release adds `UniBridge_AssetIntelligence Action=Structure`, a read-only
+asset structure workflow for prefab assets and already-loaded scene assets.
+Agents can call `StructureMode=List` to get a compact hierarchy map with
+duplicate-safe `indexedPath` values, `StructureMode=Search` to find objects by
+path/name/component/tag/layer/prefab source and optional serialized fields, and
+`StructureMode=Read` to drill into one object with transform, component,
+renderer sorting, child, and bounded serialized-property data.
+
+The workflow is intentionally read-only and does not open unloaded scenes
+automatically. For scene assets, open/load the scene first, then use
+`Action=Structure`; for raw YAML text, keep using `Action=Read`.
+`UniBridge_BatchActions`, `Discover`, `ToolGuide`, and `DomainCatalog` expose
+aliases such as `asset_structure`, `prefab_structure`,
+`scene_asset_structure`, `structure_search`, `serialized_asset_search`, and
+`read_yaml`.
+
+`UniBridge_Discover Action=Tools` now handles multi-token queries across tool
+names, descriptions, and aliases, and `UniBridge_ToolGuide Action=Workflow`
+now prioritizes exact workflow keys before broader aliases.
+
+The previous 0.2.19 release added cacheable loaded-type maps to `UniBridge_TypeSchema`.
 Agents can call `Action=TypeFingerprint` before reusing a cached type map, then
 call `Action=TypeIndex` to resolve component, ScriptableObject, AssetImporter,
 asset, and shader type names without guessing namespaces or assemblies.
@@ -83,7 +103,7 @@ guessing from files alone.
 ## What Is Included
 
 - Unity package: `com.cidonix.unibridge`
-- Version: `0.2.19`
+- Version: `0.2.20`
 - Relay bundle version: `1.1.0-build.15`
 - Unity compatibility: Unity Editor 6000.0 or newer
 - Local test baseline: Unity 6000.4.10f1 on Windows
@@ -111,8 +131,8 @@ guessing from files alone.
   dry-run diffs, world-transform preservation, Undo grouping, and object-count
   validation.
 - Assets: asset intelligence, import settings, materials, ScriptableObjects,
-  generic allowlisted asset creation, dependency/reference graphs, and preview
-  captures.
+  generic allowlisted asset creation, dependency/reference graphs, preview
+  captures, and read-only prefab/loaded-scene asset structure list/search/read.
 - UI: Canvas/uGUI creation, templates, ScrollViews, layout helpers, graphics,
   button events, UI validation, repair plans, and safe auto-fixes.
 - UI Toolkit: UXML/USS authoring, PanelSettings, UIDocument wiring, element and

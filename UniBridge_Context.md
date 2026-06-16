@@ -5,6 +5,85 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-16: UniBridge 0.2.20 AssetIntelligence Structure
+
+Додано read-only `UniBridge_AssetIntelligence Action=Structure` як
+Locus-inspired asset structure workflow, але в існуючій UniBridge-архітектурі
+замість нового окремого tool.
+
+Навіщо це потрібно:
+
+- агент може отримати компактну карту prefab або вже завантаженої scene asset,
+  не читаючи весь YAML і не міняючи editor state;
+- є duplicate-safe `indexedPath` для sibling-дублікатів;
+- можна швидко знайти об'єкт по name/path/component/tag/layer/prefab source і,
+  за потреби, serialized field names/values;
+- можна drill-down в один об'єкт перед edit workflow: transform, компоненти,
+  renderer sorting, child summaries, bounded serialized properties.
+
+Нові параметри `UniBridge_AssetIntelligence`:
+
+- `StructureMode=List|Search|Read`;
+- `ObjectPath`, `PathPrefix`, `ComponentFilter`, `MatchFields`;
+- `MaxStructureDepth`, `MaxStructureItems`, `MaxFieldDepth`,
+  `MaxArrayItems`.
+
+Поведінка:
+
+- `.prefab`: читає відкритий Prefab Stage, якщо він відповідає asset path, або
+  тимчасово `LoadPrefabContents` / `UnloadPrefabContents`;
+- `.unity`: працює тільки якщо scene вже loaded in Editor; unloaded scene не
+  відкривається автоматично, щоб read-only запит не міняв стан редактора;
+- `List` повертає compact hierarchy та `summary`;
+- `Search` повертає matches і `matchedBy`;
+- `Read` повертає деталі одного object за `path` або `indexedPath`, а якщо path
+  неоднозначний, просить використати `indexedPath`.
+
+Discoverability:
+
+- `Discover` має workflow `asset_structure`;
+- `ToolGuide` має workflow `asset_structure`;
+- `DomainCatalog` Assets domain згадує structure workflow;
+- `BatchActions` має aliases: `asset_structure`, `prefab_structure`,
+  `scene_asset_structure`, `structure_search`, `serialized_asset_search`,
+  `read_yaml`.
+
+Додаткова поліровка після live test:
+
+- `UniBridge_Discover Action=Tools Query=...` тепер token-aware: запит
+  `AssetIntelligence Structure asset_structure` знаходить
+  `UniBridge_AssetIntelligence`, бо токени зіставляються по
+  name/title/description/aliases, а не як одна довга substring-фраза;
+- `UniBridge_ToolGuide Action=Workflow Topic=asset_structure` тепер спочатку
+  шукає exact workflow key, і тільки потім aliases, тому `asset_structure` не
+  перехоплюється загальним workflow `search`.
+
+Live smoke у `H:/Repos/UnityRepos/UniBridge_Test_Project` через MCP:
+
+- sync package -> `UniBridge_ManageEditor RefreshAssets WaitForCompletion=true`
+  двічі пройшов reload-safe boundary, editor ready, compilation diagnostics
+  `errors=0`, `warnings=0`;
+- `UniBridge_Discover Action=Tools Query="AssetIntelligence Structure
+  asset_structure"` повернув `UniBridge_AssetIntelligence`,
+  `batchAllowed=true`, aliases включно з `asset_structure`;
+- `UniBridge_BatchActions DryRun=false` з alias `asset_structure` на
+  `Assets/CorgiEngine/Common/Prefabs/GUI/DialogueBox.prefab`:
+  `StructureMode=List` повернув 5 objects і component summary,
+  `StructureMode=Search Query=Text MatchFields=all` повернув 5 matches із
+  `matchedBy`, `StructureMode=Read ObjectPath=/DialogueBox/TextPanel/Text`
+  повернув transform, компоненти і bounded serialized properties;
+- `UniBridge_ToolGuide Workflow asset_structure` повернув правильний workflow;
+- `UniBridge_DomainCatalog InspectDomain Assets` показав `AssetIntelligence`
+  aliases `asset_structure`, `prefab_structure`, `scene_asset_structure`;
+- `UniBridge_ReadConsole DiagnosticSummary`: `totalEntries=0`.
+
+Нюанс для поточного Codex thread: deferred `tool_search` може кешувати старий
+client-side schema прямого `UniBridge_AssetIntelligence` до перезапуску
+агента/MCP-клієнта. Live `_server_info action=tools` у Unity вже показує нові
+`Action=Structure` параметри, а batch alias працює одразу.
+
+Пакет піднято до `0.2.20`.
+
 ## 2026-06-16: UniBridge 0.2.19 TypeSchema TypeIndex/Fingerprint
 
 Додано cacheable loaded-type map у вже існуючий `UniBridge_TypeSchema`, щоб

@@ -1235,7 +1235,27 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         ["stats"] = "Stats",
                         ["types"] = "Types",
                         ["selection"] = "Selection",
-                        ["preview"] = "Preview"
+                        ["preview"] = "Preview",
+                        ["structure"] = "Structure",
+                        ["asset_structure"] = "Structure",
+                        ["prefab_structure"] = "Structure",
+                        ["scene_asset_structure"] = "Structure",
+                        ["structure_search"] = "Structure",
+                        ["serialized_asset_search"] = "Structure",
+                        ["read_yaml"] = "Structure",
+                        ["yaml"] = "Structure"
+                    });
+                    NormalizeAction(parameters, "StructureMode", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["list"] = "List",
+                        ["tree"] = "List",
+                        ["hierarchy"] = "List",
+                        ["search"] = "Search",
+                        ["find"] = "Search",
+                        ["query"] = "Search",
+                        ["read"] = "Read",
+                        ["inspect"] = "Read",
+                        ["object"] = "Read"
                     });
                     CopyAlias(parameters, "Query", "query", "search", "Search", "SearchPattern", "searchPattern", "search_pattern");
                     CopyAlias(parameters, "Path", "path", "uri", "Uri");
@@ -1250,6 +1270,16 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     CopyAlias(parameters, "Limit", "limit");
                     CopyAlias(parameters, "Page", "page");
                     CopyAlias(parameters, "SortBy", "sortBy", "sort_by");
+                    CopyAlias(parameters, "StructureMode", "structureMode", "structure_mode", "mode", "Mode");
+                    CopyAlias(parameters, "ObjectPath", "objectPath", "object_path", "targetPath", "target_path", "indexedPath", "indexed_path");
+                    CopyAlias(parameters, "PathPrefix", "pathPrefix", "path_prefix", "prefix", "Prefix");
+                    CopyAlias(parameters, "ComponentFilter", "componentFilter", "component_filter", "component", "Component", "type", "Type");
+                    CopyAlias(parameters, "MatchFields", "matchFields", "match_fields", "fields", "Fields");
+                    CopyAlias(parameters, "MaxStructureDepth", "maxStructureDepth", "max_structure_depth", "maxDepth", "max_depth", "depth", "Depth");
+                    CopyAlias(parameters, "MaxStructureItems", "maxStructureItems", "max_structure_items", "maxNodes", "max_nodes", "maxObjects", "max_objects");
+                    CopyAlias(parameters, "MaxFieldDepth", "maxFieldDepth", "max_field_depth");
+                    CopyAlias(parameters, "MaxArrayItems", "maxArrayItems", "max_array_items");
+                    CopyAlias(parameters, "IncludeSerializedProperties", "includeSerializedProperties", "include_serialized_properties", "serializedProperties", "serialized_properties");
                     break;
                 case "UniBridge_Discover":
                     NormalizeAction(parameters, "Action", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

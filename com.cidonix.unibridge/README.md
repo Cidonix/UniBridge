@@ -19,6 +19,9 @@ through an approval-based connection flow.
   prefabs, UI, capture, validation, animation, rendering, physics, navigation,
   tilemaps, input actions, timeline, audio, VFX, runtime profiling, runtime
   state probing, and workflow recipes.
+- Read-only asset structure workflows for prefab and already-loaded scene
+  assets, including compact hierarchy list/search/read with duplicate-safe
+  indexed paths and optional serialized field matching.
 - `UniBridge_Discover`, a stable read-only ping/workflow entry point for new
   MCP clients and Codex sessions.
 - `UniBridge_WorkSession`, a project-local checkpoint/review/revert layer that
@@ -84,6 +87,24 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## Known 0.2.20 Notes
+
+- `UniBridge_AssetIntelligence Action=Structure` adds read-only
+  prefab/loaded-scene asset structure inspection.
+- Use `StructureMode=List` for a compact hierarchy map with `path`,
+  duplicate-safe `indexedPath`, active/tag/layer data, component names,
+  missing-script counts, prefab source hints, and summary statistics.
+- Use `StructureMode=Search` with `Query`, `ComponentFilter`, and optional
+  `MatchFields=fields|all` to find objects without reading the whole asset.
+- Use `StructureMode=Read ObjectPath=<indexedPath>` to inspect one object with
+  transform, component, renderer sorting, child, and bounded serialized
+  property data.
+- The workflow is read-only. It does not open unloaded scenes automatically;
+  load/open the scene first or use `Action=Read` for raw YAML text.
+- `UniBridge_BatchActions` accepts aliases such as `asset_structure`,
+  `prefab_structure`, `scene_asset_structure`, `structure_search`,
+  `serialized_asset_search`, and `read_yaml`.
 
 ## Known 0.2.19 Notes
 

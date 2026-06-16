@@ -22,7 +22,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         public const string Description = @"Ping and discover UniBridge Unity MCP tools, workflows, aliases, and health.
 
 Search aliases for Codex/tool_search discoverability:
-UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
+UniBridge, Unity, MCP, Unity Editor, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, console delta, post action diagnostics, batch self check, PlayMode, WaitForPlayMode, WaitForEditMode, RuntimeProfiler, RuntimeStateProbe, runtime state, state probe, runtime assert, watch assert, watch variables, component fields, MonoBehaviour state, profiler, performance, FPS, GC, memory, spikes, TypeSchema, TypeIndex, type map, type fingerprint, component schema, ScriptableObject schema, asset structure, prefab structure, serialized asset search, BatchActions, ToolGuide, DomainCatalog, ContextSnapshot, WorkSession, checkpoint, review changes, diff, revert, ValidateAdditiveSceneRegistration, additive scene validation.
 
 Use this first when a Codex agent is unsure whether UniBridge is connected or which Unity workflow to run. This tool is read-only.";
 
@@ -143,6 +143,17 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                 },
                 new
                 {
+                    key = "asset_structure",
+                    summary = "List, search, or drill into prefab and already-loaded scene hierarchy assets with indexed paths, components, and optional serialized field matching.",
+                    calls = new[]
+                    {
+                        "UniBridge_AssetIntelligence Action=Structure StructureMode=List Path=Assets/.../<prefab>.prefab MaxStructureDepth=4",
+                        "UniBridge_AssetIntelligence Action=Structure StructureMode=Search Path=Assets/.../<prefab>.prefab Query=<nameOrField> MatchFields=all Limit=20",
+                        "UniBridge_AssetIntelligence Action=Structure StructureMode=Read Path=Assets/.../<prefab>.prefab ObjectPath=<indexedPath> IncludeSerializedProperties=true"
+                    }
+                },
+                new
+                {
                     key = "compile_diagnostics",
                     summary = "Validate scripts, refresh assets, queue compilation without inline reload wait, then reconnect/wait and read diagnostics.",
                     calls = new[]
@@ -217,8 +228,7 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
             var normalizedQuery = query?.Trim();
             var aliases = BatchActionToolCatalog.ToolAliases
                 .Where(pair => string.IsNullOrWhiteSpace(normalizedQuery) ||
-                               pair.Key.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                               pair.Value.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) >= 0)
+                               QueryMatches(normalizedQuery, pair.Key, pair.Value))
                 .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
                 .Take(limit)
                 .Select(pair => new { alias = pair.Key, tool = pair.Value })
@@ -237,10 +247,12 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
             var normalizedQuery = query?.Trim();
             var tools = McpToolRegistry.GetAllToolsForSettings()
                 .Where(entry => string.IsNullOrWhiteSpace(normalizedQuery) ||
-                                (entry.Info?.name?.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) ?? -1) >= 0 ||
-                                (entry.Info?.title?.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) ?? -1) >= 0 ||
-                                (entry.Info?.description?.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) ?? -1) >= 0 ||
-                                BatchActionToolCatalog.GetAliasesForTool(entry.Info?.name).Any(alias => alias.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) >= 0))
+                                QueryMatches(
+                                    normalizedQuery,
+                                    entry.Info?.name,
+                                    entry.Info?.title,
+                                    entry.Info?.description,
+                                    string.Join(" ", BatchActionToolCatalog.GetAliasesForTool(entry.Info?.name))))
                 .OrderBy(entry => entry.Info?.name, StringComparer.OrdinalIgnoreCase)
                 .Take(limit)
                 .Select(entry => new
@@ -261,6 +273,28 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                 returned = tools.Length,
                 tools
             };
+        }
+
+        static bool QueryMatches(string query, params string[] fields)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return true;
+
+            var haystack = string.Join(" ", fields.Where(field => !string.IsNullOrWhiteSpace(field)));
+            if (haystack.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            var tokens = query
+                .Split(new[] { ' ', '\t', '\r', '\n', ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(token => token.Trim())
+                .Where(token => token.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (tokens.Length == 0)
+                return true;
+
+            return tokens.All(token => haystack.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         static object PackageInfo()

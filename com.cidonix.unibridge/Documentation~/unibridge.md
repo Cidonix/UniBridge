@@ -565,6 +565,7 @@ It is read-only and supports:
 - PNG previews written under `~/.unibridge/asset-previews/<project>` when Unity can generate them;
 - `Serialize` / `Snapshot` output for deeper AI-readable asset context.
 - `Context` output for a structured one-call asset context envelope: detail summary, text slice/chunks when applicable, serialized importer/main/sub-asset data when useful, and fuzzy missing-path suggestions.
+- `Structure` output for prefab and already-loaded scene assets: compact hierarchy list/search/read with duplicate-safe `indexedPath`, components, active/tag/layer data, missing-script counts, prefab source hints, renderer sorting data, child summaries, and optional serialized field matching.
 
 `Read` supports `StartLine`/`LineCount`, `TailLines`, `HeadBytes`, `Pattern`, and `Chunks` for several precise line ranges in one call.
 
@@ -585,6 +586,14 @@ Use `Action=Context` when a new agent has an exact path/GUID and needs to unders
 - `Deep`: heavier context with sub-assets, dependencies, hierarchy, and serialized properties.
 
 When a requested path is stale, `Context` returns fuzzy suggestions and, by default, a small context payload for the best suggestion.
+
+Use `Action=Structure` when an agent needs a map of a prefab or loaded scene asset before making edits:
+
+- `StructureMode=List` returns bounded hierarchy nodes and summary stats;
+- `StructureMode=Search` uses `Query`, `ComponentFilter`, and optional `MatchFields=fields` or `MatchFields=all` to find objects by name/path/component/tag/layer/prefab source and serialized field names or values;
+- `StructureMode=Read ObjectPath=<path-or-indexedPath>` drills into one object and returns transform, component details, renderer sorting data, child summaries, and bounded serialized properties;
+- if duplicate names make a plain path ambiguous, pass the returned `indexedPath`;
+- scene assets must already be loaded in the editor. `Action=Structure` is read-only and does not open unloaded scenes automatically. Use `Action=Read` for raw `.unity` YAML text or `SceneHierarchyExport` for full loaded-scene exports.
 
 Use `SerializeMode` to control depth:
 

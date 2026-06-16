@@ -21,7 +21,7 @@ public const string Description = @"Return a compact, agent-facing guide for cho
 
 Use this when an agent is new to a project or unsure which UniBridge tool should handle a Unity task. It summarizes the recommended first calls, edit tools, verification calls, batch aliases, and common workflows without changing the project.
 
-Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema ValidateAdditiveSceneRegistration additive scene validation.
+Search aliases: UniBridge Unity MCP ToolGuide WorkSession checkpoint review changes diff revert rollback ValidateScript RefreshAssets RequestScriptCompilationNoWait WaitForReadyAfterReload GetCompilationDiagnostics ReadConsole DiagnosticSummary ClearConsole console delta post action diagnostics batch self check PlayMode WaitForPlayMode WaitForEditMode RuntimeProfiler RuntimeStateProbe runtime state state probe runtime assert watch assert watch variables component fields MonoBehaviour state profiler performance FPS GC memory spikes TypeSchema TypeIndex type map type fingerprint component schema ScriptableObject schema asset structure prefab structure serialized asset search ValidateAdditiveSceneRegistration additive scene validation.
 
 Actions:
     Overview: Core orientation flow plus available workflow topics.
@@ -236,8 +236,13 @@ This tool is read-only.";
                 normalized = "orientation";
             }
 
-            return GetWorkflows().FirstOrDefault(workflow =>
-                string.Equals(workflow.Key, normalized, StringComparison.OrdinalIgnoreCase) ||
+            var workflows = GetWorkflows();
+            var exact = workflows.FirstOrDefault(workflow =>
+                string.Equals(workflow.Key, normalized, StringComparison.OrdinalIgnoreCase));
+            if (exact != null)
+                return exact;
+
+            return workflows.FirstOrDefault(workflow =>
                 workflow.Aliases.Any(alias => string.Equals(Normalize(alias, alias), normalized, StringComparison.OrdinalIgnoreCase)));
         }
 
@@ -302,13 +307,26 @@ This tool is read-only.";
                     Key = "search",
                     Title = "Resolve vague user references",
                     When = "Use when the user names an object, asset, script, shader, menu item, or folder without an exact path.",
-                    FirstCalls = new[] { "UniBridge_UnitySearch with Sources suited to the task", "UniBridge_AssetIntelligence Search/Context/ResolveMissing for asset-heavy tasks", "UniBridge_ScriptIntelligence Search for code/type tasks", "UniBridge_TypeSchema Action=TypeIndex for loaded Unity/C# type lookup" },
+                    FirstCalls = new[] { "UniBridge_UnitySearch with Sources suited to the task", "UniBridge_AssetIntelligence Search/Context/ResolveMissing for asset-heavy tasks", "UniBridge_AssetIntelligence Action=Structure StructureMode=Search for prefab or loaded scene hierarchy/serialized-field lookup", "UniBridge_ScriptIntelligence Search for code/type tasks", "UniBridge_TypeSchema Action=TypeIndex for loaded Unity/C# type lookup" },
                     EditCalls = Array.Empty<string>(),
-                    VerifyCalls = new[] { "UniBridge_TypeSchema or SceneObjectView for selected scene targets", "UniBridge_AssetIntelligence Context for selected assets" },
+                    VerifyCalls = new[] { "UniBridge_TypeSchema or SceneObjectView for selected scene targets", "UniBridge_AssetIntelligence Context or Action=Structure StructureMode=Read for selected assets" },
                     Tools = new[] { "UniBridge_UnitySearch", "UniBridge_AssetIntelligence", "UniBridge_ScriptIntelligence", "UniBridge_TypeSchema", "UniBridge_SceneObjectView" },
-                    BatchAliases = new[] { "find", "lookup", "asset_search", "script_search", "schema" },
-                    Notes = new[] { "Prefer search before editing when names are ambiguous.", "Use TypeSchema TypeIndex/TypeFingerprint when a component or ScriptableObject short name may be ambiguous across namespaces/assemblies.", "Use AssetIntelligence Context when you want structured one-call asset summary/read/serialize/suggestion output.", "Use AssetIntelligence ResolveMissing when a user-provided asset path is stale or mistyped." },
-                    Aliases = new[] { "find", "lookup", "resolve" }
+                    BatchAliases = new[] { "find", "lookup", "asset_search", "asset_structure", "prefab_structure", "script_search", "schema" },
+                    Notes = new[] { "Prefer search before editing when names are ambiguous.", "Use TypeSchema TypeIndex/TypeFingerprint when a component or ScriptableObject short name may be ambiguous across namespaces/assemblies.", "Use AssetIntelligence Context when you want structured one-call asset summary/read/serialize/suggestion output.", "Use AssetIntelligence Structure when you need compact list/search/read over prefab or loaded scene hierarchy, including indexed paths and serialized field matching.", "Use AssetIntelligence ResolveMissing when a user-provided asset path is stale or mistyped." },
+                    Aliases = new[] { "find", "lookup", "resolve", "asset_structure", "prefab_structure" }
+                },
+                new WorkflowGuide
+                {
+                    Key = "asset_structure",
+                    Title = "Inspect prefab or loaded scene asset structure",
+                    When = "Use when an agent needs a compact hierarchy map, component search, or serialized-field drill-down inside a prefab or already-loaded scene asset.",
+                    FirstCalls = new[] { "UniBridge_AssetIntelligence Action=Structure StructureMode=List Path=Assets/.../<prefab>.prefab", "UniBridge_AssetIntelligence Action=Structure StructureMode=Search Path=Assets/... Query=<text> MatchFields=all Limit=20" },
+                    EditCalls = Array.Empty<string>(),
+                    VerifyCalls = new[] { "UniBridge_AssetIntelligence Action=Structure StructureMode=Read ObjectPath=<indexedPath> IncludeSerializedProperties=true", "UniBridge_ReadConsole Action=DiagnosticSummary" },
+                    Tools = new[] { "UniBridge_AssetIntelligence", "UniBridge_UnitySearch", "UniBridge_SceneHierarchyExport", "UniBridge_SceneObjectView" },
+                    BatchAliases = new[] { "asset_structure", "prefab_structure", "scene_asset_structure", "structure_search", "serialized_asset_search" },
+                    Notes = new[] { "Structure is read-only and does not open unloaded scenes automatically.", "Use indexedPath from List/Search when duplicate sibling names make plain paths ambiguous.", "For unloaded scene assets, load/open the scene first or use AssetIntelligence Read for raw YAML text." },
+                    Aliases = new[] { "asset_structure", "prefab_structure", "serialized_asset_search", "read_yaml" }
                 },
                 new WorkflowGuide
                 {
@@ -523,13 +541,13 @@ This tool is read-only.";
                     Key = "assets_import",
                     Title = "Inspect and tune asset import settings",
                     When = "Use for textures, sprites, models, audio, and importer serialized properties.",
-                    FirstCalls = new[] { "UniBridge_UnitySearch Sources=[Assets]", "UniBridge_AssetIntelligence Context for asset summary/read/serialize, or ReferenceGraph for reference maps", "UniBridge_ManageAssetImporter Inspect IncludeSerializedProperties=true" },
+                    FirstCalls = new[] { "UniBridge_UnitySearch Sources=[Assets]", "UniBridge_AssetIntelligence Context for asset summary/read/serialize, Structure for prefab/loaded scene hierarchy, or ReferenceGraph for reference maps", "UniBridge_ManageAssetImporter Inspect IncludeSerializedProperties=true" },
                     EditCalls = new[] { "UniBridge_ManageAssetImporter SetProperties", "UniBridge_ManageAsset for folders/copy/move/delete/CreateOrUpdate allowlisted assets", "UniBridge_BatchActions DryRun=true for folder-wide edits" },
                     VerifyCalls = new[] { "UniBridge_ManageAssetImporter Inspect", "UniBridge_CaptureAsset", "UniBridge_ReadConsole Action=DiagnosticSummary" },
                     Tools = new[] { "UniBridge_UnitySearch", "UniBridge_AssetIntelligence", "UniBridge_WorkflowRecipes", "UniBridge_ManageAssetImporter", "UniBridge_ManageAsset", "UniBridge_CaptureAsset", "UniBridge_ReadConsole" },
                     BatchAliases = new[] { "asset_importer", "importer", "import_settings", "asset_capture" },
-                    Notes = new[] { "Use project context before deciding what optimal import settings mean.", "Use AssetIntelligence ContextProfile=Deep when an asset's importer, sub-assets, serialized fields, or text chunks are central to the task.", "Before move/rename/delete, call AssetIntelligence Impact or ReferenceGraph to see dependents and reference risk.", "ManageAsset CreateOrUpdate supports an allowlist: PhysicsMaterial2D, RenderTexture, TerrainLayer, AvatarMask, ShaderVariantCollection." },
-                    Aliases = new[] { "import", "importer", "sprites", "textures", "assets" }
+                    Notes = new[] { "Use project context before deciding what optimal import settings mean.", "Use AssetIntelligence ContextProfile=Deep when an asset's importer, sub-assets, serialized fields, or text chunks are central to the task.", "Use AssetIntelligence Structure for prefab/scene hierarchy and serialized-field searches without reading a giant snapshot.", "Before move/rename/delete, call AssetIntelligence Impact or ReferenceGraph to see dependents and reference risk.", "ManageAsset CreateOrUpdate supports an allowlist: PhysicsMaterial2D, RenderTexture, TerrainLayer, AvatarMask, ShaderVariantCollection." },
+                    Aliases = new[] { "import", "importer", "sprites", "textures", "assets", "asset_structure" }
                 },
                 new WorkflowGuide
                 {

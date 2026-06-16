@@ -69,6 +69,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         Context,
 
         /// <summary>
+        /// List/search/read prefab or loaded scene hierarchy structure with optional serialized field matching.
+        /// </summary>
+        Structure,
+
+        /// <summary>
         /// Build or query a cached graph of asset dependencies and dependents.
         /// </summary>
         ReferenceGraph,
@@ -134,6 +139,16 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     }
 
     /// <summary>
+    /// Controls the structure reader mode for prefab and loaded scene assets.
+    /// </summary>
+    public enum AssetStructureMode
+    {
+        List,
+        Search,
+        Read
+    }
+
+    /// <summary>
     /// A line range used by Read/Context to return several precise text slices in one call.
     /// </summary>
     public record AssetTextChunk
@@ -153,7 +168,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     /// </summary>
     public record AssetIntelligenceParams
     {
-        [McpDescription("Operation to perform: Search, Inspect, Read, Dependencies, Dependents, Stats, Types, Selection, Preview, Serialize, Snapshot, Context, ReferenceGraph, Impact, or ResolveMissing.", Required = false, Default = AssetIntelligenceAction.Search)]
+        [McpDescription("Operation to perform: Search, Inspect, Read, Dependencies, Dependents, Stats, Types, Selection, Preview, Serialize, Snapshot, Context, Structure, ReferenceGraph, Impact, or ResolveMissing.", Required = false, Default = AssetIntelligenceAction.Search)]
         public AssetIntelligenceAction Action { get; set; } = AssetIntelligenceAction.Search;
 
         [McpDescription("Natural search text or AssetDatabase query fragment. Examples: 'player controller', 't:Prefab enemy', 'l:ui'.", Required = false)]
@@ -296,5 +311,32 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
 
         [McpDescription("Maximum hierarchy/sub-asset items for Serialize/Snapshot.", Required = false, Default = 200)]
         public int MaxSerializedItems { get; set; } = 200;
+
+        [McpDescription("For Action=Structure: List, Search, or Read. List returns a compact hierarchy, Search returns matching nodes, Read drills into one ObjectPath.", Required = false, Default = AssetStructureMode.List)]
+        public AssetStructureMode StructureMode { get; set; } = AssetStructureMode.List;
+
+        [McpDescription("For Action=Structure Read: hierarchy path or indexedPath to inspect. Examples: /Canvas/Button or /Canvas[0]/Button[2].", Required = false)]
+        public string ObjectPath { get; set; }
+
+        [McpDescription("For Action=Structure List/Search: only include hierarchy under this path or indexedPath when provided.", Required = false)]
+        public string PathPrefix { get; set; }
+
+        [McpDescription("For Action=Structure Search: required component type name/full name. Comma-separated values are treated as OR.", Required = false)]
+        public string ComponentFilter { get; set; }
+
+        [McpDescription("For Action=Structure Search: comma-separated search fields. Values: path,name,component,tag,layer,prefab,fieldName,fieldValue,fields,all. Default searches path/name/component/tag/layer/prefab.", Required = false)]
+        public string MatchFields { get; set; }
+
+        [McpDescription("For Action=Structure List/Read: maximum hierarchy depth returned. Defaults to MaxSerializedDepth.", Required = false)]
+        public int? MaxStructureDepth { get; set; }
+
+        [McpDescription("For Action=Structure: maximum hierarchy nodes returned in List or scanned in Read output. Defaults to MaxSerializedItems.", Required = false)]
+        public int? MaxStructureItems { get; set; }
+
+        [McpDescription("For Action=Structure serialized field search/read: maximum nested SerializedProperty depth.", Required = false, Default = 3)]
+        public int MaxFieldDepth { get; set; } = 3;
+
+        [McpDescription("For Action=Structure serialized field search/read: maximum array elements inspected per array property.", Required = false, Default = 30)]
+        public int MaxArrayItems { get; set; } = 30;
     }
 }
