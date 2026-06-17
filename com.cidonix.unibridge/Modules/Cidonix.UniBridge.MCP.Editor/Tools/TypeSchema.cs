@@ -1577,9 +1577,7 @@ Returns:
             };
         }
 
-#pragma warning disable CS0618
-        static int GetObjectInstanceId(Object obj) => obj == null ? 0 : obj.GetInstanceID();
-#pragma warning restore CS0618
+        static long GetObjectInstanceId(Object obj) => UnityApiAdapter.GetObjectId(obj);
 
         static Shader ResolveShader(TypeSchemaParams parameters, out object source)
         {

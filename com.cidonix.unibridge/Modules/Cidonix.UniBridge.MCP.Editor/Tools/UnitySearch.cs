@@ -1,6 +1,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -277,12 +278,7 @@ Returns:
             var providerId = item.provider?.id;
             if (string.Equals(providerId, "scene", StringComparison.OrdinalIgnoreCase))
             {
-                if (!int.TryParse(item.id, out var instanceId))
-                    return null;
-
-#pragma warning disable 0618
-                var obj = EditorUtility.InstanceIDToObject(instanceId);
-#pragma warning restore 0618
+                var obj = UnityApiAdapter.GetObjectFromNativeSearchId(item.id);
                 var gameObject = obj as GameObject ?? (obj as Component)?.gameObject;
                 if (gameObject == null)
                     return null;
@@ -674,6 +670,7 @@ Returns:
             if (direct)
                 matched = new[] { "target" };
 
+            var objectId = UnityApiAdapter.GetObjectId(gameObject);
             return new SearchResultRecord
             {
                 Source = "SceneObjects",
@@ -681,7 +678,7 @@ Returns:
                 Name = gameObject.name,
                 Path = path,
                 ScenePath = scenePath,
-                ObjectId = UnityApiAdapter.GetObjectId(gameObject),
+                ObjectId = objectId,
                 Type = typeof(GameObject).FullName,
                 Components = components,
                 Score = score,
@@ -689,7 +686,7 @@ Returns:
                 SuggestedTool = "UniBridge_SceneObjectView",
                 SuggestedAction = "View",
                 CaptureTool = "UniBridge_CaptureView",
-                DedupeKey = $"scene:{UnityApiAdapter.GetObjectId(gameObject)}"
+                DedupeKey = $"scene:{objectId}"
             };
         }
 
@@ -710,13 +707,14 @@ Returns:
                 var result = BuildSceneObjectResult(component.gameObject, options, direct: true);
                 if (result != null)
                 {
+                    var objectId = UnityApiAdapter.GetObjectId(component);
                     result.Kind = "Component";
                     result.Name = component.GetType().Name;
                     result.Type = component.GetType().FullName;
-                    result.ObjectId = UnityApiAdapter.GetObjectId(component);
+                    result.ObjectId = objectId;
                     result.SuggestedTool = "UniBridge_TypeSchema";
                     result.SuggestedAction = "InspectGameObject";
-                    result.DedupeKey = $"component:{UnityApiAdapter.GetObjectId(component)}";
+                    result.DedupeKey = $"component:{objectId}";
                 }
 
                 return result;
@@ -729,18 +727,19 @@ Returns:
                 return BuildAssetResult(path, AssetDatabase.AssetPathToGUID(path), "Assets", options, direct: true);
             }
 
+            var selectionObjectId = UnityApiAdapter.GetObjectId(obj);
             return new SearchResultRecord
             {
                 Source = "Selection",
                 Kind = obj.GetType().Name,
                 Name = obj.name,
                 Type = obj.GetType().FullName,
-                ObjectId = UnityApiAdapter.GetObjectId(obj),
+                ObjectId = selectionObjectId,
                 Score = 10000,
                 MatchedFields = new[] { "selection" },
                 SuggestedTool = "UniBridge_ContextSnapshot",
                 SuggestedAction = "Selection",
-                DedupeKey = $"selection:{UnityApiAdapter.GetObjectId(obj)}"
+                DedupeKey = $"selection:{selectionObjectId}"
             };
         }
 
@@ -789,6 +788,7 @@ Returns:
                 labels = record.Labels,
                 scenePath = record.ScenePath,
                 objectId = record.ObjectId > 0 ? record.ObjectId : (long?)null,
+                objectIdString = record.ObjectId > 0 ? record.ObjectId.ToString(CultureInfo.InvariantCulture) : null,
                 menuPath = record.MenuPath,
                 components = record.Components,
                 score = Math.Round(record.Score, 2),

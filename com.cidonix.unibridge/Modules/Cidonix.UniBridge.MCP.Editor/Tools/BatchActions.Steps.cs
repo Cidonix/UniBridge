@@ -67,7 +67,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         static JObject ExtractStepParameters(JObject stepObject)
         {
-            var explicitParameters = stepObject["parameters"] ?? stepObject["Parameters"] ?? stepObject["params"] ?? stepObject["Params"] ?? stepObject["args"] ?? stepObject["Args"];
+            var explicitParameters =
+                stepObject["parameters"] ??
+                stepObject["Parameters"] ??
+                stepObject["params"] ??
+                stepObject["Params"] ??
+                stepObject["arguments"] ??
+                stepObject["Arguments"] ??
+                stepObject["args"] ??
+                stepObject["Args"];
             if (explicitParameters is JObject explicitObject)
             {
                 return (JObject)explicitObject.DeepClone();
@@ -77,7 +85,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             var controlKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "id", "tool", "toolName", "description", "optional", "skip",
-                "parameters", "params", "args"
+                "parameters", "params", "arguments", "args"
             };
 
             foreach (var property in stepObject.Properties())

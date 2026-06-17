@@ -1,4 +1,5 @@
 #nullable disable
+#pragma warning disable 0618 // LightProbeProxyVolume is deprecated in Unity 6000.5, but UniBridge still supports existing projects that use it.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -2240,3 +2241,4 @@ Returns:
         }
     }
 }
+#pragma warning restore 0618

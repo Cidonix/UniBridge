@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.27",
+  "version": "0.2.29",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n\n- Added UniBridge_AssetIntelligence Action=SemanticDiff, a read-only semantic diff for Unity YAML/text assets such as prefabs, scenes, materials, controllers, .asset files, and .meta files.\n- SemanticDiff reports YAML document created/deleted/modified counts, class/fileID changes, property deltas, GUID/script reference changes, risk summary, and bounded line diff samples.\n- Added searchable aliases including semantic_asset_diff, asset_semantic_diff, yaml_semantic_diff, unity_yaml_diff, prefab_semantic_diff, asset_diff, and semantic_diff.\n\n### Previous Changes\n\n- ToolGuide, ContextSnapshot, DomainCatalog, and Discover expose agent-facing playbooks with read-before-modify, scope awareness, safe execution, and verification ladder guidance.\n- UniBridge_RuntimeProfiler Action=Hierarchy exports bounded profiler marker hierarchy/top-sample data for AI performance triage.\n- UniBridge_ScriptIntelligence Action=ChangeImpact compares current C# source with ProposedSource or ProposedPath before large edits and reports syntax, API, serialized field, Unity callback, source-delta, and reload risks.\n- UniBridge_AssetIntelligence and UniBridge_ScriptIntelligence provide bounded YAML reference locations for asset/script GUID usages."
+    "changelog": "### Fixed\n\n- Added string object ID fields and ManageSceneHierarchy ObjectIdString inputs so JavaScript/JSON MCP clients can safely handle Unity 6 EntityId values that exceed the JavaScript safe integer range.\n- UniBridge_BatchActions now accepts nested step arguments in an arguments container as well as parameters/params/args, matching common MCP client payload shapes.\n- Play Mode queue/wait behavior remains reload-safe without reporting a false reload boundary while Unity is simply compiling or waiting for focus.\n\n### Previous Changes\n\n- Updated Unity 6000.5 compatibility for UnitySearch and TypeSchema by routing object ID lookups through the UniBridge Unity API adapter instead of obsolete InstanceID APIs.\n- Fixed Roslyn dependency resolution on Unity 6000.5 by using Microsoft.CodeAnalysis 4.13.0 with System.Collections.Immutable and System.Reflection.Metadata 8.0.0, matching Unity 6000.5 reference assemblies.\n- Added UniBridge_AssetIntelligence Action=SemanticDiff, a read-only semantic diff for Unity YAML/text assets such as prefabs, scenes, materials, controllers, .asset files, and .meta files."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

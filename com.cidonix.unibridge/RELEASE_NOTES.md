@@ -1,6 +1,63 @@
-# UniBridge 0.2.27 Release Notes
+# UniBridge 0.2.29 Release Notes
 
-Release date: 2026-06-16
+Release date: 2026-06-17
+
+This hotfix finishes the Unity 6000.5 / Unity 6.5 compatibility pass with a
+focus on real MCP client behavior.
+
+Unity 6 EntityId values can exceed JavaScript's safe integer range. UniBridge
+now includes string object ID fields in scene/object snapshots and accepts
+`ObjectIdString` / `ParentObjectIdString` in `UniBridge_ManageSceneHierarchy`.
+Agents can still use numeric IDs in C#-safe contexts, but JSON/MCP clients
+should prefer the string fields for duplicate-safe hierarchy edits.
+
+`UniBridge_BatchActions` now accepts step payloads under `arguments` in
+addition to `parameters`, `params`, and `args`. This matches common MCP client
+request shapes and keeps nested read-only or mutating tool calls from silently
+receiving empty parameters.
+
+Play Mode queue/wait handling remains reload-safe, but the smoke-tested path no
+longer reports a false early reload boundary while Unity is simply compiling or
+waiting for the Editor window to be focused.
+
+Validation:
+
+- live relay/MCP smoke against `UniBridge_Test_Project`;
+- Unity 6000.5.0f1;
+- 67 UniBridge tools discovered;
+- 54 smoke checks passed, 0 failed;
+- editor refresh, compilation diagnostics, console diagnostics, scene export,
+  export comparison, `ObjectIdString` hierarchy moves, nested batch
+  `arguments`, capture, visual audit, Play Mode entry, and Play Mode exit were
+  all exercised.
+
+## Previous 0.2.28 Notes
+
+This hotfix updates UniBridge for Unity 6000.5 compatibility.
+
+Unity 6000.5 reports direct `InstanceID` API usage as obsolete compile errors
+in package code. UniBridge now routes the remaining `UnitySearch` and
+`TypeSchema` object ID lookups through its version-aware Unity API adapter,
+which uses `EntityId` APIs on Unity 6000+ and keeps fallback behavior for older
+supported editors.
+
+Native Unity Search scene result resolution also keeps compatibility with
+provider payloads that still expose legacy instance IDs, using a reflection
+fallback instead of a direct obsolete API call.
+
+The package now uses `Microsoft.CodeAnalysis` 4.13.0 with
+`System.Collections.Immutable` and `System.Reflection.Metadata` 8.0.0. This
+matches Unity 6000.5's reference assemblies and avoids `CS1705` version
+conflicts during Editor compilation.
+
+UniBridge still reports and can manage existing `LightProbeProxyVolume`
+components for older/Built-in-pipeline projects, but the intentional Unity
+6000.5 deprecation warnings for that component are now suppressed in package
+compilation.
+
+No tool behavior changed in this release.
+
+## Previous 0.2.27 Notes
 
 This release adds a read-only semantic diff for Unity YAML/text assets, closing
 the last useful Locus-inspired asset review idea in UniBridge's own MCP

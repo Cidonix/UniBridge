@@ -1,4 +1,5 @@
 #nullable disable
+#pragma warning disable 0618 // LightProbeProxyVolume is deprecated in Unity 6000.5, but scene inspection still reports existing components.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -398,10 +399,12 @@ Returns:
             remaining--;
             totalReturned++;
 
+            var objectId = UnityApiAdapter.GetObjectId(gameObject);
             var result = new Dictionary<string, object>
             {
                 ["name"] = gameObject.name,
-                ["objectId"] = UnityApiAdapter.GetObjectId(gameObject),
+                ["objectId"] = objectId,
+                ["objectIdString"] = objectId.ToString(CultureInfo.InvariantCulture),
                 ["path"] = GetHierarchyPath(gameObject),
                 ["scene"] = ToSceneInfo(gameObject.scene),
                 ["activeSelf"] = gameObject.activeSelf,
@@ -486,11 +489,13 @@ Returns:
         static object SerializeComponent(Component component, ViewOptions options)
         {
             var type = component.GetType();
+            var objectId = UnityApiAdapter.GetObjectId(component);
             var result = new Dictionary<string, object>
             {
                 ["type"] = type.FullName ?? type.Name,
                 ["typeName"] = type.Name,
-                ["objectId"] = UnityApiAdapter.GetObjectId(component)
+                ["objectId"] = objectId,
+                ["objectIdString"] = objectId.ToString(CultureInfo.InvariantCulture)
             };
 
             if (component is Behaviour behaviour)
@@ -1478,6 +1483,7 @@ Returns:
                 var sourcePath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
                 var nearestRoot = PrefabUtility.GetNearestPrefabInstanceRoot(gameObject);
 
+                var nearestRootId = UnityApiAdapter.GetObjectId(nearestRoot);
                 return new
                 {
                     assetType = assetType.ToString(),
@@ -1486,7 +1492,8 @@ Returns:
                     nearestInstanceRoot = nearestRoot != null ? new
                     {
                         name = nearestRoot.name,
-                        objectId = UnityApiAdapter.GetObjectId(nearestRoot),
+                        objectId = nearestRootId,
+                        objectIdString = nearestRootId.ToString(CultureInfo.InvariantCulture),
                         path = GetHierarchyPath(nearestRoot)
                     } : null,
                     isAnyPrefabInstanceRoot = PrefabUtility.IsAnyPrefabInstanceRoot(gameObject)
@@ -1504,11 +1511,13 @@ Returns:
                 return null;
 
             var path = AssetDatabase.GetAssetPath(obj);
+            var objectId = UnityApiAdapter.GetObjectId(obj);
             return new
             {
                 name = obj.name,
                 type = obj.GetType().FullName,
-                objectId = UnityApiAdapter.GetObjectId(obj),
+                objectId,
+                objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
                 assetPath = string.IsNullOrWhiteSpace(path) ? null : path,
                 guid = string.IsNullOrWhiteSpace(path) ? null : AssetDatabase.AssetPathToGUID(path)
             };
@@ -1710,3 +1719,4 @@ Returns:
         }
     }
 }
+#pragma warning restore 0618

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -59,6 +60,32 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         }
 
         /// <summary>
+        /// Resolves object IDs returned by native Unity search providers.
+        /// Unity 6+ can use EntityId, while some provider payloads may still
+        /// expose legacy instance IDs.
+        /// </summary>
+        public static Object GetObjectFromNativeSearchId(string id)
+        {
+            if (!long.TryParse(id, out var numericId) || numericId == 0)
+            {
+                return null;
+            }
+
+            var entityObject = GetObjectFromId(numericId);
+            if (entityObject != null)
+            {
+                return entityObject;
+            }
+
+            if (numericId < int.MinValue || numericId > int.MaxValue)
+            {
+                return null;
+            }
+
+            return GetObjectFromLegacyInstanceId(unchecked((int)numericId));
+        }
+
+        /// <summary>
         /// Gets the ID of the active selected object.
         /// </summary>
         public static long GetActiveSelectionId()
@@ -70,6 +97,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             return Selection.activeInstanceID;
 #pragma warning restore 0618
 #endif
+        }
+
+        static Object GetObjectFromLegacyInstanceId(int instanceId)
+        {
+            var method = typeof(EditorUtility).GetMethod(
+                "InstanceIDToObject",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+                null,
+                new[] { typeof(int) },
+                null);
+
+            return method?.Invoke(null, new object[] { instanceId }) as Object;
         }
 
         /// <summary>

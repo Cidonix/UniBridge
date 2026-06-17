@@ -47,7 +47,8 @@ through an approval-based connection flow.
 ## Requirements
 
 This version is compatible with Unity Editor 6000.0 and later. It has been
-smoke-tested locally on Unity 6000.4.10f1 on Windows. Linux and macOS relay
+smoke-tested locally on Unity 6000.4.10f1 and Unity 6000.5.0f1 on Windows.
+Linux and macOS relay
 artifacts are bundled and cross-built, but should be verified on target systems
 before production use.
 
@@ -96,6 +97,21 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## Known 0.2.28 Notes
+
+- This is a Unity 6000.5 compatibility hotfix.
+- `UniBridge_UnitySearch` and `UniBridge_TypeSchema` now use UniBridge's
+  version-aware Unity API adapter for object ID conversions instead of direct
+  obsolete `InstanceID` API calls.
+- Native Unity Search scene result resolution supports both EntityId-style and
+  legacy instance-id provider payloads.
+- Bundled Roslyn dependencies are aligned with Unity 6000.5 reference
+  assemblies: `Microsoft.CodeAnalysis` 4.13.0 with
+  `System.Collections.Immutable` / `System.Reflection.Metadata` 8.0.0.
+- Intentional `LightProbeProxyVolume` support no longer emits Unity 6000.5
+  package compile warnings.
+- No MCP tool behavior changed.
 
 ## Known 0.2.27 Notes
 

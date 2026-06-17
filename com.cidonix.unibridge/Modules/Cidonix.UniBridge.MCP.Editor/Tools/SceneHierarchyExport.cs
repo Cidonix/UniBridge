@@ -855,17 +855,22 @@ Returns:
             var components = gameObject.GetComponents<Component>();
             var parentTransform = transform.parent;
             var parentGameObject = parentTransform != null ? parentTransform.gameObject : parent;
+            var objectId = UnityApiAdapter.GetObjectId(gameObject);
+            var parentObjectId = parentGameObject != null ? UnityApiAdapter.GetObjectId(parentGameObject) : (long?)null;
 
             var result = new Dictionary<string, object>
             {
                 ["traversalIndex"] = traversalIndex,
                 ["depth"] = depth,
-                ["objectId"] = UnityApiAdapter.GetObjectId(gameObject),
-                ["instanceId"] = UnityApiAdapter.GetObjectId(gameObject),
+                ["objectId"] = objectId,
+                ["objectIdString"] = objectId.ToString(CultureInfo.InvariantCulture),
+                ["instanceId"] = objectId,
+                ["instanceIdString"] = objectId.ToString(CultureInfo.InvariantCulture),
                 ["name"] = gameObject.name,
                 ["path"] = "/" + SceneObjectLocator.GetHierarchyPath(gameObject),
                 ["indexedPath"] = BuildIndexedPath(gameObject),
-                ["parentObjectId"] = parentGameObject != null ? UnityApiAdapter.GetObjectId(parentGameObject) : (long?)null,
+                ["parentObjectId"] = parentObjectId,
+                ["parentObjectIdString"] = parentObjectId?.ToString(CultureInfo.InvariantCulture),
                 ["parentPath"] = parentGameObject != null ? "/" + SceneObjectLocator.GetHierarchyPath(parentGameObject) : null,
                 ["sceneName"] = gameObject.scene.name,
                 ["scenePath"] = gameObject.scene.path,
@@ -1073,13 +1078,15 @@ Returns:
                 }
 
                 var type = component.GetType();
+                var objectId = UnityApiAdapter.GetObjectId(component);
                 result.Add(new
                 {
                     index = i,
                     missing = false,
                     type = type.FullName ?? type.Name,
                     typeName = type.Name,
-                    objectId = UnityApiAdapter.GetObjectId(component),
+                    objectId,
+                    objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
                     enabled = component is Behaviour behaviour ? behaviour.enabled : (bool?)null
                 });
             }
@@ -1092,12 +1099,14 @@ Returns:
             var material = renderer.sharedMaterial;
             var spriteRenderer = renderer as SpriteRenderer;
             var particleRenderer = renderer as ParticleSystemRenderer;
+            var objectId = UnityApiAdapter.GetObjectId(renderer);
 
             return new
             {
                 rendererType = renderer.GetType().FullName ?? renderer.GetType().Name,
                 typeName = renderer.GetType().Name,
-                objectId = UnityApiAdapter.GetObjectId(renderer),
+                objectId,
+                objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
                 enabled = renderer.enabled,
                 sortingLayerName = renderer.sortingLayerName,
                 sortingLayerId = renderer.sortingLayerID,
@@ -1117,9 +1126,11 @@ Returns:
                 .Select(component =>
                 {
                     var layerIds = ReadLight2DSortingLayerIds(component);
+                    var objectId = UnityApiAdapter.GetObjectId(component);
                     return new
                     {
-                        objectId = UnityApiAdapter.GetObjectId(component),
+                        objectId,
+                        objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
                         type = component.GetType().FullName ?? component.GetType().Name,
                         typeName = component.GetType().Name,
                         enabled = component is Behaviour behaviour ? behaviour.enabled : (bool?)null,
@@ -1188,6 +1199,7 @@ Returns:
                 var sourcePath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
                 var nearestRoot = PrefabUtility.GetNearestPrefabInstanceRoot(gameObject);
                 var corresponding = PrefabUtility.GetCorrespondingObjectFromSource(gameObject);
+                var nearestRootId = nearestRoot != null ? UnityApiAdapter.GetObjectId(nearestRoot) : 0;
 
                 return new
                 {
@@ -1201,7 +1213,8 @@ Returns:
                     nearestInstanceRoot = nearestRoot != null ? new
                     {
                         name = nearestRoot.name,
-                        objectId = UnityApiAdapter.GetObjectId(nearestRoot),
+                        objectId = nearestRootId,
+                        objectIdString = nearestRootId.ToString(CultureInfo.InvariantCulture),
                         path = "/" + SceneObjectLocator.GetHierarchyPath(nearestRoot)
                     } : null
                 };
@@ -1267,11 +1280,13 @@ Returns:
             }
 
             var path = AssetDatabase.GetAssetPath(obj);
+            var objectId = UnityApiAdapter.GetObjectId(obj);
             return new
             {
                 name = obj.name,
                 type = obj.GetType().FullName ?? obj.GetType().Name,
-                objectId = UnityApiAdapter.GetObjectId(obj),
+                objectId,
+                objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
                 assetPath = string.IsNullOrWhiteSpace(path) ? null : path,
                 guid = string.IsNullOrWhiteSpace(path) ? null : AssetDatabase.AssetPathToGUID(path)
             };

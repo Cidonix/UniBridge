@@ -14,6 +14,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("GameObject objectId/EntityId to move.", Required = false)]
         public long? ObjectId { get; set; }
 
+        [McpDescription("GameObject objectId/EntityId as a string. Prefer this in JavaScript/JSON clients because Unity 6 EntityIds can exceed the safe integer range.", Required = false)]
+        public string ObjectIdString { get; set; }
+
         [McpDescription("Fallback target by objectId, hierarchy path, or name.", Required = false)]
         public string Target { get; set; }
 
@@ -22,6 +25,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("New parent GameObject objectId. Omit/null for scene root.", Required = false)]
         public long? ParentObjectId { get; set; }
+
+        [McpDescription("New parent GameObject objectId/EntityId as a string. Prefer this in JavaScript/JSON clients because Unity 6 EntityIds can exceed the safe integer range.", Required = false)]
+        public string ParentObjectIdString { get; set; }
 
         [McpDescription("Fallback parent by objectId, hierarchy path, or name. Omit/null for scene root.", Required = false)]
         public string Parent { get; set; }
@@ -53,11 +59,17 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Object ids to place inside a new organizational container for Action=CreateContainer.", Required = false)]
         public long[] ObjectIds { get; set; }
 
+        [McpDescription("Object ids to place inside a new organizational container, as strings. Prefer this in JavaScript/JSON clients because Unity 6 EntityIds can exceed the safe integer range.", Required = false)]
+        public string[] ObjectIdStrings { get; set; }
+
         [McpDescription("Container GameObject name for Action=CreateContainer.", Required = false, Default = "Scene_Group")]
         public string ContainerName { get; set; } = "Scene_Group";
 
         [McpDescription("Parent objectId for the new container. Omit/null to create a root container.", Required = false)]
         public long? ParentObjectId { get; set; }
+
+        [McpDescription("Parent objectId for the new container, as a string. Prefer this in JavaScript/JSON clients because Unity 6 EntityIds can exceed the safe integer range.", Required = false)]
+        public string ParentObjectIdString { get; set; }
 
         [McpDescription("Fallback parent for the new container by objectId, hierarchy path, or name.", Required = false)]
         public string Parent { get; set; }

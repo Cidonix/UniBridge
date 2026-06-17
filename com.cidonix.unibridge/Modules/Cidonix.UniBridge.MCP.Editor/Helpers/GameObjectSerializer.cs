@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
@@ -86,10 +87,16 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 bounds = new Bounds(go.transform.position, go.transform.lossyScale);
             }
 
+            var objectId = UnityApiAdapter.GetObjectId(go);
+            var parentObjectId = UnityApiAdapter.GetObjectId(go.transform.parent?.gameObject);
+
             return new
             {
                 name = go.name,
-                instanceID = UnityApiAdapter.GetObjectId(go),
+                instanceID = objectId,
+                instanceIDString = objectId.ToString(CultureInfo.InvariantCulture),
+                objectId,
+                objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
                 tag = go.tag,
                 layer = go.layer,
                 activeSelf = go.activeSelf,
@@ -113,7 +120,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 center = new {x = bounds.center.x, y = bounds.center.y, z = bounds.center.z,},
                 extents = new {x = bounds.extents.x, y = bounds.extents.y, z = bounds.extents.z,},
                 size = new {x = bounds.size.x, y = bounds.size.y, z = bounds.size.z,},
-                parentInstanceID = UnityApiAdapter.GetObjectId(go.transform.parent?.gameObject), // 0 if no parent
+                parentInstanceID = parentObjectId, // 0 if no parent
+                parentInstanceIDString = parentObjectId.ToString(CultureInfo.InvariantCulture),
+                parentObjectId,
+                parentObjectIdString = parentObjectId.ToString(CultureInfo.InvariantCulture),
                 // Optionally include components, but can be large
                 // components = go.GetComponents<Component>().Select(c => GetComponentData(c)).ToList()
                 // Or just component names:
@@ -175,12 +185,19 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             if (componentType == typeof(Transform))
             {
                 Transform tr = c as Transform;
+                var objectId = UnityApiAdapter.GetObjectId(tr);
+                var parentObjectId = UnityApiAdapter.GetObjectId(tr.parent?.gameObject);
+                var rootObjectId = UnityApiAdapter.GetObjectId(tr.root?.gameObject);
+                var gameObjectId = UnityApiAdapter.GetObjectId(tr.gameObject);
 
                 // Debug.Log($"[GetComponentData] Manually serializing Transform (ID: {UnityApiAdapter.GetObjectId(tr)})");
                 return new Dictionary<string, object>
                 {
                     {"typeName", componentType.FullName},
-                    {"instanceID", UnityApiAdapter.GetObjectId(tr)},
+                    {"instanceID", objectId},
+                    {"instanceIDString", objectId.ToString(CultureInfo.InvariantCulture)},
+                    {"objectId", objectId},
+                    {"objectIdString", objectId.ToString(CultureInfo.InvariantCulture)},
 
                     // Manually extract known-safe properties. Avoid Quaternion 'rotation' and 'lossyScale'.
                     {"position", CreateTokenFromValue(tr.position, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
@@ -191,14 +208,17 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     {"right", CreateTokenFromValue(tr.right, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
                     {"up", CreateTokenFromValue(tr.up, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
                     {"forward", CreateTokenFromValue(tr.forward, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
-                    {"parentInstanceID", UnityApiAdapter.GetObjectId(tr.parent?.gameObject)},
-                    {"rootInstanceID", UnityApiAdapter.GetObjectId(tr.root?.gameObject)},
+                    {"parentInstanceID", parentObjectId},
+                    {"parentInstanceIDString", parentObjectId.ToString(CultureInfo.InvariantCulture)},
+                    {"rootInstanceID", rootObjectId},
+                    {"rootInstanceIDString", rootObjectId.ToString(CultureInfo.InvariantCulture)},
                     {"childCount", tr.childCount},
 
                     // Include standard Object/Component properties
                     {"name", tr.name},
                     {"tag", tr.tag},
-                    {"gameObjectInstanceID", UnityApiAdapter.GetObjectId(tr.gameObject)}
+                    {"gameObjectInstanceID", gameObjectId},
+                    {"gameObjectInstanceIDString", gameObjectId.ToString(CultureInfo.InvariantCulture)}
                 };
             }
 
@@ -238,7 +258,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     {"enabled", () => cam.enabled},
                     {"name", () => cam.name},
                     {"tag", () => cam.tag},
-                    {"gameObject", () => new {name = cam.gameObject.name, instanceID = UnityApiAdapter.GetObjectId(cam.gameObject)}}
+                    {"gameObject", () =>
+                    {
+                        var gameObjectId = UnityApiAdapter.GetObjectId(cam.gameObject);
+                        return new
+                        {
+                            name = cam.gameObject.name,
+                            instanceID = gameObjectId,
+                            instanceIDString = gameObjectId.ToString(CultureInfo.InvariantCulture),
+                            objectId = gameObjectId,
+                            objectIdString = gameObjectId.ToString(CultureInfo.InvariantCulture)
+                        };
+                    }}
                 };
 
                 foreach (var prop in safeProperties)
@@ -258,12 +289,29 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     }
                 }
 
-                return new Dictionary<string, object> {{"typeName", componentType.FullName}, {"instanceID", UnityApiAdapter.GetObjectId(cam)}, {"properties", cameraProperties}};
+                var objectId = UnityApiAdapter.GetObjectId(cam);
+                return new Dictionary<string, object>
+                {
+                    {"typeName", componentType.FullName},
+                    {"instanceID", objectId},
+                    {"instanceIDString", objectId.ToString(CultureInfo.InvariantCulture)},
+                    {"objectId", objectId},
+                    {"objectIdString", objectId.ToString(CultureInfo.InvariantCulture)},
+                    {"properties", cameraProperties}
+                };
             }
 
             // --- End Special handling for Camera ---
 
-            var data = new Dictionary<string, object> {{"typeName", componentType.FullName}, {"instanceID", UnityApiAdapter.GetObjectId(c)}};
+            var componentObjectId = UnityApiAdapter.GetObjectId(c);
+            var data = new Dictionary<string, object>
+            {
+                {"typeName", componentType.FullName},
+                {"instanceID", componentObjectId},
+                {"instanceIDString", componentObjectId.ToString(CultureInfo.InvariantCulture)},
+                {"objectId", componentObjectId},
+                {"objectIdString", componentObjectId.ToString(CultureInfo.InvariantCulture)}
+            };
 
             // --- Get Cached or Generate Metadata (using new cache key) ---
             Tuple<Type, bool> cacheKey = new Tuple<Type, bool>(componentType, includeNonPublicSerializedFields);
@@ -464,13 +512,19 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             }
 
             Type componentType = c.GetType();
+            var objectId = UnityApiAdapter.GetObjectId(c);
+            var gameObjectId = UnityApiAdapter.GetObjectId(c.gameObject);
             var data = new Dictionary<string, object>
             {
                 {"typeName", componentType.FullName},
                 {"type", componentType.Name},
                 {"name", c.name},
-                {"instanceID", UnityApiAdapter.GetObjectId(c)},
-                {"gameObjectInstanceID", UnityApiAdapter.GetObjectId(c.gameObject)},
+                {"instanceID", objectId},
+                {"instanceIDString", objectId.ToString(CultureInfo.InvariantCulture)},
+                {"objectId", objectId},
+                {"objectIdString", objectId.ToString(CultureInfo.InvariantCulture)},
+                {"gameObjectInstanceID", gameObjectId},
+                {"gameObjectInstanceIDString", gameObjectId.ToString(CultureInfo.InvariantCulture)},
                 {"gameObjectName", c.gameObject != null ? c.gameObject.name : null}
             };
 

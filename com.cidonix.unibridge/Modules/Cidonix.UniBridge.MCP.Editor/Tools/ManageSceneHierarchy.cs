@@ -35,7 +35,7 @@ Args:
     Action: Reparent or CreateContainer.
     ScenePath: Optional scene path/name used for validation counts and root placement.
     Moves: For Reparent, objectId/target, parentObjectId/parent, optional siblingIndex, optional worldPositionStays.
-    ObjectIds, ContainerName, ParentObjectId/Parent: For CreateContainer, create an empty organizational parent and move objects into it.
+    ObjectIds/ObjectIdStrings, ContainerName, ParentObjectId/Parent: For CreateContainer, create an empty organizational parent and move objects into it. Prefer ObjectIdStrings in JavaScript clients because Unity 6 EntityIds can exceed JS safe integer precision.
     DryRun: Preview before changing the scene. Defaults true.
     WorldPositionStays: Preserve world transform. Defaults true.
     ValidateExpectedObjectCountDelta: Reparent validates count delta 0; CreateContainer validates count delta +1. ValidateObjectCountUnchanged is kept as a compatibility alias.
@@ -101,18 +101,31 @@ Returns:
 
         static object CreateContainer(ManageSceneHierarchyParams parameters)
         {
-            if (parameters.ObjectIds == null || parameters.ObjectIds.Length == 0)
+            var objectIds = ResolveObjectIds(parameters.ObjectIds, parameters.ObjectIdStrings, out var objectIdErrors);
+            if (objectIdErrors.Count > 0)
             {
-                return Response.Error("ObjectIds are required for Action=CreateContainer.");
+                return Response.Error("One or more ObjectIdStrings could not be parsed.", new { errors = objectIdErrors });
+            }
+
+            if (objectIds.Length == 0)
+            {
+                return Response.Error("ObjectIds or ObjectIdStrings are required for Action=CreateContainer.");
             }
 
             var countBefore = CountSceneObjects(parameters.ScenePath);
-            var parent = ResolveGameObject(parameters.ParentObjectId, parameters.Parent, parameters.ParentSearchMethod, parameters.ScenePath);
-            if (ParentWasRequested(parameters.ParentObjectId, parameters.Parent) && parent == null)
+            var parentObjectId = ResolveObjectId(parameters.ParentObjectId, parameters.ParentObjectIdString, out var parentIdError);
+            if (!string.IsNullOrWhiteSpace(parentIdError))
+            {
+                return Response.Error(parentIdError);
+            }
+
+            var parent = ResolveGameObject(parentObjectId, parameters.Parent, parameters.ParentSearchMethod, parameters.ScenePath);
+            if (ParentWasRequested(parentObjectId, parameters.ParentObjectIdString, parameters.Parent) && parent == null)
             {
                 return Response.Error("Requested container parent was not found.", new
                 {
                     parameters.ParentObjectId,
+                    parameters.ParentObjectIdString,
                     parameters.Parent,
                     parameters.ParentSearchMethod,
                     parameters.ScenePath
@@ -120,7 +133,7 @@ Returns:
             }
 
             var targetScene = ResolveTargetScene(parameters.ScenePath, parent);
-            var moveRequests = parameters.ObjectIds
+            var moveRequests = objectIds
                 .Select(id => new SceneHierarchyMove
                 {
                     ObjectId = id,
@@ -288,8 +301,14 @@ Returns:
             var plans = new List<MovePlan>();
             foreach (var move in moves)
             {
-                var target = ResolveGameObject(move.ObjectId, move.Target, move.SearchMethod, parameters.ScenePath);
-                var parent = parentOverride ?? ResolveGameObject(move.ParentObjectId, move.Parent, move.ParentSearchMethod, parameters.ScenePath);
+                var objectId = ResolveObjectId(move.ObjectId, move.ObjectIdString, out var objectIdError);
+                var parentObjectId = ResolveObjectId(move.ParentObjectId, move.ParentObjectIdString, out var parentObjectIdError);
+                var target = string.IsNullOrWhiteSpace(objectIdError)
+                    ? ResolveGameObject(objectId, move.Target, move.SearchMethod, parameters.ScenePath)
+                    : null;
+                var parent = parentOverride ?? (string.IsNullOrWhiteSpace(parentObjectIdError)
+                    ? ResolveGameObject(parentObjectId, move.Parent, move.ParentSearchMethod, parameters.ScenePath)
+                    : null);
                 var plan = new MovePlan
                 {
                     Request = move,
@@ -300,13 +319,21 @@ Returns:
                     Before = target != null ? TransformSnapshot.Capture(target.transform) : null
                 };
 
-                if (target == null)
+                if (!string.IsNullOrWhiteSpace(objectIdError))
                 {
-                    plan.Error = $"Target was not found for objectId '{move.ObjectId}' or target '{move.Target}'.";
+                    plan.Error = objectIdError;
                 }
-                else if (ParentWasRequested(move.ParentObjectId, move.Parent) && parent == null)
+                else if (!string.IsNullOrWhiteSpace(parentObjectIdError))
                 {
-                    plan.Error = $"Parent was not found for parentObjectId '{move.ParentObjectId}' or parent '{move.Parent}'.";
+                    plan.Error = parentObjectIdError;
+                }
+                else if (target == null)
+                {
+                    plan.Error = $"Target was not found for objectId '{objectId}' / objectIdString '{move.ObjectIdString}' or target '{move.Target}'.";
+                }
+                else if (ParentWasRequested(parentObjectId, move.ParentObjectIdString, move.Parent) && parent == null)
+                {
+                    plan.Error = $"Parent was not found for parentObjectId '{parentObjectId}' / parentObjectIdString '{move.ParentObjectIdString}' or parent '{move.Parent}'.";
                 }
                 else if (parent != null && (parent == target || parent.transform.IsChildOf(target.transform)))
                 {
@@ -319,9 +346,61 @@ Returns:
             return plans;
         }
 
-        static bool ParentWasRequested(long? parentObjectId, string parent)
+        static long? ResolveObjectId(long? numericId, string stringId, out string error)
+        {
+            error = null;
+            if (numericId.HasValue && numericId.Value != 0)
+            {
+                return numericId;
+            }
+
+            if (string.IsNullOrWhiteSpace(stringId))
+            {
+                return null;
+            }
+
+            if (long.TryParse(stringId.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed != 0)
+            {
+                return parsed;
+            }
+
+            error = $"ObjectIdString '{stringId}' is not a valid non-zero Int64 Unity object id.";
+            return null;
+        }
+
+        static long[] ResolveObjectIds(long[] numericIds, string[] stringIds, out List<string> errors)
+        {
+            errors = new List<string>();
+            var ids = new List<long>();
+
+            if (numericIds != null)
+            {
+                ids.AddRange(numericIds.Where(id => id != 0));
+            }
+
+            if (stringIds != null)
+            {
+                foreach (var stringId in stringIds)
+                {
+                    var parsed = ResolveObjectId(null, stringId, out var error);
+                    if (!string.IsNullOrWhiteSpace(error))
+                    {
+                        errors.Add(error);
+                    }
+                    else if (parsed.HasValue && parsed.Value != 0)
+                    {
+                        ids.Add(parsed.Value);
+                    }
+                }
+            }
+
+            return ids.Distinct().ToArray();
+        }
+
+        static bool ParentWasRequested(long? parentObjectId, string parentObjectIdString, string parent)
         {
             return (parentObjectId.HasValue && parentObjectId.Value != 0) ||
+                   !string.IsNullOrWhiteSpace(parentObjectIdString) ||
                    !string.IsNullOrWhiteSpace(parent);
         }
 
@@ -558,10 +637,12 @@ Returns:
                 return null;
             }
 
+            var objectId = UnityApiAdapter.GetObjectId(gameObject);
             return new
             {
                 name = gameObject.name,
-                objectId = UnityApiAdapter.GetObjectId(gameObject),
+                objectId,
+                objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
                 path = "/" + SceneObjectLocator.GetHierarchyPath(gameObject),
                 scenePath = gameObject.scene.path,
                 siblingIndex = gameObject.transform.GetSiblingIndex()
@@ -598,8 +679,10 @@ Returns:
                     requested = new
                     {
                         Request.ObjectId,
+                        Request.ObjectIdString,
                         Request.Target,
                         Request.ParentObjectId,
+                        Request.ParentObjectIdString,
                         Request.Parent,
                         siblingIndex = SiblingIndex,
                         worldPositionStays = WorldPositionStays
@@ -612,6 +695,7 @@ Returns:
                     plannedParentContainerName = plannedParent?.ContainerName,
                     plannedParentPath,
                     plannedParentObjectId,
+                    plannedParentObjectIdString = plannedParentObjectId?.ToString(CultureInfo.InvariantCulture),
                     plannedParentWillBeCreated
                 };
             }
@@ -660,10 +744,12 @@ Returns:
             public static TransformSnapshot Capture(Transform transform)
             {
                 var parent = transform.parent;
+                var objectId = UnityApiAdapter.GetObjectId(transform.gameObject);
+                var parentObjectId = parent != null ? UnityApiAdapter.GetObjectId(parent.gameObject) : (long?)null;
                 return new TransformSnapshot
                 {
-                    ObjectId = UnityApiAdapter.GetObjectId(transform.gameObject),
-                    ParentObjectId = parent != null ? UnityApiAdapter.GetObjectId(parent.gameObject) : (long?)null,
+                    ObjectId = objectId,
+                    ParentObjectId = parentObjectId,
                     Path = "/" + SceneObjectLocator.GetHierarchyPath(transform.gameObject),
                     ParentPath = parent != null ? "/" + SceneObjectLocator.GetHierarchyPath(parent.gameObject) : null,
                     SiblingIndex = transform.GetSiblingIndex(),
@@ -681,7 +767,9 @@ Returns:
                 return new
                 {
                     objectId = ObjectId,
+                    objectIdString = ObjectId.ToString(CultureInfo.InvariantCulture),
                     parentObjectId = ParentObjectId,
+                    parentObjectIdString = ParentObjectId?.ToString(CultureInfo.InvariantCulture),
                     path = Path,
                     parentPath = ParentPath,
                     siblingIndex = SiblingIndex,

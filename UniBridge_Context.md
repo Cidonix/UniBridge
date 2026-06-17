@@ -1,9 +1,92 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-06-16, Europe/Kiev.
+Останнє оновлення: 2026-06-17, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-06-17: UniBridge 0.2.29 Unity 6.5 MCP Smoke Polish
+
+Після повного live MCP smoke у `UniBridge_Test_Project` під Unity 6000.5.0f1
+зроблено фінальний polish для сценаріїв, які реально вилізли під час тесту:
+
+- package version піднято до `0.2.29`;
+- `BatchActions.Steps` тепер приймає nested step payload у `arguments`, а не
+  тільки в `parameters` / `params` / `args`. Це важливо для MCP-клієнтів, які
+  природно формують payload саме як `arguments`;
+- Unity 6 EntityId може бути більшим за JavaScript safe integer, тому
+  serializers тепер повертають string variants:
+  `objectIdString`, `instanceIdString`, `parentObjectIdString` тощо;
+- `UniBridge_ManageSceneHierarchy` отримав `ObjectIdString`,
+  `ParentObjectIdString`, `ObjectIdStrings` і `ParentObjectIdString` для
+  безпечного reparent/container workflow з JS/JSON клієнтів;
+- Play Mode queue/wait лишився reload-safe, але прибрано надмірно агресивну
+  early-boundary евристику: якщо Unity просто компілює або вікно не у фокусі,
+  tool більше не має поспішати трактувати це як reload boundary;
+- `QueuePlayModeChange` ставить команду через one-shot
+  `EditorApplication.update` з `delayCall` fallback, щоб Play/Edit request
+  гарантовано доходив після MCP response.
+
+Live smoke report:
+
+- проект: `H:/Repos/UnityRepos/UniBridge_Test_Project`;
+- Unity: `6000.5.0f1`;
+- report:
+  `H:/Repos/UnityRepos/UniBridge_Test_Project/Library/UniBridge/unity65-full-smoke-20260617031139.json`;
+- `tools/list`: 67 UniBridge tools;
+- результат: 54 pass, 0 fail;
+- 2 warnings були очікуваними cleanup-attempts для неіснуючого старого smoke
+  root, тобто не є проблемами пакету;
+- перевірено: `Discover`, `ReadConsole`, `ManageEditor` refresh/compile/play
+  workflows, `DomainCatalog`, `ContextSnapshot`, `UnitySearch`,
+  `AssetIntelligence`, `ScriptIntelligence`, `TypeSchema`,
+  `SceneObjectView`, `SceneHierarchyExport`, `ManageGameObject`,
+  `ManageSceneHierarchy` через `ObjectIdString`, `BatchActions arguments`,
+  `VisualSceneAudit`, `CaptureView`;
+- Play Mode smoke проходив з явним фокусом на Unity window:
+  `Play queue -> WaitForPlayMode -> WaitForReady RequireNotPlaying=false ->
+  DiagnosticSummary -> ExitPlayMode queue -> WaitForEditMode ->
+  WaitForReady RequireNotPlaying=true`.
+
+## 2026-06-17: UniBridge 0.2.28 Unity 6000.5 Compatibility Hotfix
+
+Domovyk було оновлено до Unity 6000.5.0f1, після чого пакет UniBridge почав
+падати compile-time errors через obsolete-as-error API:
+
+- `EditorUtility.InstanceIDToObject(int)` у `UnitySearch.cs`;
+- `Object.GetInstanceID()` у `TypeSchema.cs`.
+
+Hotfix:
+
+- package version піднято до `0.2.28`;
+- `UnitySearch` більше не викликає `EditorUtility.InstanceIDToObject`
+  напряму, а використовує `UnityApiAdapter.GetObjectFromNativeSearchId`;
+- `UnityApiAdapter.GetObjectFromNativeSearchId` спершу пробує EntityId-style
+  lookup, а потім legacy instance-id provider payload через reflection fallback
+  без прямого obsolete API call;
+- `TypeSchema` object references тепер беруть `instanceId` через
+  `UnityApiAdapter.GetObjectId`;
+- Roslyn вирівняно на сумісний з Unity 6000.5 набір:
+  `Microsoft.CodeAnalysis` / `Microsoft.CodeAnalysis.CSharp` `4.13.0.0`,
+  `System.Collections.Immutable` / `System.Reflection.Metadata` `8.0.0.0`;
+- `Cidonix.UniBridge.MCP.Editor.asmdef` явно references
+  `System.Reflection.Metadata.dll`, щоб не брати старі копії з інших Unity
+  packages;
+- `ManageRendering` і `SceneObjectView` приглушують intentional
+  `LightProbeProxyVolume` CS0618 warnings у Unity 6000.5, залишаючи підтримку
+  legacy scenes/components;
+- release notes, changelog і package README оновлено під hotfix.
+
+Expected result:
+
+- Unity 6000.5 не має більше видавати CS0619 errors у `UnitySearch.cs` і
+  `TypeSchema.cs`;
+- native `UniBridge_UnitySearch` scene results мають залишитися сумісними як з
+  EntityId-style, так і з legacy instance-id payloads від Unity Search
+  provider.
+- CS1705 від `Microsoft.CodeAnalysis 5.3.0` проти Unity reference
+  `System.Collections.Immutable 8.0.0.0` має зникнути, бо Roslyn 4.13.0 сам
+  очікує dependency version 8.0.0.0.
 
 ## 2026-06-16: UniBridge 0.2.27 Semantic Asset Diff
 

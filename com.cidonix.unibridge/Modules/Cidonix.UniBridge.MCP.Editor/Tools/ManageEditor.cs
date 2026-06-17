@@ -49,6 +49,9 @@ Returns:
 
         // Constant for total layer count
         const int TotalLayerCount = 32;
+        static bool? s_PendingPlayModeTarget;
+        static string s_PendingPlayModeRequestId;
+        static DateTime s_PendingPlayModeQueuedAtUtc;
 
         /// <summary>
         /// Returns the output schema for this tool.
@@ -766,6 +769,7 @@ Returns:
                     : !EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode;
                 if (reachedTarget)
                 {
+                    ClearPendingPlayModeState(targetPlaying);
                     return Response.Success(
                         targetPlaying ? "Entered play mode." : "Exited play mode.",
                         new
@@ -775,7 +779,18 @@ Returns:
                         });
                 }
 
-                await WaitForEditorUpdateAsync(pollIntervalMs);
+                try
+                {
+                    await WaitForEditorUpdateAsync(pollIntervalMs);
+                }
+                catch (OperationCanceledException ex)
+                {
+                    return Response.Success(
+                        targetPlaying
+                            ? "Play mode wait crossed a Unity reload boundary. Reconnect, then call WaitForPlayMode again."
+                            : "Edit mode wait crossed a Unity reload boundary. Reconnect, then call WaitForEditMode again.",
+                        BuildPlayModeBoundaryData(targetPlaying, start, ex.Message));
+                }
             }
 
             return Response.Error(
@@ -787,36 +802,95 @@ Returns:
                 });
         }
 
+        static object BuildPlayModeBoundaryData(bool targetPlaying, DateTime start, string boundaryReason = null)
+        {
+            return new
+            {
+                status = targetPlaying ? "play_mode_transition" : "edit_mode_transition",
+                targetPlaying,
+                reloadBoundary = true,
+                reconnectRequired = true,
+                reloadSafe = true,
+                changedProject = false,
+                requestId = s_PendingPlayModeRequestId,
+                queuedAtUtc = s_PendingPlayModeQueuedAtUtc == default ? (DateTime?)null : s_PendingPlayModeQueuedAtUtc,
+                boundaryReason,
+                waitedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds,
+                state = BuildPlayModeStateData(),
+                readiness = BuildReadinessData(requireNotPlaying: !targetPlaying, start),
+                nextSuggestedCalls = targetPlaying
+                    ? new[]
+                    {
+                        "Reconnect to UniBridge",
+                        "UniBridge_ManageEditor Action=WaitForPlayMode",
+                        "UniBridge_ManageEditor Action=WaitForReady RequireNotPlaying=false",
+                        "UniBridge_ReadConsole Action=DiagnosticSummary"
+                    }
+                    : new[]
+                    {
+                        "Reconnect to UniBridge",
+                        "UniBridge_ManageEditor Action=WaitForEditMode",
+                        "UniBridge_ManageEditor Action=WaitForReady RequireNotPlaying=true",
+                        "UniBridge_ReadConsole Action=DiagnosticSummary"
+                    }
+            };
+        }
+
+        static void ClearPendingPlayModeState(bool reachedTarget)
+        {
+            if (s_PendingPlayModeTarget == reachedTarget)
+            {
+                s_PendingPlayModeTarget = null;
+                s_PendingPlayModeRequestId = null;
+                s_PendingPlayModeQueuedAtUtc = default;
+            }
+        }
+
         static object QueuePlayModeChange(bool targetPlaying, ManageEditorParams parameters, bool waitForCompletionRequested)
         {
             var requestId = $"{(targetPlaying ? "play" : "edit")}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
             var requireNotPlaying = parameters.RequireNotPlaying == true;
             var readinessBefore = BuildReadinessData(requireNotPlaying, DateTime.UtcNow);
             var stateBefore = BuildPlayModeStateData();
+            s_PendingPlayModeTarget = targetPlaying;
+            s_PendingPlayModeRequestId = requestId;
+            s_PendingPlayModeQueuedAtUtc = DateTime.UtcNow;
 
-            EditorApplication.delayCall += () =>
+            var applied = false;
+            void Apply()
             {
-                EditorApplication.delayCall += () =>
+                if (applied)
+                    return;
+
+                applied = true;
+                try
                 {
-                    try
+                    if (targetPlaying)
                     {
-                        if (targetPlaying)
-                        {
-                            if (!EditorApplication.isPlaying)
-                                EditorApplication.isPlaying = true;
-                        }
-                        else
-                        {
-                            if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
-                                EditorApplication.isPlaying = false;
-                        }
+                        if (!EditorApplication.isPlaying)
+                            EditorApplication.isPlaying = true;
                     }
-                    catch (Exception e)
+                    else
                     {
-                        Debug.LogError($"[UniBridge] Delayed play mode {(targetPlaying ? "entry" : "exit")} request failed: {e.Message}");
+                        if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
+                            EditorApplication.isPlaying = false;
                     }
-                };
-            };
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[UniBridge] Deferred play mode {(targetPlaying ? "entry" : "exit")} request failed: {e.Message}");
+                }
+            }
+
+            void ApplyOnUpdate()
+            {
+                EditorApplication.update -= ApplyOnUpdate;
+                Apply();
+            }
+
+            EditorApplication.update += ApplyOnUpdate;
+            EditorApplication.delayCall += Apply;
+            EditorApplication.QueuePlayerLoopUpdate();
 
             return new
             {

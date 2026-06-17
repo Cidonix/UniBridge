@@ -2,6 +2,45 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.29
+
+### Fixed
+
+- Added string object ID fields across scene/object serializers and
+  `ObjectIdString` / `ParentObjectIdString` inputs for
+  `UniBridge_ManageSceneHierarchy`, so JavaScript/JSON MCP clients can safely
+  move Unity 6 scene objects whose EntityId values exceed JavaScript's safe
+  integer range.
+- `UniBridge_BatchActions` now accepts nested step payloads in an `arguments`
+  object as well as `parameters`, `params`, and `args`, matching common MCP
+  client request shapes.
+- Kept Play Mode transition handling reload-safe while removing an
+  over-eager early-boundary path that could make a normal focused Play Mode
+  transition look suspicious during smoke tests.
+
+### Tested
+
+- Full live MCP smoke on `UniBridge_Test_Project` under Unity 6000.5.0f1:
+  54 passed, 0 failed. The only warnings were expected cleanup attempts for a
+  non-existent old smoke root.
+
+## 0.2.28
+
+### Fixed
+
+- Fixed Unity 6000.5 compatibility errors in `UniBridge_UnitySearch` and
+  `UniBridge_TypeSchema` by replacing direct obsolete `InstanceID` API usage
+  with the existing UniBridge Unity API adapter.
+- `UniBridge_UnitySearch` native scene result resolution now accepts both
+  EntityId-style IDs and legacy instance-id provider payloads without direct
+  obsolete API calls.
+- Fixed Roslyn dependency resolution on Unity 6000.5 by using
+  `Microsoft.CodeAnalysis` 4.13.0 with `System.Collections.Immutable` and
+  `System.Reflection.Metadata` 8.0.0, matching Unity 6000.5 reference
+  assemblies.
+- Suppressed intentional `LightProbeProxyVolume` deprecation warnings while
+  keeping support for existing scenes that still contain that component.
+
 ## 0.2.27
 
 ### Added
