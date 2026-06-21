@@ -5,6 +5,34 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-21: UniBridge 0.2.31 Diagnostics Response Cleanup
+
+Перший крок planned polish після 0.2.30 hotfix: зробити reload checkpoint
+відповідь менш шумною для AI, не прибираючи важливі build-system guardrails.
+
+Зміна:
+
+- `UniBridge_ManageEditor Action=WaitForReadyAfterReload` більше не дублює
+  `buildSystemHealth` і `assemblyFreshness` у nested
+  `compilationDiagnostics`;
+- `buildSystemHealth`, `assemblyFreshness` і compact `compileHealth`
+  повертаються один раз на top-level;
+- nested `compilationDiagnostics` позначено як
+  `diagnosticScope = retained_compilation_events` і лишено для retained
+  `CompilationPipeline` / editor event diagnostics;
+- standalone `GetCompilationDiagnostics` лишається повним deep-diagnostics
+  action з `buildSystemHealth`, `assemblyFreshness` і `compileHealth`;
+- `compileHealth.healthy` тепер враховує не тільки build-system critical
+  issues, а й `assemblyFreshness.staleLikely`.
+- bundled relay піднято до `1.1.0-build.16`; recovery envelopes після refresh,
+  compile і Play Mode reload boundary прибирають вкладені `structuredContent`
+  mirrors з embedded Unity tool results, але top-level MCP structured content
+  не змінено.
+
+Очікуваний результат: агенти швидше читають результат після reload/compile
+boundary, але не втрачають сигнали про Bee/BuildProgram failures або stale
+runtime assembly.
+
 ## 2026-06-21: UniBridge 0.2.30 Bee/BuildProgram Diagnostics Hotfix
 
 У StarFreelancer під Unity 6000.5.0f1 Unity Bee/BuildProgram падав через

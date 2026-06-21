@@ -2,6 +2,23 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.31
+
+### Improved
+
+- `UniBridge_ManageEditor Action=WaitForReadyAfterReload` now returns
+  `buildSystemHealth` and `assemblyFreshness` once at the top level, while
+  nested `compilationDiagnostics` is scoped to retained
+  `CompilationPipeline` / editor event diagnostics. This keeps reload
+  checkpoint responses easier for AI agents to scan without removing the
+  critical build-system evidence added in 0.2.30.
+- `compileHealth.healthy` now also considers `assemblyFreshness.staleLikely`,
+  so a stale runtime assembly is visible in the compact health summary.
+- Reload-safe relay recovery envelopes now strip nested `structuredContent`
+  mirrors from embedded Unity tool results. Top-level MCP structured content is
+  unchanged, but refresh/compile/play recovery responses are smaller and easier
+  for agents to scan.
+
 ## 0.2.30
 
 ### Fixed

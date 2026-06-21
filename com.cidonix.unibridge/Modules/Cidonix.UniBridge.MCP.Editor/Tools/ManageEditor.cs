@@ -423,18 +423,12 @@ Returns:
         {
             try
             {
-                var diagnostics = EditorEventHistory.Snapshot(0, 1, includeSelection: false, includeDiagnostics: true, includeAssetChanges: false);
-                var data = JObject.FromObject(diagnostics);
                 var buildSystemHealth = ReadConsole.BuildBuildSystemHealth(maxIssues: 5, includeStacktrace: true);
-                var buildSystemHealthToken = JToken.FromObject(buildSystemHealth);
-                var hasBuildSystemIssues = buildSystemHealthToken["hasCriticalIssues"]?.Value<bool>() == true;
-                data["buildSystemHealth"] = buildSystemHealthToken;
-                data["assemblyFreshness"] = JToken.FromObject(BuildScriptAssemblyFreshness());
-                data["compileHealth"] = JToken.FromObject(new
-                {
-                    healthy = !hasBuildSystemIssues,
-                    note = "CompilationPipeline diagnostics can be clean while Unity Bee/BuildProgram fails. buildSystemHealth inspects the Editor Console for those lower-level failures, and assemblyFreshness helps spot stale runtime assemblies."
-                });
+                var assemblyFreshness = BuildScriptAssemblyFreshness();
+                var data = BuildCompilationDiagnosticsData(
+                    buildSystemHealth,
+                    assemblyFreshness,
+                    includeBuildEvidence: true);
 
                 return Response.Success(
                     "Retrieved retained compilation diagnostics and build-system health.",
@@ -444,6 +438,39 @@ Returns:
             {
                 return Response.Error($"Error getting compilation diagnostics: {e.Message}");
             }
+        }
+
+        static JObject BuildCompilationDiagnosticsData(object buildSystemHealth, object assemblyFreshness, bool includeBuildEvidence)
+        {
+            var diagnostics = EditorEventHistory.Snapshot(0, 1, includeSelection: false, includeDiagnostics: true, includeAssetChanges: false);
+            var data = JObject.FromObject(diagnostics);
+
+            if (!includeBuildEvidence)
+            {
+                data["diagnosticScope"] = "retained_compilation_events";
+                return data;
+            }
+
+            var buildSystemHealthToken = JToken.FromObject(buildSystemHealth);
+            var assemblyFreshnessToken = JToken.FromObject(assemblyFreshness);
+            data["buildSystemHealth"] = buildSystemHealthToken;
+            data["assemblyFreshness"] = assemblyFreshnessToken;
+            data["compileHealth"] = JToken.FromObject(BuildCompileHealthSummary(buildSystemHealthToken, assemblyFreshnessToken));
+            return data;
+        }
+
+        static object BuildCompileHealthSummary(JToken buildSystemHealthToken, JToken assemblyFreshnessToken)
+        {
+            var hasBuildSystemIssues = buildSystemHealthToken?["hasCriticalIssues"]?.Value<bool>() == true;
+            var staleLikely = assemblyFreshnessToken?["staleLikely"]?.Value<bool>() == true;
+
+            return new
+            {
+                healthy = !hasBuildSystemIssues && !staleLikely,
+                hasBuildSystemIssues,
+                staleAssemblyLikely = staleLikely,
+                note = "CompilationPipeline diagnostics can be clean while Unity Bee/BuildProgram fails. buildSystemHealth inspects the Editor Console for those lower-level failures, and assemblyFreshness helps spot stale runtime assemblies."
+            };
         }
 
         static object GetProjectRoot()
@@ -973,15 +1000,22 @@ Returns:
         static async Task<object> WaitForReadyAfterReload(ManageEditorParams parameters)
         {
             var waitResult = await WaitForReady(parameters);
-            var diagnostics = GetCompilationDiagnostics();
             var buildSystemHealth = ReadConsole.BuildBuildSystemHealth(maxIssues: 5, includeStacktrace: true);
             var assemblyFreshness = BuildScriptAssemblyFreshness();
+            var buildSystemHealthToken = JToken.FromObject(buildSystemHealth);
+            var assemblyFreshnessToken = JToken.FromObject(assemblyFreshness);
+            var compilationDiagnostics = BuildCompilationDiagnosticsData(
+                buildSystemHealth,
+                assemblyFreshness,
+                includeBuildEvidence: false);
+
             return Response.Success("Unity editor is ready after reload/compilation checkpoint.", new
             {
                 waitResult,
-                compilationDiagnostics = diagnostics,
+                compileHealth = BuildCompileHealthSummary(buildSystemHealthToken, assemblyFreshnessToken),
                 buildSystemHealth,
                 assemblyFreshness,
+                compilationDiagnostics,
                 readiness = BuildReadinessData(parameters.RequireNotPlaying == true, DateTime.UtcNow)
             });
         }

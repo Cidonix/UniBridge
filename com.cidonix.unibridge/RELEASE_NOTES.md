@@ -1,6 +1,31 @@
-# UniBridge 0.2.30 Release Notes
+# UniBridge 0.2.31 Release Notes
 
 Release date: 2026-06-21
+
+This polish release keeps the 0.2.30 Bee/BuildProgram diagnostics guardrails
+but makes reload checkpoint responses easier for AI agents to read.
+
+`UniBridge_ManageEditor Action=WaitForReadyAfterReload` now reports
+`compileHealth`, `buildSystemHealth`, and `assemblyFreshness` once at the top
+level. Its nested `compilationDiagnostics` block is now scoped to retained
+`CompilationPipeline` / editor event diagnostics instead of repeating the same
+build-system evidence again.
+
+The standalone `GetCompilationDiagnostics` action still returns the full
+diagnostic picture, including `buildSystemHealth`, `assemblyFreshness`, and
+`compileHealth`.
+
+`compileHealth.healthy` also considers `assemblyFreshness.staleLikely`, so an
+agent can see a stale runtime assembly as a compact health failure even when
+Unity's retained compiler diagnostics are empty.
+
+Relay recovery responses for refresh, script compilation, and Play Mode reload
+boundaries also strip nested `structuredContent` mirrors from embedded Unity
+tool results. The top-level MCP response still keeps structured content, but
+the recovery envelope no longer duplicates large payloads inside its nested
+`waitResult` / diagnostics blocks.
+
+## Previous 0.2.30 Notes
 
 This hotfix closes a diagnostics gap found in a Unity 6000.5 project where
 Unity's Bee/BuildProgram worker failed before producing a fresh runtime

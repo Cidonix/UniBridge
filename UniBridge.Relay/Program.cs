@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.15";
+    public const string Version = "1.1.0-build.16";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -970,8 +970,28 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         return true;
     }
 
-    static JsonNode? ExtractUnityResult(JsonObject response) =>
-        response["result"]?.DeepClone() ?? response.DeepClone();
+    static JsonNode? ExtractUnityResult(JsonObject response)
+    {
+        var clone = response["result"]?.DeepClone() ?? response.DeepClone();
+        RemoveStructuredContent(clone);
+        return clone;
+    }
+
+    static void RemoveStructuredContent(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                obj.Remove("structuredContent");
+                foreach (var child in obj.Select(property => property.Value).ToArray())
+                    RemoveStructuredContent(child);
+                break;
+            case JsonArray array:
+                foreach (var child in array)
+                    RemoveStructuredContent(child);
+                break;
+        }
+    }
 
     static int RemainingTimeoutMs(DateTime startedUtc, int timeoutMs)
     {

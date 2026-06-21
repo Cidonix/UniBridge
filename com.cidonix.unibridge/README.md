@@ -98,6 +98,16 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.31 Notes
+
+- `UniBridge_ManageEditor Action=WaitForReadyAfterReload` now keeps
+  `buildSystemHealth` and `assemblyFreshness` at the top level only. Nested
+  `compilationDiagnostics` is limited to retained `CompilationPipeline` /
+  editor event diagnostics, so reload checkpoint responses are less noisy for
+  AI agents.
+- `compileHealth.healthy` also considers stale runtime assembly evidence from
+  `assemblyFreshness.staleLikely`.
+
 ## Known 0.2.30 Notes
 
 - `UniBridge_ReadConsole Action=DiagnosticSummary` now treats Bee/BuildProgram
