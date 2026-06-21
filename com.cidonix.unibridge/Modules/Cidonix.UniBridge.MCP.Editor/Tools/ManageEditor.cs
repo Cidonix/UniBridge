@@ -4,6 +4,7 @@ using System.Linq;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEditor.SceneManagement; // Required for PrefabStage
@@ -422,9 +423,22 @@ Returns:
         {
             try
             {
+                var diagnostics = EditorEventHistory.Snapshot(0, 1, includeSelection: false, includeDiagnostics: true, includeAssetChanges: false);
+                var data = JObject.FromObject(diagnostics);
+                var buildSystemHealth = ReadConsole.BuildBuildSystemHealth(maxIssues: 5, includeStacktrace: true);
+                var buildSystemHealthToken = JToken.FromObject(buildSystemHealth);
+                var hasBuildSystemIssues = buildSystemHealthToken["hasCriticalIssues"]?.Value<bool>() == true;
+                data["buildSystemHealth"] = buildSystemHealthToken;
+                data["assemblyFreshness"] = JToken.FromObject(BuildScriptAssemblyFreshness());
+                data["compileHealth"] = JToken.FromObject(new
+                {
+                    healthy = !hasBuildSystemIssues,
+                    note = "CompilationPipeline diagnostics can be clean while Unity Bee/BuildProgram fails. buildSystemHealth inspects the Editor Console for those lower-level failures, and assemblyFreshness helps spot stale runtime assemblies."
+                });
+
                 return Response.Success(
-                    "Retrieved retained compilation diagnostics.",
-                    EditorEventHistory.Snapshot(0, 1, includeSelection: false, includeDiagnostics: true, includeAssetChanges: false));
+                    "Retrieved retained compilation diagnostics and build-system health.",
+                    data);
             }
             catch (Exception e)
             {
@@ -960,12 +974,92 @@ Returns:
         {
             var waitResult = await WaitForReady(parameters);
             var diagnostics = GetCompilationDiagnostics();
+            var buildSystemHealth = ReadConsole.BuildBuildSystemHealth(maxIssues: 5, includeStacktrace: true);
+            var assemblyFreshness = BuildScriptAssemblyFreshness();
             return Response.Success("Unity editor is ready after reload/compilation checkpoint.", new
             {
                 waitResult,
                 compilationDiagnostics = diagnostics,
+                buildSystemHealth,
+                assemblyFreshness,
                 readiness = BuildReadinessData(parameters.RequireNotPlaying == true, DateTime.UtcNow)
             });
+        }
+
+        static object BuildScriptAssemblyFreshness()
+        {
+            try
+            {
+                var assetsPath = Application.dataPath.Replace('\\', '/');
+                var projectRoot = Directory.GetParent(assetsPath)?.FullName.Replace('\\', '/');
+                if (string.IsNullOrEmpty(projectRoot))
+                {
+                    return new
+                    {
+                        available = false,
+                        reason = "Could not determine project root from Application.dataPath."
+                    };
+                }
+
+                var assemblyPath = Path.Combine(projectRoot, "Library", "ScriptAssemblies", "Assembly-CSharp.dll").Replace('\\', '/');
+                var assemblyInfo = new FileInfo(assemblyPath);
+                var latestScriptInfo = Directory
+                    .EnumerateFiles(assetsPath, "*.cs", SearchOption.AllDirectories)
+                    .Select(path => SafeFileInfo(path))
+                    .Where(file => file != null && file.Exists)
+                    .OrderByDescending(file => file.LastWriteTimeUtc)
+                    .FirstOrDefault();
+
+                var assemblyExists = assemblyInfo.Exists;
+                var staleLikely = assemblyExists
+                    && latestScriptInfo != null
+                    && latestScriptInfo.LastWriteTimeUtc > assemblyInfo.LastWriteTimeUtc.AddSeconds(1);
+
+                return new
+                {
+                    available = true,
+                    assemblyPath,
+                    assemblyExists,
+                    assemblyLastWriteTimeUtc = assemblyExists ? assemblyInfo.LastWriteTimeUtc.ToString("o") : null,
+                    latestAssetScriptPath = latestScriptInfo != null ? ToProjectRelativePath(latestScriptInfo.FullName, projectRoot) : null,
+                    latestAssetScriptLastWriteTimeUtc = latestScriptInfo != null ? latestScriptInfo.LastWriteTimeUtc.ToString("o") : null,
+                    staleLikely,
+                    note = "staleLikely means an Assets/*.cs file is newer than Library/ScriptAssemblies/Assembly-CSharp.dll, which can happen when Bee/BuildProgram failed before producing a new runtime assembly."
+                };
+            }
+            catch (Exception e)
+            {
+                return new
+                {
+                    available = false,
+                    reason = $"Could not inspect script assembly freshness: {e.Message}"
+                };
+            }
+        }
+
+        static FileInfo SafeFileInfo(string path)
+        {
+            try
+            {
+                return new FileInfo(path);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static string ToProjectRelativePath(string path, string projectRoot)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(projectRoot))
+                return path;
+
+            var normalizedPath = path.Replace('\\', '/');
+            var normalizedRoot = projectRoot.Replace('\\', '/').TrimEnd('/');
+            if (!normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase))
+                return normalizedPath;
+
+            return normalizedPath.Substring(normalizedRoot.Length + 1);
         }
 
         static async Task<object> RefreshAssets(ManageEditorParams parameters)

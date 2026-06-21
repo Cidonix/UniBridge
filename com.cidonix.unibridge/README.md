@@ -98,6 +98,23 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.30 Notes
+
+- `UniBridge_ReadConsole Action=DiagnosticSummary` now treats Bee/BuildProgram
+  failures as critical diagnostics even when Unity stores the first console
+  line as a plain `Log`.
+- Critical build-system fingerprints include internal build system errors,
+  `BuildProgram exited with code`, `FileLoadException`, Code Integrity /
+  Application Control policy blocks, and blocked `NiceIO.dll` loads.
+- `UniBridge_ManageEditor Action=GetCompilationDiagnostics` and
+  `WaitForReadyAfterReload` now include `buildSystemHealth`.
+- `WaitForReadyAfterReload` also reports `assemblyFreshness`, including
+  whether `Assembly-CSharp.dll` looks older than the latest `Assets/*.cs`
+  script. This helps agents detect stale runtime assemblies after failed
+  script compilation.
+- `UniBridge_ReadConsole Action=Search` now matches stack traces too, so terms
+  such as `Application Control policy` and `NiceIO.dll` are discoverable.
+
 ## Known 0.2.28 Notes
 
 - This is a Unity 6000.5 compatibility hotfix.

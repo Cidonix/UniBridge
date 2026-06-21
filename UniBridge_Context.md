@@ -1,9 +1,53 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-06-17, Europe/Kiev.
+Останнє оновлення: 2026-06-21, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-06-21: UniBridge 0.2.30 Bee/BuildProgram Diagnostics Hotfix
+
+У StarFreelancer під Unity 6000.5.0f1 Unity Bee/BuildProgram падав через
+Windows Code Integrity / Application Control policy block:
+
+- blocked file:
+  `C:/Program Files/Unity/Hub/Editor/6000.5.0f1/Editor/Data/Tools/BuildPipeline/NiceIO.dll`;
+- Unity console first line:
+  `Internal build system error. BuildProgram exited with code -532462766.`;
+- реальна причина була у stack trace:
+  `System.IO.FileLoadException`, `Application Control policy has blocked this file`.
+
+Старий UniBridge 0.2.29 помилково показував чисту картину:
+
+- `GetCompilationDiagnostics`: 0 errors / 0 warnings, бо дивився лише на
+  `CompilationPipeline` diagnostics;
+- `ReadConsole DiagnosticSummary`: 1 log, 0 errors, бо Unity записала перший
+  рядок як `Log`, а критичний текст був у stack trace;
+- `WaitForReadyAfterReload` міг виглядати успішним, хоча
+  `Library/ScriptAssemblies/Assembly-CSharp.dll` лишався stale.
+
+Hotfix 0.2.30:
+
+- `ReadConsole` тепер класифікує як critical build-system issues fingerprints:
+  `Internal build system error`, `BuildProgram exited with code`,
+  `ScriptCompilationBuildProgram`, `FileLoadException`, `Application Control
+  policy has blocked this file`, `Code Integrity`, `NiceIO.dll`,
+  `Could not load file or assembly`;
+- `DiagnosticSummary` має піднімати такі записи у `criticalIssues`, навіть якщо
+  Unity Console mode був `Log`;
+- `ManageEditor.GetCompilationDiagnostics` додає `buildSystemHealth` поруч із
+  retained C# diagnostics;
+- `WaitForReadyAfterReload` додає `buildSystemHealth` і `assemblyFreshness`;
+- `assemblyFreshness` порівнює
+  `Library/ScriptAssemblies/Assembly-CSharp.dll` із найновішим `Assets/*.cs` і
+  ставить `staleLikely=true`, якщо runtime assembly старіший за source script.
+- `ReadConsole Search` тепер шукає не тільки у видимому першому рядку message,
+  а й у full console payload / stack trace. Тому `Application Control policy`,
+  `NiceIO.dll` та схожі stacktrace-only сигнали можна знайти прямо через MCP.
+
+Важливо: це не лікує сам Windows policy block. Якщо OS блокує Unity
+`NiceIO.dll`, Unity все одно не зможе зібрати проект, але UniBridge більше не
+має повертати хибне “compilation clean”.
 
 ## 2026-06-17: UniBridge 0.2.29 Unity 6.5 MCP Smoke Polish
 

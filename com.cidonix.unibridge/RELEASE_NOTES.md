@@ -1,4 +1,40 @@
-# UniBridge 0.2.29 Release Notes
+# UniBridge 0.2.30 Release Notes
+
+Release date: 2026-06-21
+
+This hotfix closes a diagnostics gap found in a Unity 6000.5 project where
+Unity's Bee/BuildProgram worker failed before producing a fresh runtime
+assembly, but `CompilationPipeline` diagnostics still looked clean.
+
+Unity can report lower-level build worker failures as a console `Log` whose
+stack trace contains the real failure. UniBridge now classifies those signals
+as critical diagnostics when they include fingerprints such as:
+
+- `Internal build system error`;
+- `BuildProgram exited with code`;
+- `ScriptCompilationBuildProgram`;
+- `System.IO.FileLoadException`;
+- `Application Control policy has blocked this file`;
+- Code Integrity policy text;
+- blocked `NiceIO.dll` loads.
+
+`UniBridge_ManageEditor Action=GetCompilationDiagnostics` now returns both the
+retained C# compilation diagnostics and `buildSystemHealth`, so agents can see
+that Bee/BuildProgram failed even when Unity did not emit a normal compiler
+error.
+
+`WaitForReadyAfterReload` also returns `buildSystemHealth` and
+`assemblyFreshness`. The freshness block compares
+`Library/ScriptAssemblies/Assembly-CSharp.dll` against the latest `Assets/*.cs`
+file and marks `staleLikely=true` when source scripts are newer than the
+runtime assembly. This is a compact guardrail against falsely trusting
+`isCompiling=false` after a failed build worker run.
+
+`UniBridge_ReadConsole Action=Search` also searches stack traces now, so an
+agent can find terms such as `Application Control policy` or `NiceIO.dll` even
+when Unity's visible message line is only `Internal build system error`.
+
+## Previous 0.2.29 Notes
 
 Release date: 2026-06-17
 

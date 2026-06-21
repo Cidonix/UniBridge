@@ -104,6 +104,20 @@ Returns:
         static readonly Regex GuidRegex = new Regex(@"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", RegexOptions.Compiled);
         static readonly Regex HexRegex = new Regex(@"\b0x[0-9a-f]+\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         static readonly Regex NumberRegex = new Regex(@"\b\d+\b", RegexOptions.Compiled);
+        static readonly string[] CriticalBuildSystemNeedles =
+        {
+            "Internal build system error",
+            "BuildProgram exited with code",
+            "ScriptCompilationBuildProgram",
+            "Application Control policy has blocked this file",
+            "Code Integrity",
+            "CodeIntegrity",
+            "FileLoadException",
+            "NiceIO.dll",
+            "did not meet Enterprise signing level",
+            "violated code integrity policy",
+            "Could not load file or assembly"
+        };
 
         const int DefaultTopGroupCount = 10;
         const int HardMaxTopGroupCount = 50;
@@ -382,6 +396,42 @@ Returns:
             {
                 Debug.LogError($"[ReadConsole] Failed to clear console: {e}");
                 return Response.Error($"Failed to clear console: {e.Message}");
+            }
+        }
+
+        public static object BuildBuildSystemHealth(int maxIssues = 5, bool includeStacktrace = false)
+        {
+            maxIssues = Mathf.Clamp(maxIssues <= 0 ? 5 : maxIssues, 1, HardMaxIssues);
+
+            try
+            {
+                var groups = BuildGroups(ReadUnityConsoleEntries())
+                    .Where(IsCriticalBuildSystemGroup)
+                    .OrderByDescending(group => GetSeverityRank(group.Type))
+                    .ThenByDescending(group => group.LastEntryId)
+                    .Take(maxIssues)
+                    .ToArray();
+
+                return new
+                {
+                    hasCriticalIssues = groups.Length > 0,
+                    criticalIssueCount = groups.Length,
+                    criticalIssues = groups
+                        .Select(group => ToGroupData(group, includeStacktrace))
+                        .ToArray(),
+                    fingerprints = groups.Select(group => group.Fingerprint).ToArray(),
+                    checkedSignals = CriticalBuildSystemNeedles
+                };
+            }
+            catch (Exception e)
+            {
+                return new
+                {
+                    hasCriticalIssues = false,
+                    criticalIssueCount = 0,
+                    criticalIssues = Array.Empty<object>(),
+                    warning = $"Could not inspect Unity console for build-system failures: {e.Message}"
+                };
             }
         }
 
@@ -883,13 +933,31 @@ Returns:
                 }
 
                 if (!string.IsNullOrEmpty(parameters.FilterText) &&
-                    entry.Message.IndexOf(parameters.FilterText, StringComparison.OrdinalIgnoreCase) < 0)
+                    !ContainsConsoleText(entry, parameters.FilterText))
                 {
                     continue;
                 }
 
                 yield return entry;
             }
+        }
+
+        static bool ContainsConsoleText(ConsoleEntrySnapshot entry, string filterText)
+        {
+            if (entry == null || string.IsNullOrEmpty(filterText))
+            {
+                return false;
+            }
+
+            return ContainsOrdinalIgnoreCase(entry.Message, filterText)
+                || ContainsOrdinalIgnoreCase(entry.FullMessage, filterText)
+                || ContainsOrdinalIgnoreCase(entry.StackTrace, filterText);
+        }
+
+        static bool ContainsOrdinalIgnoreCase(string value, string filterText)
+        {
+            return !string.IsNullOrEmpty(value)
+                && value.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         static bool MatchesRequestedType(LogType entryType, ConsoleLogType[] requestedTypes)
@@ -1750,6 +1818,9 @@ Returns:
 
             var firstLine = GetFirstLine(fullMessage);
 
+            if (ContainsCriticalBuildSystemText(fullMessage))
+                return LogType.Error;
+
             // Fast path: look for explicit Debug API names in the appended stack trace
             // e.g., "UnityEngine.Debug:LogError (object)" or "LogWarning"
             if (fullMessage.IndexOf("LogException", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -1776,6 +1847,28 @@ Returns:
                 return LogType.Assert;
 
             return LogType.Log;
+        }
+
+        static bool IsCriticalBuildSystemGroup(ConsoleGroupSnapshot group)
+        {
+            if (group == null)
+            {
+                return false;
+            }
+
+            return ContainsCriticalBuildSystemText(group.RepresentativeMessage)
+                || ContainsCriticalBuildSystemText(group.SampleStackTrace);
+        }
+
+        static bool ContainsCriticalBuildSystemText(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            return CriticalBuildSystemNeedles.Any(
+                needle => value.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         static string GetFirstLine(string value)

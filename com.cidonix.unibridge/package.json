@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.29",
+  "version": "0.2.30",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- Added string object ID fields and ManageSceneHierarchy ObjectIdString inputs so JavaScript/JSON MCP clients can safely handle Unity 6 EntityId values that exceed the JavaScript safe integer range.\n- UniBridge_BatchActions now accepts nested step arguments in an arguments container as well as parameters/params/args, matching common MCP client payload shapes.\n- Play Mode queue/wait behavior remains reload-safe without reporting a false reload boundary while Unity is simply compiling or waiting for focus.\n\n### Previous Changes\n\n- Updated Unity 6000.5 compatibility for UnitySearch and TypeSchema by routing object ID lookups through the UniBridge Unity API adapter instead of obsolete InstanceID APIs.\n- Fixed Roslyn dependency resolution on Unity 6000.5 by using Microsoft.CodeAnalysis 4.13.0 with System.Collections.Immutable and System.Reflection.Metadata 8.0.0, matching Unity 6000.5 reference assemblies.\n- Added UniBridge_AssetIntelligence Action=SemanticDiff, a read-only semantic diff for Unity YAML/text assets such as prefabs, scenes, materials, controllers, .asset files, and .meta files."
+    "changelog": "### Fixed\n\n- BuildProgram/Bee failures such as internal build system errors, FileLoadException, Code Integrity blocks, and Application Control policy blocks are now classified as critical console diagnostics instead of ordinary logs.\n- GetCompilationDiagnostics and WaitForReadyAfterReload now include buildSystemHealth and Assembly-CSharp freshness evidence so agents can detect stale runtime assemblies even when CompilationPipeline diagnostics are empty.\n- ReadConsole Search now matches stack traces as well as visible message lines, so blocked BuildProgram dependencies such as NiceIO.dll can be found directly.\n\n### Previous Changes\n\n- Added string object ID fields and ManageSceneHierarchy ObjectIdString inputs so JavaScript/JSON MCP clients can safely handle Unity 6 EntityId values that exceed the JavaScript safe integer range.\n- UniBridge_BatchActions now accepts nested step arguments in an arguments container as well as parameters/params/args, matching common MCP client payload shapes.\n- Play Mode queue/wait behavior remains reload-safe without reporting a false reload boundary while Unity is simply compiling or waiting for focus."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

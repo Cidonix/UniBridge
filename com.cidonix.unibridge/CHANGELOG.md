@@ -2,6 +2,25 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.30
+
+### Fixed
+
+- `UniBridge_ReadConsole Action=DiagnosticSummary` now treats Unity
+  Bee/BuildProgram failures as critical issues even when Unity records the
+  first console line as a plain `Log`. Fingerprints include internal build
+  system errors, `BuildProgram exited with code`, `FileLoadException`, Code
+  Integrity blocks, Application Control policy blocks, and blocked
+  `NiceIO.dll` loads.
+- `UniBridge_ManageEditor Action=GetCompilationDiagnostics` now includes
+  `buildSystemHealth` beside retained `CompilationPipeline` diagnostics, so a
+  clean C# diagnostics list no longer hides lower-level build worker failures.
+- `WaitForReadyAfterReload` now returns the same build-system health plus
+  `Assembly-CSharp.dll` freshness evidence, helping agents detect stale runtime
+  assemblies after failed imports or script compilation.
+- `UniBridge_ReadConsole Action=Search` now matches filter text in the full
+  console payload and stack trace, not only the first message line.
+
 ## 0.2.29
 
 ### Fixed
