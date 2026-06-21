@@ -1,9 +1,30 @@
-# UniBridge 0.2.35 Release Notes
+# UniBridge 0.2.36 Release Notes
 
 Release date: 2026-06-21
 
-This release adds a repeatable MCP smoke regression suite for live Unity
-projects.
+This hotfix makes long-running read-only sampling resilient to client
+cancellation, timeouts, and reconnects.
+
+`UniBridge_RuntimeStateProbe` and `UniBridge_RuntimeProfiler` now use
+scheduler-provided cancellation while sampling over editor frames. If an MCP
+client cancels a request, disconnects, or the scheduler timeout expires, the
+operation is marked canceled/timed out and its read slot is released. This
+prevents a canceled runtime probe from blocking later captures, Play Mode
+cleanup, or mutating tools.
+
+`UniBridge_ExecutionStatus` also adds `Action=ReapStale`, which lets an agent
+or maintainer cancel and release stale read-only operations that exceeded their
+timeout. Scheduler snapshots now include cancellation evidence and
+canceled/timedOut/reaped counters.
+
+The MCP smoke regression suite now includes a targeted
+`RuntimeStateProbe` cancel/timeout slot-release check so future changes catch
+stuck `activeReaders` regressions automatically.
+
+## Previous 0.2.35 Notes
+
+The previous release added a repeatable MCP smoke regression suite for live
+Unity projects.
 
 `Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1` runs the bundled
 UniBridge relay in MCP stdio mode through a Python JSON-RPC helper and checks

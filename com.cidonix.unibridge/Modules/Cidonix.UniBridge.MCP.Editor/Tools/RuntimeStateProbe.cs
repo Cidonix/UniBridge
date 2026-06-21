@@ -134,11 +134,12 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
             var deadline = startEditorTime + timeoutMs / 1000.0;
             var samples = new List<ProbeSample>(frames);
 
-            await EditorTask.Yield();
+            await ToolExecutionScheduler.YieldIfNotCancelledAsync();
             while (samples.Count < frames && EditorApplication.timeSinceStartup <= deadline)
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 samples.Add(CaptureSample(samples.Count, targets, parameters, options));
-                await EditorTask.Yield();
+                await ToolExecutionScheduler.YieldIfNotCancelledAsync();
             }
 
             var elapsedMs = Math.Max(0, (EditorApplication.timeSinceStartup - startEditorTime) * 1000.0);
@@ -214,11 +215,12 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
             var deadline = startEditorTime + timeoutMs / 1000.0;
             var samples = new List<ProbeSample>(frames);
 
-            await EditorTask.Yield();
+            await ToolExecutionScheduler.YieldIfNotCancelledAsync();
             while (samples.Count < frames && EditorApplication.timeSinceStartup <= deadline)
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 samples.Add(CaptureSample(samples.Count, targets, parameters, options));
-                await EditorTask.Yield();
+                await ToolExecutionScheduler.YieldIfNotCancelledAsync();
             }
 
             var elapsedMs = Math.Max(0, (EditorApplication.timeSinceStartup - startEditorTime) * 1000.0);

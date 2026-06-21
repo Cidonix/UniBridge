@@ -129,11 +129,12 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
 
             try
             {
-                await EditorTask.Yield();
+                await ToolExecutionScheduler.YieldIfNotCancelledAsync();
                 while (sampleRows.Count < frames && EditorApplication.timeSinceStartup <= deadline)
                 {
+                    ToolExecutionScheduler.ThrowIfCancellationRequested();
                     sampleRows.Add(ReadSample(sampleRows.Count, startEditorTime, recorders));
-                    await EditorTask.Yield();
+                    await ToolExecutionScheduler.YieldIfNotCancelledAsync();
                 }
             }
             finally
@@ -252,7 +253,7 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
             {
                 while (sampledFrames < frames && EditorApplication.timeSinceStartup <= deadline)
                 {
-                    await EditorTask.Yield();
+                    await ToolExecutionScheduler.YieldIfNotCancelledAsync();
                     sampledFrames++;
                 }
 

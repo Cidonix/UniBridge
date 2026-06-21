@@ -21,8 +21,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 Use this when a tool appears to wait, timeout, or collide with another active operation. It exposes active read/exclusive work, pending scheduler slots, recent tool calls, and per-tool execution policy annotations.
 
 Args:
-    Action: Snapshot, Recent, or Policies.
+    Action: Snapshot, Recent, Policies, or ReapStale.
     RecentLimit: Maximum recent operations to return.
+    GraceMs: For ReapStale, extra milliseconds beyond each operation timeout before reaping.
+    ForceReadOnly: For ReapStale, release timed-out read-only leases. Default true.
     IncludeDisabled: For Policies, include tools disabled in the user's UniBridge settings.
     IncludeWorkSession: For Snapshot/Recent, include active UniBridge_WorkSession review summary.
     WorkSessionMaxChanged: Maximum changed files returned in the active WorkSession summary.
@@ -42,10 +44,12 @@ Returns:
                     {
                         type = "string",
                         description = "Execution diagnostic operation.",
-                        @enum = new[] { "Snapshot", "Recent", "Policies" },
+                        @enum = new[] { "Snapshot", "Recent", "Policies", "ReapStale" },
                         @default = "Snapshot"
                     },
                     RecentLimit = new { type = "integer", description = "Maximum recent operations to return.", @default = 20 },
+                    GraceMs = new { type = "integer", description = "Extra milliseconds beyond operation timeout before ReapStale treats read-only work as stale.", @default = 1000 },
+                    ForceReadOnly = new { type = "boolean", description = "For ReapStale, release stale read-only leases after canceling them.", @default = true },
                     IncludeDisabled = new { type = "boolean", description = "For Policies, include tools disabled in settings.", @default = false },
                     IncludeWorkSession = new { type = "boolean", description = "For Snapshot/Recent, include active UniBridge_WorkSession review summary.", @default = true },
                     WorkSessionMaxChanged = new { type = "integer", description = "Maximum changed files returned in the active WorkSession summary.", @default = 20 }
@@ -60,6 +64,8 @@ Returns:
             parameters ??= new JObject();
             var action = Normalize(ReadString(parameters, "Action", "action") ?? "Snapshot");
             var recentLimit = ReadInt(parameters, 20, "RecentLimit", "recentLimit", "recent_limit", "Limit", "limit");
+            var graceMs = Math.Max(0, ReadInt(parameters, 1000, "GraceMs", "graceMs", "grace_ms"));
+            var forceReadOnly = ReadBool(parameters, true, "ForceReadOnly", "forceReadOnly", "force_read_only");
             var includeWorkSession = ReadBool(parameters, true, "IncludeWorkSession", "includeWorkSession", "include_work_session");
             var workSessionMaxChanged = Math.Max(1, ReadInt(parameters, 20, "WorkSessionMaxChanged", "workSessionMaxChanged", "work_session_max_changed"));
 
@@ -79,6 +85,13 @@ Returns:
                     {
                         action = "Policies",
                         policies = BuildPolicies(parameters)
+                    }),
+                    "reapstale" or "reap" or "cancelstale" => Response.Success("Reaped stale UniBridge read-only operations.", new
+                    {
+                        action = "ReapStale",
+                        graceMs,
+                        forceReadOnly,
+                        result = ToolExecutionScheduler.ReapStale(recentLimit, graceMs, forceReadOnly)
                     }),
                     _ => Response.Success("Built UniBridge execution scheduler snapshot.", new
                     {

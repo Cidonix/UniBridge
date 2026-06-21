@@ -247,6 +247,12 @@ def assert_compilation_healthy(data):
     assert_zero_or_missing(first_count(data, ("assemblyFreshness", "staleAssemblyCount"), ("compileHealth", "staleAssemblyCount")), "Assembly freshness reports stale assemblies.")
 
 
+def response_payload(data):
+    if isinstance(data, dict) and isinstance(data.get("data"), dict):
+        return data["data"]
+    return data or {}
+
+
 class SmokeSuite:
     def __init__(self, args):
         self.args = args
@@ -353,6 +359,8 @@ class SmokeSuite:
             "UniBridge_SceneObjectView",
             "UniBridge_WorkflowRecipes",
             "UniBridge_BatchActions",
+            "UniBridge_RuntimeStateProbe",
+            "UniBridge_ExecutionStatus",
         ]
 
         self.run_step("tools_list", "List MCP tools and verify the core UniBridge surface.", lambda: self.step_tools_list(required))
@@ -364,6 +372,7 @@ class SmokeSuite:
         self.run_step("context_snapshot_brief", "Read compact ContextSnapshot with compact console summary.", self.step_context_snapshot)
         self.run_step("scene_hierarchy_brief", "Read a bounded SceneObjectView hierarchy including inactive objects.", self.step_scene_hierarchy)
         self.run_step("workflow_core_recipe", "Execute RunCoreSmokeTest recipe and cleanup its temporary object.", self.step_core_recipe)
+        self.run_step("runtime_probe_timeout_releases_slot", "Verify a timed-out RuntimeStateProbe releases its read-only scheduler slot.", self.step_runtime_probe_timeout_releases_slot)
 
         if not self.args.skip_refresh:
             self.run_step("refresh_assets", "Run reload-safe RefreshAssets with WaitForCompletion.", self.step_refresh_assets)
@@ -474,6 +483,79 @@ class SmokeSuite:
             timeout=self.args.reload_timeout_seconds,
         )["data"] or {}
         return {"message": prop(data, "message"), "recipe": prop(data, "recipe"), "batchStatus": prop(data, "batchResult", "status")}
+
+    def step_runtime_probe_timeout_releases_slot(self):
+        error_text = None
+        started = time.monotonic()
+        try:
+            self.tool(
+                "UniBridge_RuntimeStateProbe",
+                {
+                    "Action": "Sample",
+                    "Component": "Transform",
+                    "SearchMethod": "ByComponent",
+                    "MaxTargets": 50,
+                    "MaxComponents": 100,
+                    "MaxMembers": 500,
+                    "SampleFrames": 600,
+                    "TimeoutMs": 120000,
+                    "SchedulerTimeoutMs": 120000,
+                    "RequirePlayMode": False,
+                    "SaveToFile": False,
+                    "ReturnSamples": True,
+                },
+                timeout=0.2,
+            )
+        except (RuntimeError, TimeoutError) as exc:
+            error_text = str(exc)
+
+        if not error_text:
+            raise AssertionError("RuntimeStateProbe client-cancel regression did not cancel the MCP request before completion.")
+
+        duration_ms = int((time.monotonic() - started) * 1000)
+        if duration_ms > 12000:
+            raise AssertionError(f"RuntimeStateProbe client-cancel took too long to return: {duration_ms}ms")
+
+        # Give the editor-side cancellation/finally path a few updates to settle before checking the scheduler.
+        time.sleep(1.5)
+        status = response_payload(self.tool("UniBridge_ExecutionStatus", {"Action": "Snapshot", "RecentLimit": 12})["data"])
+        scheduler = prop(status, "scheduler", default={}) or {}
+        active_readers = prop(scheduler, "activeReaders", default=-1)
+        active_operations = prop(scheduler, "activeOperations", default=[]) or []
+        recent_operations = prop(scheduler, "recentOperations", default=[]) or []
+        active_runtime_probes = [
+            operation for operation in active_operations
+            if isinstance(operation, dict) and operation.get("tool") == "UniBridge_RuntimeStateProbe"
+        ]
+        recent_runtime_probes = [
+            operation for operation in recent_operations
+            if isinstance(operation, dict) and operation.get("tool") == "UniBridge_RuntimeStateProbe"
+        ]
+
+        if active_readers != 0:
+            # One manual reap should recover genuinely stale legacy state, but a fresh cancellation should not need it.
+            reaped = response_payload(self.tool("UniBridge_ExecutionStatus", {"Action": "ReapStale", "RecentLimit": 12, "GraceMs": 0})["data"])
+            scheduler = prop(prop(reaped, "result", default={}) or {}, "scheduler", default={}) or {}
+            active_readers = prop(scheduler, "activeReaders", default=-1)
+            active_operations = prop(scheduler, "activeOperations", default=[]) or []
+            active_runtime_probes = [
+                operation for operation in active_operations
+                if isinstance(operation, dict) and operation.get("tool") == "UniBridge_RuntimeStateProbe"
+            ]
+
+        if active_readers != 0:
+            raise AssertionError(f"Scheduler still has activeReaders={active_readers} after client-canceled/timed-out RuntimeStateProbe.")
+        if active_runtime_probes:
+            raise AssertionError(f"Canceled RuntimeStateProbe is still active: {active_runtime_probes}")
+        if not any((operation.get("outcome") in ("timedOut", "canceled")) for operation in recent_runtime_probes):
+            raise AssertionError(f"No recent timedOut/canceled RuntimeStateProbe operation was recorded after client cancel: {recent_runtime_probes}")
+
+        return {
+            "clientCancelError": error_text[:300],
+            "durationMs": duration_ms,
+            "activeReaders": active_readers,
+            "recentRuntimeProbeOutcomes": [operation.get("outcome") for operation in recent_runtime_probes[:3]],
+        }
 
     def step_refresh_assets(self):
         data = self.tool(

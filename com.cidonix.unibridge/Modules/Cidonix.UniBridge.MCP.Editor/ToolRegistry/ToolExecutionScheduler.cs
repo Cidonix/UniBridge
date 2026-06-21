@@ -31,6 +31,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         static readonly SemaphoreSlim QueueLock = new(1, 1);
         static readonly SemaphoreSlim ResourceLock = new(1, 1);
         static readonly SemaphoreSlim ReaderLock = new(1, 1);
+        static readonly AsyncLocal<CancellationToken> AmbientCancellation = new();
         static readonly AsyncLocal<int> ReadDepth = new();
         static readonly AsyncLocal<int> WriteDepth = new();
         static readonly object StatusLock = new();
@@ -50,6 +51,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         static long TotalCompleted;
         static long TotalFaulted;
         static long TotalTimedOut;
+        static long TotalCanceled;
+        static long TotalReaped;
 
         static readonly HashSet<string> ReadOnlyTools = new(StringComparer.Ordinal)
         {
@@ -119,7 +122,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             string toolName,
             JObject parameters,
             IToolHandler handler,
-            Func<Task<object>> execute)
+            Func<Task<object>> execute,
+            CancellationToken cancellationToken = default)
         {
             if (execute == null)
                 throw new ArgumentNullException(nameof(execute));
@@ -127,14 +131,18 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             var policy = ResolvePolicy(toolName, parameters, handler);
             var timeoutMs = ReadTimeout(parameters);
             var operation = BeginOperation(toolName, policy, timeoutMs, parameters);
+            using var operationCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            operation.CancellationSource = operationCancellation;
             Exception capturedError = null;
 
             try
             {
+                SweepExpiredReadOperations("before operation start");
+
                 if (policy == ToolExecutionPolicy.Observer)
                 {
                     MarkOperationStarted(operation);
-                    return await execute();
+                    return await ExecuteBodyAsync(operation, policy, timeoutMs, execute, operationCancellation);
                 }
 
                 if (policy == ToolExecutionPolicy.ReadOnly && (WriteDepth.Value > 0 || ReadDepth.Value > 0))
@@ -143,7 +151,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     ReadDepth.Value++;
                     try
                     {
-                        return await execute();
+                        return await ExecuteBodyAsync(operation, policy, timeoutMs, execute, operationCancellation);
                     }
                     finally
                     {
@@ -159,7 +167,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                         WriteDepth.Value++;
                         try
                         {
-                            return await execute();
+                            return await ExecuteBodyAsync(operation, policy, timeoutMs, execute, operationCancellation);
                         }
                         finally
                         {
@@ -186,11 +194,12 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
                 using (lease)
                 {
+                    AttachLease(operation, lease);
                     MarkOperationStarted(operation);
                     IncrementDepth(policy);
                     try
                     {
-                        return await execute();
+                        return await ExecuteBodyAsync(operation, policy, timeoutMs, execute, operationCancellation);
                     }
                     finally
                     {
@@ -207,6 +216,110 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             {
                 CompleteOperation(operation, capturedError);
             }
+        }
+
+        public static CancellationToken CurrentCancellationToken => AmbientCancellation.Value;
+
+        public static void ThrowIfCancellationRequested()
+        {
+            AmbientCancellation.Value.ThrowIfCancellationRequested();
+        }
+
+        public static async Task YieldIfNotCancelledAsync()
+        {
+            var token = AmbientCancellation.Value;
+            token.ThrowIfCancellationRequested();
+            if (token.CanBeCanceled)
+                await Cidonix.UniBridge.Toolkit.EditorTask.Delay(1, token);
+            else
+                await Cidonix.UniBridge.Toolkit.EditorTask.Yield();
+            token.ThrowIfCancellationRequested();
+        }
+
+        static async Task<object> ExecuteBodyAsync(
+            OperationRecord operation,
+            ToolExecutionPolicy policy,
+            int timeoutMs,
+            Func<Task<object>> execute,
+            CancellationTokenSource operationCancellation)
+        {
+            var previousToken = AmbientCancellation.Value;
+            AmbientCancellation.Value = operationCancellation.Token;
+            try
+            {
+                operationCancellation.Token.ThrowIfCancellationRequested();
+                if (policy == ToolExecutionPolicy.ReadOnly)
+                    return await AwaitReadOnlyBodyAsync(operation, timeoutMs, execute, operationCancellation);
+
+                return await execute();
+            }
+            finally
+            {
+                AmbientCancellation.Value = previousToken;
+            }
+        }
+
+        static async Task<object> AwaitReadOnlyBodyAsync(
+            OperationRecord operation,
+            int timeoutMs,
+            Func<Task<object>> execute,
+            CancellationTokenSource operationCancellation)
+        {
+            var bodyTask = execute();
+            if (bodyTask.IsCompleted)
+            {
+                var completedResult = await bodyTask;
+                operationCancellation.Token.ThrowIfCancellationRequested();
+                return completedResult;
+            }
+
+            var cancellationTask = WaitForCancellationAsync(operationCancellation.Token);
+            var timeoutTask = Task.Delay(timeoutMs);
+            var completed = await Task.WhenAny(bodyTask, cancellationTask, timeoutTask);
+            if (ReferenceEquals(completed, bodyTask))
+            {
+                var completedResult = await bodyTask;
+                operationCancellation.Token.ThrowIfCancellationRequested();
+                return completedResult;
+            }
+
+            if (ReferenceEquals(completed, timeoutTask))
+            {
+                SafeCancel(operationCancellation);
+                ObserveLateCompletion(bodyTask, operation, "timed out");
+                throw new TimeoutException($"Timed out after {timeoutMs}ms running UniBridge read-only tool '{operation.Tool}'. The read slot was released and the operation was marked timed out.");
+            }
+
+            ObserveLateCompletion(bodyTask, operation, "canceled");
+            throw new OperationCanceledException($"UniBridge read-only tool '{operation.Tool}' was canceled because the caller disconnected or canceled the request.", operationCancellation.Token);
+        }
+
+        static async Task WaitForCancellationAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+                await Task.Delay(50);
+            token.ThrowIfCancellationRequested();
+        }
+
+        static void ObserveLateCompletion(Task task, OperationRecord operation, string reason)
+        {
+            _ = task.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    var message = t.Exception?.GetBaseException().Message ?? "Unknown error";
+                    McpLog.Log($"[ToolExecutionScheduler] Late read-only operation {operation.OperationId} for {operation.Tool} faulted after being {reason}: {message}");
+                }
+                else
+                {
+                    McpLog.Log($"[ToolExecutionScheduler] Late read-only operation {operation.OperationId} for {operation.Tool} completed after being {reason}.");
+                }
+            }, TaskScheduler.Default);
+        }
+
+        static void SafeCancel(CancellationTokenSource source)
+        {
+            try { source.Cancel(); } catch { }
         }
 
         public static ToolExecutionPolicy ResolvePolicy(string toolName, JObject parameters, IToolHandler handler = null)
@@ -285,6 +398,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
         public static object Snapshot(int recentLimit = 20)
         {
+            SweepExpiredReadOperations("snapshot");
             var now = DateTime.UtcNow;
             recentLimit = Math.Max(0, Math.Min(MaxRecentOperations, recentLimit));
             lock (StatusLock)
@@ -321,7 +435,9 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                         started = TotalStarted,
                         completed = TotalCompleted,
                         faulted = TotalFaulted,
-                        timedOut = TotalTimedOut
+                        timedOut = TotalTimedOut,
+                        canceled = TotalCanceled,
+                        reaped = TotalReaped
                     },
                     limits = new
                     {
@@ -335,6 +451,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
         public static object Recent(int limit = 20)
         {
+            SweepExpiredReadOperations("recent");
             var now = DateTime.UtcNow;
             limit = Math.Max(0, Math.Min(MaxRecentOperations, limit));
             lock (StatusLock)
@@ -352,8 +469,88 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             }
         }
 
+        public static object ReapStale(int recentLimit = 20, int graceMs = 1000, bool forceReadOnly = true)
+        {
+            var reaped = SweepExpiredReadOperations("manual reap", graceMs, forceReadOnly);
+            return new
+            {
+                reaped = reaped.Select(record => ToOperationSnapshot(record, DateTime.UtcNow)).ToArray(),
+                scheduler = Snapshot(recentLimit)
+            };
+        }
+
+        static OperationRecord[] SweepExpiredReadOperations(string reason, int graceMs = 1000, bool forceReadOnly = true)
+        {
+            var now = DateTime.UtcNow;
+            var candidates = new List<OperationRecord>();
+            lock (StatusLock)
+            {
+                foreach (var record in ActiveOperations.Values)
+                {
+                    if (!record.StartedUtc.HasValue ||
+                        record.FinishedUtc.HasValue ||
+                        record.Policy != ToolExecutionPolicy.ReadOnly)
+                    {
+                        continue;
+                    }
+
+                    var timeoutMs = Math.Max(1000, record.TimeoutMs) + Math.Max(0, graceMs);
+                    if (ElapsedMs(record.StartedUtc.Value, now) >= timeoutMs)
+                        candidates.Add(record);
+                }
+            }
+
+            foreach (var record in candidates)
+            {
+                SafeCancel(record.CancellationSource);
+                if (forceReadOnly)
+                    ForceReleaseLease(record, $"stale read-only operation exceeded {record.TimeoutMs}ms during {reason}");
+
+                CompleteOperation(
+                    record,
+                    new TimeoutException($"Stale read-only operation exceeded {record.TimeoutMs}ms and was reaped during {reason}."),
+                    "timedOut",
+                    forcedReleaseReason: record.ForceReleaseReason);
+            }
+
+            return candidates.ToArray();
+        }
+
+        static void AttachLease(OperationRecord operation, IDisposable lease)
+        {
+            if (lease is Lease typedLease)
+            {
+                lock (StatusLock)
+                {
+                    operation.Lease = typedLease;
+                }
+            }
+        }
+
+        static void ForceReleaseLease(OperationRecord record, string reason)
+        {
+            Lease lease;
+            lock (StatusLock)
+            {
+                lease = record.Lease;
+            }
+
+            if (lease == null || !lease.ForceRelease())
+                return;
+
+            lock (StatusLock)
+            {
+                record.ForceReleasedUtc = DateTime.UtcNow;
+                record.ForceReleaseReason = reason;
+                TotalReaped++;
+            }
+
+            McpLog.Log($"[ToolExecutionScheduler] Force-released read-only lease for operation {record.OperationId} ({record.Tool}): {reason}");
+        }
+
         static async Task<IDisposable> AcquireAsync(string toolName, ToolExecutionPolicy policy, int timeoutMs)
         {
+            SweepExpiredReadOperations($"before acquiring {policy} slot for {toolName}");
             return policy == ToolExecutionPolicy.ReadOnly
                 ? await AcquireReadAsync(toolName, timeoutMs)
                 : await AcquireWriteAsync(toolName, policy, timeoutMs);
@@ -549,7 +746,10 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                         ?? parameters?["execution_timeout_ms"]
                         ?? parameters?["SchedulerTimeoutMs"]
                         ?? parameters?["schedulerTimeoutMs"]
-                        ?? parameters?["scheduler_timeout_ms"];
+                        ?? parameters?["scheduler_timeout_ms"]
+                        ?? parameters?["TimeoutMs"]
+                        ?? parameters?["timeoutMs"]
+                        ?? parameters?["timeout_ms"];
             if (token != null && token.Type != JTokenType.Null && int.TryParse(token.ToString(), out var timeout))
                 return Math.Max(1000, Math.Min(MaxTimeoutMs, timeout));
             return DefaultTimeoutMs;
@@ -648,20 +848,29 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             }
         }
 
-        static void CompleteOperation(OperationRecord record, Exception error)
+        static void CompleteOperation(OperationRecord record, Exception error, string outcomeOverride = null, string forcedReleaseReason = null)
         {
             lock (StatusLock)
             {
                 if (record.FinishedUtc.HasValue)
                     return;
 
+                var cancellationRequested = record.CancellationSource?.IsCancellationRequested == true;
                 record.FinishedUtc = DateTime.UtcNow;
-                record.Outcome = error == null ? "success" : "failed";
+                record.Outcome = outcomeOverride ?? (error == null ? "success" :
+                    error is OperationCanceledException ? "canceled" :
+                    error is TimeoutException ? "timedOut" :
+                    "failed");
+                if (error == null && cancellationRequested && record.Outcome == "success")
+                    record.Outcome = "canceled";
                 if (error != null)
                 {
                     record.ErrorType = error.GetType().FullName;
                     record.ErrorMessage = error.Message;
                 }
+                if (!string.IsNullOrWhiteSpace(forcedReleaseReason))
+                    record.ForceReleaseReason = forcedReleaseReason;
+                record.CancellationRequested = cancellationRequested;
 
                 ActiveOperations.Remove(record.OperationId);
                 RecentOperations.Enqueue(record);
@@ -675,6 +884,12 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     TotalFaulted++;
                     if (error is TimeoutException)
                         TotalTimedOut++;
+                    if (error is OperationCanceledException)
+                        TotalCanceled++;
+                }
+                else if (record.CancellationRequested)
+                {
+                    TotalCanceled++;
                 }
             }
         }
@@ -698,6 +913,12 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 durationMs = started.HasValue ? ElapsedMs(started.Value, effectiveFinished) : (long?)null,
                 timeoutMs = record.TimeoutMs,
                 outcome = record.Outcome,
+                cancellationRequested = IsCancellationRequested(record),
+                forcedRelease = record.ForceReleasedUtc.HasValue ? new
+                {
+                    releasedUtc = record.ForceReleasedUtc?.ToString("o"),
+                    reason = record.ForceReleaseReason
+                } : null,
                 error = string.IsNullOrWhiteSpace(record.ErrorType) ? null : new
                 {
                     type = record.ErrorType,
@@ -711,9 +932,24 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             return Math.Max(0, (long)(endUtc - startUtc).TotalMilliseconds);
         }
 
+        static bool IsCancellationRequested(OperationRecord record)
+        {
+            if (record.CancellationRequested)
+                return true;
+            try
+            {
+                return record.CancellationSource?.IsCancellationRequested == true;
+            }
+            catch
+            {
+                return record.CancellationRequested;
+            }
+        }
+
         sealed class Lease : IDisposable
         {
             Action dispose;
+            int disposed;
 
             public Lease(Action dispose)
             {
@@ -722,9 +958,17 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
             public void Dispose()
             {
+                ForceRelease();
+            }
+
+            public bool ForceRelease()
+            {
                 var action = dispose;
+                if (Interlocked.Exchange(ref disposed, 1) != 0)
+                    return false;
                 dispose = null;
                 action?.Invoke();
+                return true;
             }
         }
 
@@ -742,6 +986,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             public string Outcome;
             public string ErrorType;
             public string ErrorMessage;
+            public CancellationTokenSource CancellationSource;
+            public bool CancellationRequested;
+            public Lease Lease;
+            public DateTime? ForceReleasedUtc;
+            public string ForceReleaseReason;
         }
     }
 }

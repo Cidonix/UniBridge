@@ -2,6 +2,25 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.36
+
+### Fixed
+
+- `UniBridge_RuntimeStateProbe` and `UniBridge_RuntimeProfiler` sampling loops
+  now honor MCP/client cancellation and scheduler timeouts while yielding across
+  editor frames. A canceled or timed-out read-only sample releases its scheduler
+  read slot instead of blocking later capture or mutating tools.
+- The MCP bridge now propagates transport cancellation into the tool registry
+  and scheduler for read-only/observer tools, so client disconnects/cancels are
+  visible to long-running probes without canceling reload-safe mutating or
+  compile boundary workflows.
+- `UniBridge_ExecutionStatus` now exposes `Action=ReapStale` to cancel and
+  release stale read-only operations that exceeded their timeout, plus
+  `canceled`, `timedOut`, and `reaped` counters in scheduler snapshots.
+- The MCP smoke regression suite now includes a targeted
+  `RuntimeStateProbe` cancel/timeout slot-release check to catch stuck
+  `activeReaders` regressions.
+
 ## 0.2.35
 
 ### Added

@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.35",
+  "version": "0.2.36",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n\n- Added Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1, a repeatable MCP stdio smoke regression runner for live Unity projects. It validates tool discovery, ping, console, editor readiness, ValidateScript, AssetIntelligence ReadText, ContextSnapshot, SceneObjectView, WorkflowRecipes, refresh/compile reload boundaries, compilation diagnostics, and final console health with a JSON report and non-zero exit code on failure.\n\n### Previous Changes\n\n- UniBridge_AssetIntelligence accepts Action=ReadText as a natural alias for Action=Read.\n- Split UniBridge_Script validation internals into ManageScript.Validation.cs so the legacy script router is easier to maintain without changing script validation behavior.\n- Added a shared ProjectPathResolver used by high-risk path workflows so Assets, Packages, ProjectSettings, file URIs, and absolute project paths resolve consistently."
+    "changelog": "### Fixed\n\n- RuntimeStateProbe and RuntimeProfiler read-only sampling now honor MCP/client cancellation and scheduler timeouts, so canceled or timed-out probes release their read slots instead of blocking captures or mutating tools.\n- UniBridge_ExecutionStatus adds Action=ReapStale to cancel and release stale read-only scheduler operations, with cancellation/timed-out/reaped counters in snapshots.\n- MCP smoke regression now includes a targeted RuntimeStateProbe cancel/timeout slot-release check.\n\n### Previous Changes\n\n- Added Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1, a repeatable MCP stdio smoke regression runner for live Unity projects.\n- UniBridge_AssetIntelligence accepts Action=ReadText as a natural alias for Action=Read.\n- Added a shared ProjectPathResolver used by high-risk path workflows so Assets, Packages, ProjectSettings, file URIs, and absolute project paths resolve consistently."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

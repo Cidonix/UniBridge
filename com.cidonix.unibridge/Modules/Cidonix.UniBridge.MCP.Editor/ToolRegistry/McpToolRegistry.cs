@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
@@ -227,9 +228,9 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         /// <returns>A task containing the tool's return value, which can be any object that will be serialized to JSON</returns>
         /// <exception cref="ArgumentException">Thrown if toolName is null/empty or if the tool is not found in the registry</exception>
         /// <exception cref="Exception">Rethrows any exception thrown by the tool during execution</exception>
-        public static async Task<object> ExecuteToolAsync(string toolName, JObject parameters)
+        public static async Task<object> ExecuteToolAsync(string toolName, JObject parameters, CancellationToken cancellationToken = default)
         {
-            return await ExecuteToolCoreAsync(toolName, parameters, useScheduler: true);
+            return await ExecuteToolCoreAsync(toolName, parameters, true, cancellationToken);
         }
 
         /// <summary>
@@ -238,10 +239,10 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         /// </summary>
         internal static async Task<object> ExecuteToolInsideCurrentLeaseAsync(string toolName, JObject parameters)
         {
-            return await ExecuteToolCoreAsync(toolName, parameters, useScheduler: false);
+            return await ExecuteToolCoreAsync(toolName, parameters, false, CancellationToken.None);
         }
 
-        static async Task<object> ExecuteToolCoreAsync(string toolName, JObject parameters, bool useScheduler)
+        static async Task<object> ExecuteToolCoreAsync(string toolName, JObject parameters, bool useScheduler, CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(toolName))
                 throw new ArgumentException("Tool name cannot be null or empty", nameof(toolName));
@@ -259,12 +260,17 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
                 McpLog.Log($"[McpToolRegistry] Executing tool '{toolName}'", new() { Data = new { tool = toolName, executionPolicy = useScheduler ? policy.ToString() : $"CurrentLease:{policy}", @params = parameters } });
 
+                var schedulerCancellationToken = policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer
+                    ? cancellationToken
+                    : CancellationToken.None;
+
                 var result = useScheduler
                     ? await ToolExecutionScheduler.ExecuteAsync(
                         toolName,
                         parameters,
                         handler,
-                        () => handler.ExecuteAsync(parameters))
+                        () => handler.ExecuteAsync(parameters),
+                        schedulerCancellationToken)
                     : await handler.ExecuteAsync(parameters);
 
                 result = ProjectContextGuard.AttachProjectContext(result);

@@ -5,6 +5,52 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-21: UniBridge 0.2.36 Scheduler Cancellation/Reap Hotfix
+
+Причина: у `StarFreelancer` після паралельних `UniBridge_RuntimeStateProbe
+Action=Sample` один client-side canceled/timed-out read operation лишився в
+`ExecutionStatus` як `running` з `activeReaders=1`. Через це `CaptureView` і
+`ManageEditor ExitPlayMode` чекали scheduler slot і не могли стартувати.
+
+Hotfix:
+
+- `Bridge` тепер передає transport/client cancellation token у
+  `McpToolRegistry.ExecuteToolAsync`;
+- registry передає цей token у scheduler тільки для `ReadOnly`/`Observer`
+  tools. `Mutating`, `Capture`, `CompileReload` і reload-safe editor
+  boundaries не cancel-яться transport disconnect-ом, бо вони мають власний
+  recovery/reconnect contract;
+- `ToolExecutionScheduler` створює per-operation linked cancellation token і
+  передає його через ambient context для tools, які yield-яться між editor
+  frames;
+- read-only operations тепер race-яться проти caller cancellation і scheduler
+  timeout. Якщо timeout/cancel спрацьовує, scheduler позначає операцію як
+  `timedOut`/`canceled` і звільняє read slot;
+- `RuntimeStateProbe` і `RuntimeProfiler` використовують
+  `ToolExecutionScheduler.YieldIfNotCancelledAsync()` та перевірки
+  cancellation у frame loops;
+- `UniBridge_ExecutionStatus` отримав `Action=ReapStale` / `Reap`, який
+  cancel-ить і force-release-ить stale read-only operations, що перевищили свій
+  timeout. Snapshot/recent також sweep-лять прострочені read-only operations;
+- scheduler snapshot тепер має `canceled`, `timedOut`, `reaped`,
+  `cancellationRequested` і `forcedRelease` evidence.
+
+MCP smoke regression suite розширено кроком
+`runtime_probe_timeout_releases_slot`: він запускає важкий
+`RuntimeStateProbe Sample`, client-side timeout/cancel-ить MCP request і
+перевіряє, що `activeReaders=0`, активного `UniBridge_RuntimeStateProbe` більше
+немає, а recent operation має outcome `timedOut` або `canceled`.
+
+Для агента: якщо після reconnect є підозра на stuck read-only operation, перший
+safe diagnostic/recovery крок:
+
+```json
+{
+  "tool": "UniBridge_ExecutionStatus",
+  "arguments": { "Action": "ReapStale", "RecentLimit": 20, "GraceMs": 0 }
+}
+```
+
 ## 2026-06-21: UniBridge 0.2.35 MCP Smoke Regression Suite
 
 Додано repeatable regression runner для живого тестування пакета через той

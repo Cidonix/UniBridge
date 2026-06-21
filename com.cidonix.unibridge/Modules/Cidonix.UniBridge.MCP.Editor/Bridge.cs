@@ -39,7 +39,7 @@ namespace Cidonix.UniBridge.MCP.Editor
 
         // Command processing
         int processingCommands;
-        readonly ConcurrentDictionary<string, (Command command, TaskCompletionSource<string> tcs, IConnectionTransport client)> commandQueue = new();
+        readonly ConcurrentDictionary<string, (Command command, TaskCompletionSource<string> tcs, IConnectionTransport client, CancellationToken cancellationToken)> commandQueue = new();
 
         // Lifecycle
         bool initScheduled;
@@ -664,7 +664,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                             string commandId = Guid.NewGuid().ToString();
 
-                            commandQueue[commandId] = (command, tcs, transport);
+                            commandQueue[commandId] = (command, tcs, transport, transportToken);
 
                             // Fire-and-forget: write response when ready (non-blocking).
                             // The reader loop continues immediately so multiple commands
@@ -1160,7 +1160,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                     return;
 
                 // Snapshot commands (already parsed on the I/O thread)
-                var work = commandQueue.Select(kvp => (kvp.Key, kvp.Value.command, kvp.Value.tcs, kvp.Value.client)).ToList();
+                var work = commandQueue.Select(kvp => (kvp.Key, kvp.Value.command, kvp.Value.tcs, kvp.Value.client, kvp.Value.cancellationToken)).ToList();
 
                 foreach (var item in work)
                 {
@@ -1168,6 +1168,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                     Command command = item.command;
                     TaskCompletionSource<string> tcs = item.tcs;
                     IConnectionTransport client = item.client;
+                    CancellationToken cancellationToken = item.cancellationToken;
 
                     try
                     {
@@ -1196,7 +1197,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                         }
 
                         // Start execution and track the result Task
-                        Task<string> resultTask = ExecuteCommandAsync(command, client);
+                        Task<string> resultTask = ExecuteCommandAsync(command, client, cancellationToken);
 
                         // Complete the TCS when execution finishes (bridges to background I/O thread).
                         // Inject requestId into the response so the multiplexed MCP client
@@ -1422,7 +1423,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                 JObject paramsObject = command.@params ?? new JObject();
 
                 transportSessionTrackers.TryGetValue(client, out sessionTracker);
-                var result = await McpToolRegistry.ExecuteToolAsync(command.type, paramsObject);
+                var result = await McpToolRegistry.ExecuteToolAsync(command.type, paramsObject, cancellationToken);
 
                 if (result == null)
                     result = Response.Success("Operation completed.");
