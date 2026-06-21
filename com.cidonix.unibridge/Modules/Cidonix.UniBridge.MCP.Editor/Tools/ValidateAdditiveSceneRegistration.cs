@@ -634,43 +634,12 @@ Search aliases: UniBridge Unity ValidateAdditiveSceneRegistration additive scene
 
         static string NormalizeAssetPath(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                return null;
-
-            var value = path.Trim().Trim('"').Replace('\\', '/');
-            if (value.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-            {
-                value = new Uri(value).LocalPath.Replace('\\', '/');
-            }
-            else if (value.StartsWith("project:/", StringComparison.OrdinalIgnoreCase))
-            {
-                value = value.Substring("project:/".Length).TrimStart('/');
-            }
-
-            var root = ProjectRoot();
-            if (Path.IsPathRooted(value))
-            {
-                var full = Path.GetFullPath(value).Replace('\\', '/');
-                if (full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase))
-                    value = full.Substring(root.Length + 1);
-            }
-
-            if (value.StartsWith("/Assets/", StringComparison.OrdinalIgnoreCase) || value.StartsWith("/Packages/", StringComparison.OrdinalIgnoreCase) || value.StartsWith("/ProjectSettings/", StringComparison.OrdinalIgnoreCase))
-                value = value.TrimStart('/');
-
-            return value;
+            return ProjectPathResolver.NormalizeAssetPath(path, assumeAssetRelative: false);
         }
 
         static string ToAbsolutePath(string assetPath)
         {
-            var normalized = NormalizeAssetPath(assetPath);
-            if (string.IsNullOrWhiteSpace(normalized))
-                return null;
-
-            if (Path.IsPathRooted(normalized))
-                return Path.GetFullPath(normalized);
-
-            return Path.GetFullPath(Path.Combine(ProjectRoot(), normalized)).Replace('\\', '/');
+            return ProjectPathResolver.ToAbsolutePath(assetPath, assumeAssetRelative: false)?.Replace('\\', '/');
         }
 
         static string ReadText(string assetPath, List<object> warnings)
@@ -689,7 +658,7 @@ Search aliases: UniBridge Unity ValidateAdditiveSceneRegistration additive scene
 
         static string ProjectRoot()
         {
-            return Path.GetFullPath(Path.Combine(Application.dataPath, "..")).Replace('\\', '/').TrimEnd('/');
+            return ProjectPathResolver.ProjectRoot.Replace('\\', '/').TrimEnd('/');
         }
 
         static string[] SplitLines(string text)

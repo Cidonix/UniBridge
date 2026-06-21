@@ -887,28 +887,7 @@ Returns:
 
         static string NormalizeAssetPath(string path)
         {
-            var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
-            if (normalized.StartsWith("unity://path/", StringComparison.OrdinalIgnoreCase))
-                normalized = normalized.Substring("unity://path/".Length);
-            if (normalized.StartsWith("/Assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.StartsWith("/Packages/", StringComparison.OrdinalIgnoreCase))
-                normalized = normalized.Substring(1);
-
-            var projectRoot = Directory.GetParent(Application.dataPath)?.FullName.Replace('\\', '/');
-            if (!string.IsNullOrWhiteSpace(projectRoot) &&
-                normalized.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = normalized.Substring(projectRoot.Length).TrimStart('/');
-            }
-
-            if (!normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
-                !normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) &&
-                !string.IsNullOrWhiteSpace(normalized))
-            {
-                normalized = "Assets/" + normalized.TrimStart('/');
-            }
-
-            return normalized;
+            return ProjectPathResolver.NormalizeAssetPath(path, assumeAssetRelative: true) ?? string.Empty;
         }
 
         static bool IsLikelyAssetPath(string path)

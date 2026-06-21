@@ -2,6 +2,21 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.33
+
+### Improved
+
+- Added a shared `ProjectPathResolver` helper for consistent resolution of
+  `Assets/...`, `Packages/...`, `ProjectSettings/...`, `file://`,
+  `unity://path/...`, and absolute project paths.
+- `UniBridge_ValidateScript` now validates `.cs` files from package paths and
+  absolute project paths directly, instead of routing through the legacy
+  Assets-only script tool path.
+- Asset intelligence, semantic YAML diff, script intelligence, Unity search,
+  additive scene registration validation, and batch rollback diagnostics now
+  use the shared resolver for more reliable `exists`, absolute path, package
+  path, and project-relative path evidence.
+
 ## 0.2.32
 
 ### Improved

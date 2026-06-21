@@ -850,81 +850,32 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             if (string.IsNullOrWhiteSpace(raw))
                 return target;
 
-            raw = raw.Trim().Replace('\\', '/');
-            const string unityPathPrefix = "unity://path/";
-            if (raw.StartsWith(unityPathPrefix, StringComparison.OrdinalIgnoreCase))
-                raw = raw.Substring(unityPathPrefix.Length);
-
-            var projectRoot = GetProjectRoot().Replace('\\', '/').TrimEnd('/');
-            string assetPath = null;
-            string absolutePath;
-            if (Path.IsPathRooted(raw))
-            {
-                absolutePath = Path.GetFullPath(raw);
-                var normalizedAbsolute = absolutePath.Replace('\\', '/');
-                if (normalizedAbsolute.StartsWith(projectRoot + "/", StringComparison.OrdinalIgnoreCase))
-                    assetPath = normalizedAbsolute.Substring(projectRoot.Length + 1);
-            }
-            else
-            {
-                assetPath = NormalizeAssetPath(raw, assumeAssetRelative);
-                absolutePath = AssetPathToAbsolutePath(assetPath);
-            }
-
-            target.AssetPath = assetPath;
-            target.AbsolutePath = absolutePath;
-            target.DisplayPath = !string.IsNullOrWhiteSpace(assetPath) ? assetPath : absolutePath;
-            target.Exists = !string.IsNullOrWhiteSpace(absolutePath) && File.Exists(absolutePath);
-            target.ProjectAsset = !string.IsNullOrWhiteSpace(assetPath) && (assetPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) || assetPath.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) || assetPath.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase));
-            target.Guid = !string.IsNullOrWhiteSpace(assetPath) ? AssetDatabase.AssetPathToGUID(assetPath) : null;
+            var resolved = ProjectPathResolver.Resolve(raw, assumeAssetRelative);
+            target.AssetPath = resolved.AssetPath ?? resolved.ProjectRelativePath;
+            target.AbsolutePath = resolved.AbsolutePath;
+            target.DisplayPath = resolved.DisplayPath;
+            target.Exists = !string.IsNullOrWhiteSpace(resolved.AbsolutePath) && File.Exists(resolved.AbsolutePath);
+            target.ProjectAsset = !string.IsNullOrWhiteSpace(target.AssetPath) &&
+                (target.AssetPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
+                 target.AssetPath.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ||
+                 target.AssetPath.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase));
+            target.Guid = !string.IsNullOrWhiteSpace(resolved.AssetPath) ? AssetDatabase.AssetPathToGUID(resolved.AssetPath) : null;
             return target;
         }
 
         static string NormalizeAssetPath(string path, bool assumeAssetRelative)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                return path;
-
-            path = path.Trim().Replace('\\', '/');
-            if (path.StartsWith("project://database/", StringComparison.OrdinalIgnoreCase))
-                path = path.Substring("project://database/".Length);
-
-            if (path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase))
-                return path;
-
-            return assumeAssetRelative ? "Assets/" + path.TrimStart('/') : path;
+            return ProjectPathResolver.NormalizeAssetPath(path, assumeAssetRelative);
         }
 
         static string AssetPathToAbsolutePath(string path)
         {
-            path = NormalizeAssetPath(path, assumeAssetRelative: false);
-            var projectRoot = GetProjectRoot();
-            if (path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
-            {
-                var localPath = Path.GetFullPath(Path.Combine(projectRoot, path));
-                if (File.Exists(localPath))
-                    return localPath;
-
-                var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path);
-                if (packageInfo != null && !string.IsNullOrWhiteSpace(packageInfo.resolvedPath))
-                {
-                    var prefix = "Packages/" + packageInfo.name;
-                    var relativeInsidePackage = path.Length > prefix.Length
-                        ? path.Substring(prefix.Length).TrimStart('/')
-                        : string.Empty;
-                    return Path.GetFullPath(Path.Combine(packageInfo.resolvedPath, relativeInsidePackage));
-                }
-            }
-
-            return Path.GetFullPath(Path.Combine(projectRoot, path));
+            return ProjectPathResolver.ToAbsolutePath(path, assumeAssetRelative: false);
         }
 
         static string GetProjectRoot()
         {
-            var assetsDirectory = new DirectoryInfo(Application.dataPath);
-            return assetsDirectory.Parent?.FullName ?? Directory.GetCurrentDirectory();
+            return ProjectPathResolver.ProjectRoot;
         }
 
         static string FirstNonEmpty(params string[] values)

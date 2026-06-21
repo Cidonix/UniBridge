@@ -838,25 +838,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     return null;
                 }
 
-                text = StripProjectUriPrefix(text);
-                text = TrimProjectRelativeLeadingSlash(text);
-
-                var projectRoot = ProjectRoot.Replace('\\', '/').TrimEnd('/');
-                if (Path.IsPathRooted(text))
-                {
-                    var full = Path.GetFullPath(text).Replace('\\', '/');
-                    if (full.StartsWith(projectRoot + "/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        text = full.Substring(projectRoot.Length + 1);
-                    }
-                }
-
-                while (text.Contains("//"))
-                {
-                    text = text.Replace("//", "/");
-                }
-
-                text = TrimProjectRelativeLeadingSlash(text);
+                text = ProjectPathResolver.ToProjectRelativePath(text, assumeAssetRelative: false);
+                if (string.IsNullOrWhiteSpace(text))
+                    return null;
 
                 if (text.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
                 {
@@ -948,27 +932,22 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     return false;
                 }
 
-                var projectRoot = ProjectRoot;
-                var full = Path.GetFullPath(Path.Combine(projectRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar)));
-                var rootWithSeparator = projectRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-                if (!full.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+                absolutePath = ProjectPathResolver.ToAbsolutePath(normalizedPath, assumeAssetRelative: false);
+                if (string.IsNullOrWhiteSpace(absolutePath))
                 {
                     error = $"Rollback ignored path outside project root: '{assetPath}'.";
                     return false;
                 }
 
-                absolutePath = full;
                 return true;
             }
 
             static string ToProjectDisplayPath(string absolutePath)
             {
-                var root = ProjectRoot.Replace('\\', '/').TrimEnd('/');
-                var full = Path.GetFullPath(absolutePath).Replace('\\', '/');
-                return full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase) ? full.Substring(root.Length + 1) : absolutePath;
+                return ProjectPathResolver.ToProjectRelativePath(absolutePath, assumeAssetRelative: false) ?? absolutePath;
             }
 
-            static string ProjectRoot => Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            static string ProjectRoot => ProjectPathResolver.ProjectRoot;
 
             sealed class RollbackRoot
             {

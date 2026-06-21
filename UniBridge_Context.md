@@ -5,6 +5,30 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-21: UniBridge 0.2.33 Shared Project Path Resolver
+
+Третій крок planned polish: зменшити роз'їзд між тулзами, які по-різному
+нормалізували `Assets/...`, `Packages/...`, `ProjectSettings/...`, `file://`,
+`unity://path/...` і абсолютні Windows-шляхи.
+
+Зміна:
+
+- додано shared helper `ProjectPathResolver`;
+- resolver повертає project root, project-relative path, Unity asset path,
+  absolute path, package flags і `exists` evidence;
+- підтримано embedded/package paths через Unity `PackageInfo.FindForAssetPath`
+  і best-effort mapping absolute resolved package paths назад у
+  `Packages/<name>/...`;
+- `UniBridge_ValidateScript` більше не обмежений legacy
+  `ManageScript` Assets-only route: `.cs` файли з `Packages/...` або
+  absolute project paths валідовуються напряму через shared validation source;
+- resolver підключено до `AssetIntelligence`, `AssetSemanticDiff`,
+  `AssetSnapshotSerializer`, `ScriptIntelligence`, `UnitySearch`,
+  `ValidateAdditiveSceneRegistration` і path diagnostics у
+  `BatchActions.Transaction`;
+- очікуваний ефект: менше false `exists=false`, стабільніша робота з package
+  scripts/assets і однакове тлумачення шляхів між агентами та MCP clients.
+
 ## 2026-06-21: UniBridge 0.2.32 Assembly Freshness v2
 
 Другий крок planned polish: зробити stale assembly diagnostics корисними для

@@ -2918,22 +2918,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
 
         static string NormalizeAssetPath(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                return null;
-
-            var normalized = path.Trim().Replace('\\', '/');
-            if (normalized.StartsWith("unity://path/", StringComparison.OrdinalIgnoreCase))
-                normalized = normalized.Substring("unity://path/".Length);
-
-            if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
-                return normalized;
-
-            if (normalized.Equals("Assets", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("Packages", StringComparison.OrdinalIgnoreCase))
-                return normalized;
-
-            return "Assets/" + normalized.TrimStart('/');
+            return ProjectPathResolver.NormalizeAssetPath(path, assumeAssetRelative: true);
         }
 
         static bool ShouldIncludePath(string path, bool includePackages)
@@ -2952,11 +2937,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
 
         static string AssetPathToAbsolutePath(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                return null;
-
-            var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-            return Path.GetFullPath(Path.Combine(root, path.Replace('/', Path.DirectorySeparatorChar)));
+            return ProjectPathResolver.ToAbsolutePath(path, assumeAssetRelative: false);
         }
 
         static string ReadAssetText(string path)

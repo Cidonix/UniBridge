@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.32",
+  "version": "0.2.33",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Improved\n\n- assemblyFreshness now has a v2 mode based on Unity CompilationPipeline.GetAssemblies(). It checks each script assembly output against its newest source file, including asmdef, package, runtime, and editor assemblies instead of only Assembly-CSharp.dll.\n- GetCompilationDiagnostics and WaitForReadyAfterReload now surface staleAssemblyCount, missingOutputAssemblyCount, staleAssemblies, and newestSourceAssemblies evidence so agents can spot stale runtime/editor assemblies after Bee or import failures.\n\n### Previous Changes\n\n- WaitForReadyAfterReload returns buildSystemHealth and assemblyFreshness once at the top level, while nested compilationDiagnostics is limited to retained CompilationPipeline/editor event diagnostics.\n- Reload-safe relay recovery envelopes strip nested structuredContent mirrors from embedded Unity tool results, reducing duplicate payloads after refresh, compile, and Play Mode reload boundaries."
+    "changelog": "### Improved\n\n- Added a shared ProjectPathResolver used by high-risk path workflows so Assets, Packages, ProjectSettings, file URIs, and absolute project paths resolve consistently.\n- UniBridge_ValidateScript can now validate C# files from Packages and absolute project paths, not only Assets paths.\n- Asset intelligence, semantic YAML diff, script intelligence, Unity search, additive scene validation, and batch rollback diagnostics now share the same path resolver for more reliable exists/path evidence.\n\n### Previous Changes\n\n- assemblyFreshness now has a v2 mode based on Unity CompilationPipeline.GetAssemblies(). It checks each script assembly output against its newest source file, including asmdef, package, runtime, and editor assemblies instead of only Assembly-CSharp.dll.\n- GetCompilationDiagnostics and WaitForReadyAfterReload now surface staleAssemblyCount, missingOutputAssemblyCount, staleAssemblies, and newestSourceAssemblies evidence so agents can spot stale runtime/editor assemblies after Bee or import failures."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -98,6 +98,17 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.33 Notes
+
+- UniBridge now has a shared project path resolver for `Assets/...`,
+  `Packages/...`, `ProjectSettings/...`, `unity://path/...`, `file://...`,
+  and absolute paths inside the current Unity project.
+- `UniBridge_ValidateScript` can validate `.cs` files from packages and
+  absolute project paths, not only scripts under `Assets/`.
+- Asset intelligence, semantic YAML diff, script intelligence, Unity search,
+  additive scene validation, and batch rollback diagnostics use the same
+  resolver for more stable path/exists evidence.
+
 ## Known 0.2.32 Notes
 
 - `assemblyFreshness` now includes a v2 `CompilationPipeline.GetAssemblies()`

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
@@ -22,7 +23,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 Use this after creating or editing scripts, or before asking Unity to compile/reload a changed script.
 
 Args:
-    uri: unity://path/..., file://..., or Assets/... path to a .cs file.
+    uri: unity://path/..., file://..., Assets/..., Packages/..., or an absolute path to a .cs file.
     level: basic or standard.
     include_diagnostics: When true, returns detailed diagnostics; otherwise returns summary counts.
 
@@ -110,86 +111,59 @@ Returns:
 
             bool includeDiagnostics = parameters.IncludeDiagnostics;
 
-            // Split URI into name and directory using ScriptRefreshHelpers
-            var (name, directory) = ScriptRefreshHelpers.SplitUri(uri);
-
-            // Validate the split result
-            if (string.IsNullOrEmpty(name))
+            var resolved = ProjectPathResolver.Resolve(uri, assumeAssetRelative: true);
+            var displayPath = resolved.DisplayPath ?? uri;
+            if (string.IsNullOrWhiteSpace(resolved.AbsolutePath))
             {
-                return Response.Error("invalid_uri: URI must include a script file name.");
+                return Response.Error($"invalid_uri: URI must resolve to a project file. error={resolved.Error ?? "unknown"}");
             }
 
-            if (string.IsNullOrEmpty(directory))
+            if (!string.Equals(Path.GetExtension(resolved.AbsolutePath), ".cs", StringComparison.OrdinalIgnoreCase))
             {
-                return Response.Error("invalid_uri: URI must include a valid directory path.");
+                return Response.Error("invalid_uri: URI must point to a .cs file.");
             }
 
-            // Ensure directory is under Assets/
-            if (!directory.StartsWith("Assets", StringComparison.OrdinalIgnoreCase))
+            if (!File.Exists(resolved.AbsolutePath))
             {
-                return Response.Error("path_outside_assets: URI must resolve under 'Assets/'.");
+                return Response.Error($"script_not_found: '{displayPath}' does not exist.");
             }
 
             try
             {
-                // Create JObject parameters for ManageScript.HandleCommand
-                var scriptParams = new JObject();
-                scriptParams["action"] = "validate";
-                scriptParams["name"] = name;
-                scriptParams["path"] = directory;
-                scriptParams["level"] = level;
-
-                // Call ManageScript.HandleCommand with the prepared parameters
-                var result = ManageScript.HandleCommand(scriptParams);
-
-                // Process the result to extract diagnostic counts and optionally full diagnostics
-                if (result is JObject resultObj && resultObj["success"]?.Value<bool>() == true)
+                var validation = ManageScript.ValidateScriptSource(File.ReadAllText(resolved.AbsolutePath), level);
+                var diagnostics = JArray.FromObject(validation.Diagnostics ?? Array.Empty<ManageScript.ScriptDiagnostic>());
+                var warnings = diagnostics.Count(diag => string.Equals(diag["severity"]?.ToString(), "warning", StringComparison.OrdinalIgnoreCase));
+                var errors = diagnostics.Count(diag =>
                 {
-                    var data = resultObj["data"] as JObject;
-                    var diagnostics = data?["diagnostics"] as JArray;
+                    var severity = diag["severity"]?.ToString();
+                    return string.Equals(severity, "error", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(severity, "fatal", StringComparison.OrdinalIgnoreCase);
+                });
 
-                    if (diagnostics != null)
+                var data = new JObject
+                {
+                    ["warnings"] = warnings,
+                    ["errors"] = errors,
+                    ["summary"] = JObject.FromObject(new { warnings, errors }),
+                    ["path"] = resolved.AssetPath ?? resolved.ProjectRelativePath,
+                    ["absolutePath"] = resolved.AbsolutePath.Replace('\\', '/'),
+                    ["pathResolution"] = JObject.FromObject(new
                     {
-                        // Count warnings and errors
-                        int warnings = 0;
-                        int errors = 0;
+                        requested = resolved.Input,
+                        displayPath = resolved.DisplayPath,
+                        assetPath = resolved.AssetPath,
+                        projectRelativePath = resolved.ProjectRelativePath,
+                        isPackage = resolved.IsPackage,
+                        isExternalPackage = resolved.IsExternalPackage,
+                        exists = resolved.Exists
+                    })
+                };
 
-                        foreach (var diag in diagnostics)
-                        {
-                            string severity = diag["severity"]?.ToString()?.ToLowerInvariant() ?? "";
-                            if (severity == "warning")
-                            {
-                                warnings++;
-                            }
-                            else if (severity == "error" || severity == "fatal")
-                            {
-                                errors++;
-                            }
-                        }
+                if (includeDiagnostics)
+                    data["diagnostics"] = diagnostics;
 
-                        // Return response based on includeDiagnostics flag
-                        if (includeDiagnostics)
-                        {
-                            return Response.Success(
-                                $"Script validation completed. Found {errors} error(s) and {warnings} warning(s).",
-                                new
-                                {
-                                    diagnostics = diagnostics.ToObject<object[]>(),
-                                    summary = new { warnings, errors }
-                                }
-                            );
-                        }
-                        else
-                        {
-                            return Response.Success(
-                                $"Script validation completed. Found {errors} error(s) and {warnings} warning(s).",
-                                new { warnings, errors }
-                            );
-                        }
-                    }
-                }
-
-                return result;
+                var message = $"Script validation completed. Found {errors} error(s) and {warnings} warning(s).";
+                return validation.Ok ? Response.Success(message, data) : Response.Error(message, data);
             }
             catch (Exception e)
             {

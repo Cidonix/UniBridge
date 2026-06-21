@@ -2030,69 +2030,22 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         static string NormalizeAssetPath(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                return path;
-
-            path = path.Trim().Replace('\\', '/');
-            const string unityPrefix = "unity://path/";
-            if (path.StartsWith(unityPrefix, StringComparison.OrdinalIgnoreCase))
-                path = path.Substring(unityPrefix.Length);
-            if (path.StartsWith("project://database/", StringComparison.OrdinalIgnoreCase))
-                path = path.Substring("project://database/".Length);
-
-            if (Path.IsPathRooted(path))
-                path = ToProjectRelativePath(path);
-
-            return NormalizePath(path);
+            return ProjectPathResolver.NormalizeAssetPath(path, assumeAssetRelative: false);
         }
 
         static string AssetPathToAbsolutePath(string path)
         {
-            if (string.IsNullOrEmpty(path))
-                return null;
-
-            path = NormalizeAssetPath(path);
-            var projectRoot = GetProjectRoot();
-
-            if (path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase))
-            {
-                return Path.GetFullPath(Path.Combine(projectRoot, path));
-            }
-
-            if (path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
-            {
-                var localPath = Path.GetFullPath(Path.Combine(projectRoot, path));
-                if (File.Exists(localPath) || Directory.Exists(localPath))
-                    return localPath;
-
-                var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path);
-                if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
-                {
-                    var prefix = "Packages/" + packageInfo.name;
-                    var relativeInsidePackage = path.Length > prefix.Length
-                        ? path.Substring(prefix.Length).TrimStart('/')
-                        : string.Empty;
-                    return Path.GetFullPath(Path.Combine(packageInfo.resolvedPath, relativeInsidePackage));
-                }
-            }
-
-            return Path.GetFullPath(Path.Combine(projectRoot, path));
+            return ProjectPathResolver.ToAbsolutePath(path, assumeAssetRelative: false);
         }
 
         static string ToProjectRelativePath(string absolutePath)
         {
-            var projectRoot = GetProjectRoot().Replace('\\', '/').TrimEnd('/');
-            var normalized = absolutePath.Replace('\\', '/');
-            return normalized.StartsWith(projectRoot + "/", StringComparison.OrdinalIgnoreCase)
-                ? normalized.Substring(projectRoot.Length + 1)
-                : normalized;
+            return ProjectPathResolver.ToProjectRelativePath(absolutePath, assumeAssetRelative: false);
         }
 
         static string GetProjectRoot()
         {
-            var assetsDirectory = new DirectoryInfo(Application.dataPath);
-            return assetsDirectory.Parent?.FullName ?? Directory.GetCurrentDirectory();
+            return ProjectPathResolver.ProjectRoot;
         }
 
         static string NormalizePath(string path)

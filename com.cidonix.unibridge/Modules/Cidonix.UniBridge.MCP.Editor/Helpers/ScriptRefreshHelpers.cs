@@ -70,12 +70,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         /// Split an incoming URI or path into (name, directory) suitable for Unity.
         ///
         /// Rules:
-        /// - unity://path/Assets/... → keep as Assets-relative (after decode/normalize)
-        /// - file://... → percent-decode, normalize, strip host and leading slashes,
-        ///   then, if any 'Assets' segment exists, return path relative to that 'Assets' root.
-        ///   Otherwise, fall back to original name/dir behavior.
-        /// - plain paths → decode/normalize separators; if they contain an 'Assets' segment,
-        ///   return relative to 'Assets'.
+        /// - unity://path/Assets/... or unity://path/Packages/... → keep as Unity project path.
+        /// - file://... and absolute paths → resolve through ProjectPathResolver.
+        /// - plain paths → resolve as Assets-relative by default for backward compatibility.
         /// </summary>
         /// <param name="uri">The URI or path to split</param>
         /// <returns>A tuple containing (name, directory) where name is the filename without extension and directory is the Assets-relative path</returns>
@@ -84,84 +81,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             if (string.IsNullOrEmpty(uri))
                 return (null, null);
 
-            string rawPath;
-
-            if (uri.StartsWith("unity://path/", StringComparison.OrdinalIgnoreCase))
-            {
-                rawPath = uri.Substring("unity://path/".Length);
-            }
-            else if (uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-            {
-                try
-                {
-                    var uriObj = new Uri(uri);
-                    string host = uriObj.Host?.Trim() ?? "";
-                    string path = uriObj.LocalPath ?? "";
-
-                    // Handle UNC paths: file://server/share/... -> //server/share/...
-                    if (!string.IsNullOrEmpty(host) && !host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
-                    {
-                        path = $"//{host}{path}";
-                    }
-
-                    // Use percent-decoded path
-                    rawPath = WebUtility.UrlDecode(path);
-                }
-                catch (UriFormatException)
-                {
-                    // Fallback to simple substring if URI parsing fails
-                    rawPath = WebUtility.UrlDecode(uri.Substring("file://".Length));
-                }
-            }
-            else
-            {
-                rawPath = uri;
-            }
-
-            // Percent-decode any residual encodings and normalize separators
-            rawPath = WebUtility.UrlDecode(rawPath).Replace('\\', '/');
-
-            // Strip leading slash only for Windows drive-letter forms like "/C:/..."
-            if (Application.platform == RuntimePlatform.WindowsEditor &&
-                rawPath.Length >= 3 && rawPath[0] == '/' && rawPath[2] == ':')
-            {
-                rawPath = rawPath.Substring(1);
-            }
-
-            // Normalize path (collapse ../, ./)
-            string norm;
-            try
-            {
-                norm = Path.GetFullPath(rawPath).Replace('\\', '/');
-            }
-            catch
-            {
-                // If path normalization fails, use the raw path
-                norm = rawPath;
-            }
-
-            // If an 'Assets' segment exists, compute path relative to it (case-insensitive)
-            string[] parts = norm.Split(new char[] {'/'}, StringSplitOptions.RemoveEmptyEntries)
-                .Where(p => p != "." && p != "")
-                .ToArray();
-
-            int? assetsIndex = null;
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (string.Equals(parts[i], "assets", StringComparison.OrdinalIgnoreCase))
-                {
-                    assetsIndex = i;
-                    break;
-                }
-            }
-
-            string assetsRelativePath = null;
-            if (assetsIndex.HasValue)
-            {
-                assetsRelativePath = string.Join("/", parts.Skip(assetsIndex.Value));
-            }
-
-            string effectivePath = assetsRelativePath ?? norm;
+            var resolved = ProjectPathResolver.Resolve(uri, assumeAssetRelative: true);
+            var effectivePath = resolved.AssetPath ?? resolved.ProjectRelativePath ?? resolved.AbsolutePath;
+            if (string.IsNullOrWhiteSpace(effectivePath))
+                return (null, null);
 
             // Extract name (filename without extension) and directory
             string name = Path.GetFileNameWithoutExtension(effectivePath);

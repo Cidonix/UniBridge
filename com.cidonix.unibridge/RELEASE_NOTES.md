@@ -1,6 +1,39 @@
-# UniBridge 0.2.32 Release Notes
+# UniBridge 0.2.33 Release Notes
 
 Release date: 2026-06-21
+
+This release adds a shared project path resolver and wires it into the
+path-sensitive tools agents use during scripting, asset inspection, semantic
+diffs, additive-scene validation, and batch rollback diagnostics.
+
+The resolver gives UniBridge one consistent interpretation for:
+
+- `Assets/...`;
+- `Packages/...`;
+- `ProjectSettings/...`;
+- `unity://path/...`;
+- `file://...`;
+- absolute paths inside the current Unity project;
+- package paths resolved through Unity's package manager.
+
+`UniBridge_ValidateScript` now uses this shared resolver and validates `.cs`
+files directly from disk. That means agents can validate package/editor scripts
+and absolute project paths, not only scripts under `Assets/`.
+
+The same resolver is now used by:
+
+- `UniBridge_AssetIntelligence`;
+- `UniBridge_AssetIntelligence Action=SemanticDiff`;
+- `UniBridge_ScriptIntelligence`;
+- `UniBridge_UnitySearch`;
+- `UniBridge_ValidateAdditiveSceneRegistration`;
+- batch rollback/impact path diagnostics.
+
+This should reduce false `exists=false` style diagnostics and make path evidence
+more stable across projects, embedded packages, and MCP clients that pass file
+URIs or absolute Windows paths.
+
+## Previous 0.2.32 Notes
 
 This release improves stale assembly diagnostics for projects that use asmdefs,
 package code, editor assemblies, or multiple generated script assemblies.

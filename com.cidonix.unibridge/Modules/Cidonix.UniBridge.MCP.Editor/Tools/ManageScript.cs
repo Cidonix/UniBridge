@@ -54,6 +54,20 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
     {
         public const string ToolName = "UniBridge_Script";
 
+        internal sealed class ScriptValidationReport
+        {
+            public bool Ok;
+            public ScriptDiagnostic[] Diagnostics = Array.Empty<ScriptDiagnostic>();
+        }
+
+        internal sealed class ScriptDiagnostic
+        {
+            public int line;
+            public int col;
+            public string severity;
+            public string message;
+        }
+
         /// <summary>
         /// Description of the UniBridge_Script tool for MCP clients.
         /// Provides general script operations with guidance to use specialized tools when possible.
@@ -142,6 +156,51 @@ Returns:
             relPathSafe = ("Assets/" + tail).TrimEnd('/');
             return true;
         }
+
+        internal static ScriptValidationReport ValidateScriptSource(string fileText, string level)
+        {
+            var chosen = ParseValidationLevel(level);
+            var ok = ValidateScriptSyntax(fileText ?? string.Empty, chosen, out string[] diagsRaw);
+            return new ScriptValidationReport
+            {
+                Ok = ok,
+                Diagnostics = ParseDiagnostics(diagsRaw)
+            };
+        }
+
+        static ValidationLevel ParseValidationLevel(string level)
+        {
+            return (level ?? "standard").ToLowerInvariant() switch
+            {
+                "basic" => ValidationLevel.Basic,
+                "standard" => ValidationLevel.Standard,
+                "strict" => ValidationLevel.Strict,
+                "comprehensive" => ValidationLevel.Comprehensive,
+                _ => ValidationLevel.Standard
+            };
+        }
+
+        static ScriptDiagnostic[] ParseDiagnostics(string[] rawDiagnostics)
+        {
+            return (rawDiagnostics ?? Array.Empty<string>()).Select(s =>
+            {
+                var m = Regex.Match(
+                    s,
+                    @"^(ERROR|WARNING|INFO): (.*?)(?: \(Line (\d+)(?:, Column (\d+))?\))?$",
+                    RegexOptions.CultureInvariant | RegexOptions.Multiline,
+                    TimeSpan.FromMilliseconds(250)
+                );
+
+                return new ScriptDiagnostic
+                {
+                    line = m.Success && int.TryParse(m.Groups[3].Value, out var l) ? l : 0,
+                    col = m.Success && int.TryParse(m.Groups[4].Value, out var c) ? c : 0,
+                    severity = m.Success ? m.Groups[1].Value.ToLowerInvariant() : "info",
+                    message = m.Success ? m.Groups[2].Value : s
+                };
+            }).ToArray();
+        }
+
         /// <summary>
         /// JSON schema for script management tool parameters.
         /// </summary>
@@ -364,37 +423,15 @@ Returns:
                 case "validate":
                 {
                     string level = @params["level"]?.ToString()?.ToLowerInvariant() ?? "standard";
-                    var chosen = level switch
-                    {
-                        "basic" => ValidationLevel.Basic,
-                        "standard" => ValidationLevel.Standard,
-                        "strict" => ValidationLevel.Strict,
-                        "comprehensive" => ValidationLevel.Comprehensive,
-                        _ => ValidationLevel.Standard
-                    };
                     string fileText;
                     try { fileText = File.ReadAllText(fullPath); }
                     catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
 
-                    bool ok = ValidateScriptSyntax(fileText, chosen, out string[] diagsRaw);
-                    var diags = (diagsRaw ?? Array.Empty<string>()).Select(s =>
-                    {
-                        var m = Regex.Match(
-                            s,
-                            @"^(ERROR|WARNING|INFO): (.*?)(?: \(Line (\d+)(?:, Column (\d+))?\))?$",
-                            RegexOptions.CultureInvariant | RegexOptions.Multiline,
-                            TimeSpan.FromMilliseconds(250)
-                        );
-                        string severity = m.Success ? m.Groups[1].Value.ToLowerInvariant() : "info";
-                        string message = m.Success ? m.Groups[2].Value : s;
-                        int lineNum = m.Success && int.TryParse(m.Groups[3].Value, out var l) ? l : 0;
-                        int columnNum = m.Success && int.TryParse(m.Groups[4].Value, out var c) ? c : 0;
-                        return new { line = lineNum, col = columnNum, severity, message };
-                    }).ToArray();
+                    var validation = ValidateScriptSource(fileText, level);
 
-                    var result = new { diagnostics = diags };
-                    return ok ? Response.Success("Validation completed.", result)
-                               : Response.Error("Validation failed.", result);
+                    var result = new { diagnostics = validation.Diagnostics };
+                    return validation.Ok ? Response.Success("Validation completed.", result)
+                                         : Response.Error("Validation failed.", result);
                 }
                 case "edit":
                     McpLog.Log("UniBridge_Script.edit is deprecated; prefer apply_text_edits. Serving structured edit for backward compatibility.");
