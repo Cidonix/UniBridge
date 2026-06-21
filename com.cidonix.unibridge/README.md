@@ -98,6 +98,18 @@ Full documentation lives in `Documentation~/unibridge.md`.
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 
+## Known 0.2.32 Notes
+
+- `assemblyFreshness` now includes a v2 `CompilationPipeline.GetAssemblies()`
+  map. It checks each Unity script assembly output against the newest source
+  file Unity reports for that assembly, including asmdef, package, runtime,
+  and editor assemblies.
+- `GetCompilationDiagnostics` and `WaitForReadyAfterReload` expose
+  `staleAssemblyCount`, `missingOutputAssemblyCount`, `v2.staleAssemblies`,
+  and `v2.newestSourceAssemblies`.
+- Legacy `Assembly-CSharp.dll` freshness fields remain, but top-level
+  `staleLikely` now reflects the broader v2 assembly map.
+
 ## Known 0.2.31 Notes
 
 - `UniBridge_ManageEditor Action=WaitForReadyAfterReload` now keeps

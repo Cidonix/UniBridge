@@ -1,6 +1,35 @@
-# UniBridge 0.2.31 Release Notes
+# UniBridge 0.2.32 Release Notes
 
 Release date: 2026-06-21
+
+This release improves stale assembly diagnostics for projects that use asmdefs,
+package code, editor assemblies, or multiple generated script assemblies.
+
+`assemblyFreshness` now includes a v2 block based on
+`CompilationPipeline.GetAssemblies()`. UniBridge compares each Unity script
+assembly output against the newest source file Unity reports for that assembly.
+This covers:
+
+- asmdef assemblies;
+- package assemblies;
+- runtime assemblies;
+- editor assemblies;
+- the classic `Assembly-CSharp.dll` path.
+
+`GetCompilationDiagnostics` and `WaitForReadyAfterReload` now expose:
+
+- `staleAssemblyCount`;
+- `missingOutputAssemblyCount`;
+- `v2.summary`;
+- `v2.staleAssemblies`;
+- `v2.newestSourceAssemblies`.
+
+The old `Assembly-CSharp.dll` fields are still present for compatibility, but
+top-level `assemblyFreshness.staleLikely` now reflects the broader v2 assembly
+map. This gives AI agents a better chance to detect "Unity says it is ready,
+but the relevant script assembly was not rebuilt" situations.
+
+## Previous 0.2.31 Notes
 
 This polish release keeps the 0.2.30 Bee/BuildProgram diagnostics guardrails
 but makes reload checkpoint responses easier for AI agents to read.

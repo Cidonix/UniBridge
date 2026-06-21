@@ -1035,6 +1035,13 @@ Returns:
                     };
                 }
 
+                var assemblyFreshness = BuildScriptAssemblyFreshnessV2(projectRoot);
+                var v2Token = JObject.FromObject(assemblyFreshness);
+                var v2Summary = v2Token["summary"];
+                var overallStaleLikely = v2Summary?["staleLikely"]?.Value<bool>() == true;
+                var staleAssemblyCount = v2Summary?["staleAssemblyCount"]?.Value<int>() ?? 0;
+                var missingOutputAssemblyCount = v2Summary?["missingOutputAssemblyCount"]?.Value<int>() ?? 0;
+
                 var assemblyPath = Path.Combine(projectRoot, "Library", "ScriptAssemblies", "Assembly-CSharp.dll").Replace('\\', '/');
                 var assemblyInfo = new FileInfo(assemblyPath);
                 var latestScriptInfo = Directory
@@ -1045,20 +1052,25 @@ Returns:
                     .FirstOrDefault();
 
                 var assemblyExists = assemblyInfo.Exists;
-                var staleLikely = assemblyExists
+                var assemblyCSharpStaleLikely = assemblyExists
                     && latestScriptInfo != null
                     && latestScriptInfo.LastWriteTimeUtc > assemblyInfo.LastWriteTimeUtc.AddSeconds(1);
 
                 return new
                 {
                     available = true,
+                    version = 2,
                     assemblyPath,
                     assemblyExists,
                     assemblyLastWriteTimeUtc = assemblyExists ? assemblyInfo.LastWriteTimeUtc.ToString("o") : null,
                     latestAssetScriptPath = latestScriptInfo != null ? ToProjectRelativePath(latestScriptInfo.FullName, projectRoot) : null,
                     latestAssetScriptLastWriteTimeUtc = latestScriptInfo != null ? latestScriptInfo.LastWriteTimeUtc.ToString("o") : null,
-                    staleLikely,
-                    note = "staleLikely means an Assets/*.cs file is newer than Library/ScriptAssemblies/Assembly-CSharp.dll, which can happen when Bee/BuildProgram failed before producing a new runtime assembly."
+                    assemblyCSharpStaleLikely,
+                    staleLikely = overallStaleLikely,
+                    staleAssemblyCount,
+                    missingOutputAssemblyCount,
+                    v2 = assemblyFreshness,
+                    note = "staleLikely is true when any Unity script assembly output is missing or older than its newest source file. v2 uses CompilationPipeline.GetAssemblies(), so asmdef, package, runtime, and editor assemblies are checked instead of only Assembly-CSharp.dll."
                 };
             }
             catch (Exception e)
@@ -1071,6 +1083,159 @@ Returns:
             }
         }
 
+        static object BuildScriptAssemblyFreshnessV2(string projectRoot)
+        {
+            var records = new List<ScriptAssemblyFreshnessRecord>();
+            var newestSource = default(FileInfo);
+
+            foreach (var assembly in CompilationPipeline.GetAssemblies())
+            {
+                if (assembly == null)
+                    continue;
+
+                var outputPath = NormalizeProjectFilePath(assembly.outputPath, projectRoot);
+                var outputInfo = SafeFileInfo(outputPath);
+                var sourceInfos = (assembly.sourceFiles ?? Array.Empty<string>())
+                    .Select(path => SafeFileInfo(NormalizeProjectFilePath(path, projectRoot)))
+                    .Where(file => file != null && file.Exists)
+                    .ToArray();
+                var newestSourceInfo = sourceInfos
+                    .OrderByDescending(file => file.LastWriteTimeUtc)
+                    .FirstOrDefault();
+
+                if (newestSourceInfo != null && (newestSource == null || newestSourceInfo.LastWriteTimeUtc > newestSource.LastWriteTimeUtc))
+                    newestSource = newestSourceInfo;
+
+                var outputExists = outputInfo != null && outputInfo.Exists;
+                var missingOutput = !outputExists && sourceInfos.Length > 0;
+                var staleLikely = outputExists
+                    && newestSourceInfo != null
+                    && newestSourceInfo.LastWriteTimeUtc > outputInfo.LastWriteTimeUtc.AddSeconds(1);
+
+                records.Add(new ScriptAssemblyFreshnessRecord
+                {
+                    Name = assembly.name,
+                    OutputPath = ToProjectRelativePath(outputPath, projectRoot),
+                    OutputExists = outputExists,
+                    OutputLastWriteTimeUtc = outputExists ? outputInfo.LastWriteTimeUtc : (DateTime?)null,
+                    NewestSourcePath = newestSourceInfo != null ? ToProjectRelativePath(newestSourceInfo.FullName, projectRoot) : null,
+                    NewestSourceLastWriteTimeUtc = newestSourceInfo?.LastWriteTimeUtc,
+                    SourceFileCount = assembly.sourceFiles?.Length ?? 0,
+                    ExistingSourceFileCount = sourceInfos.Length,
+                    MissingOutput = missingOutput,
+                    StaleLikely = staleLikely,
+                    Flags = assembly.flags.ToString(),
+                    SourceScope = BuildSourceScopeSummary(sourceInfos, projectRoot)
+                });
+            }
+
+            var staleAssemblies = records
+                .Where(record => record.StaleLikely || record.MissingOutput)
+                .OrderByDescending(record => record.StaleLikely)
+                .ThenByDescending(record => record.NewestSourceLastWriteTimeUtc ?? DateTime.MinValue)
+                .ThenBy(record => record.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(20)
+                .Select(record => record.ToDto(includeScope: true))
+                .ToArray();
+
+            var newestSourceAssemblies = records
+                .Where(record => record.NewestSourceLastWriteTimeUtc.HasValue)
+                .OrderByDescending(record => record.NewestSourceLastWriteTimeUtc.Value)
+                .ThenBy(record => record.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(12)
+                .Select(record => record.ToDto(includeScope: false))
+                .ToArray();
+
+            var sourceScopeTotals = records
+                .SelectMany(record => record.SourceScope)
+                .GroupBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Sum(pair => pair.Value), StringComparer.OrdinalIgnoreCase);
+
+            var staleCount = records.Count(record => record.StaleLikely);
+            var missingOutputCount = records.Count(record => record.MissingOutput);
+            return new
+            {
+                mode = "CompilationPipeline.GetAssemblies",
+                summary = new
+                {
+                    assemblyCount = records.Count,
+                    assembliesWithSources = records.Count(record => record.SourceFileCount > 0),
+                    assembliesWithExistingSources = records.Count(record => record.ExistingSourceFileCount > 0),
+                    staleAssemblyCount = staleCount,
+                    missingOutputAssemblyCount = missingOutputCount,
+                    staleLikely = staleCount > 0 || missingOutputCount > 0,
+                    newestSourcePath = newestSource != null ? ToProjectRelativePath(newestSource.FullName, projectRoot) : null,
+                    newestSourceLastWriteTimeUtc = newestSource != null ? newestSource.LastWriteTimeUtc.ToString("o") : null,
+                    sourceScopeTotals
+                },
+                staleAssemblies,
+                newestSourceAssemblies,
+                note = "Each assembly compares its compiled outputPath timestamp with the newest existing sourceFiles timestamp reported by Unity CompilationPipeline. Missing output is treated as stale evidence when the assembly has source files."
+            };
+        }
+
+        sealed class ScriptAssemblyFreshnessRecord
+        {
+            public string Name;
+            public string OutputPath;
+            public bool OutputExists;
+            public DateTime? OutputLastWriteTimeUtc;
+            public string NewestSourcePath;
+            public DateTime? NewestSourceLastWriteTimeUtc;
+            public int SourceFileCount;
+            public int ExistingSourceFileCount;
+            public bool MissingOutput;
+            public bool StaleLikely;
+            public string Flags;
+            public Dictionary<string, int> SourceScope = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            public object ToDto(bool includeScope)
+            {
+                return new
+                {
+                    name = Name,
+                    outputPath = OutputPath,
+                    outputExists = OutputExists,
+                    outputLastWriteTimeUtc = OutputLastWriteTimeUtc?.ToString("o"),
+                    newestSourcePath = NewestSourcePath,
+                    newestSourceLastWriteTimeUtc = NewestSourceLastWriteTimeUtc?.ToString("o"),
+                    sourceFileCount = SourceFileCount,
+                    existingSourceFileCount = ExistingSourceFileCount,
+                    missingOutput = MissingOutput,
+                    staleLikely = StaleLikely,
+                    flags = Flags,
+                    sourceScope = includeScope ? SourceScope : null
+                };
+            }
+        }
+
+        static Dictionary<string, int> BuildSourceScopeSummary(IEnumerable<FileInfo> sourceInfos, string projectRoot)
+        {
+            return sourceInfos
+                .Select(file => ClassifyProjectRelativeScope(ToProjectRelativePath(file.FullName, projectRoot)))
+                .GroupBy(scope => scope, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        static string ClassifyProjectRelativeScope(string relativePath)
+        {
+            if (string.IsNullOrEmpty(relativePath))
+                return "unknown";
+
+            var normalized = relativePath.Replace('\\', '/');
+            if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                return "Assets";
+            if (normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
+                return "Packages";
+            if (normalized.Contains("/Library/PackageCache/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("Library/PackageCache/", StringComparison.OrdinalIgnoreCase))
+                return "PackageCache";
+
+            return "Other";
+        }
+
         static FileInfo SafeFileInfo(string path)
         {
             try
@@ -1081,6 +1246,18 @@ Returns:
             {
                 return null;
             }
+        }
+
+        static string NormalizeProjectFilePath(string path, string projectRoot)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return path;
+
+            var normalized = path.Replace('\\', '/');
+            if (Path.IsPathRooted(normalized))
+                return normalized;
+
+            return Path.GetFullPath(Path.Combine(projectRoot, normalized)).Replace('\\', '/');
         }
 
         static string ToProjectRelativePath(string path, string projectRoot)

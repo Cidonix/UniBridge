@@ -2,6 +2,22 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.32
+
+### Improved
+
+- `assemblyFreshness` now has a v2 mode based on
+  `CompilationPipeline.GetAssemblies()`. UniBridge checks each Unity script
+  assembly output against its newest source file, covering asmdef, package,
+  runtime, and editor assemblies instead of only `Assembly-CSharp.dll`.
+- `GetCompilationDiagnostics` and `WaitForReadyAfterReload` now surface
+  `staleAssemblyCount`, `missingOutputAssemblyCount`, `staleAssemblies`, and
+  `newestSourceAssemblies` evidence so agents can spot stale runtime/editor
+  assemblies after Bee, import, or script compilation failures.
+- The old `Assembly-CSharp.dll` fields remain in `assemblyFreshness` for
+  compatibility, while top-level `staleLikely` now reflects the broader v2
+  assembly map.
+
 ## 0.2.31
 
 ### Improved

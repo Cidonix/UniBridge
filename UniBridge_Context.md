@@ -5,6 +5,33 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-21: UniBridge 0.2.32 Assembly Freshness v2
+
+Другий крок planned polish: зробити stale assembly diagnostics корисними для
+реальних проектів з asmdef/package/editor assemblies, а не тільки для
+`Assembly-CSharp.dll`.
+
+Зміна:
+
+- `assemblyFreshness.version = 2`;
+- старі поля `assemblyPath`, `assemblyExists`, `latestAssetScriptPath` лишені
+  для сумісності;
+- top-level `assemblyFreshness.staleLikely` тепер відображає весь v2 assembly
+  map;
+- додано `assemblyFreshness.assemblyCSharpStaleLikely` для старого single-dll
+  check;
+- v2 використовує `CompilationPipeline.GetAssemblies()` і для кожної Unity
+  script assembly порівнює `outputPath` з найновішим існуючим `sourceFiles`;
+- v2 покриває asmdef, package, runtime і editor assemblies;
+- у відповіді є `staleAssemblyCount`, `missingOutputAssemblyCount`,
+  `v2.summary`, `v2.staleAssemblies`, `v2.newestSourceAssemblies`;
+- `compileHealth.healthy` автоматично враховує новий broadened
+  `assemblyFreshness.staleLikely`.
+
+Очікуваний результат: якщо Unity/Bee/import failure не перебудував конкретну
+asmdef/editor/package assembly, агент побачить це у `GetCompilationDiagnostics`
+або `WaitForReadyAfterReload`, а не тільки у випадку `Assembly-CSharp.dll`.
+
 ## 2026-06-21: UniBridge 0.2.31 Diagnostics Response Cleanup
 
 Перший крок planned polish після 0.2.30 hotfix: зробити reload checkpoint
