@@ -24,6 +24,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         Read,
 
         /// <summary>
+        /// Alias for Read, kept for agents that naturally request text reads as ReadText.
+        /// </summary>
+        ReadText = Read,
+
+        /// <summary>
         /// List dependencies for an asset.
         /// </summary>
         Dependencies,
@@ -173,7 +178,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     /// </summary>
     public record AssetIntelligenceParams
     {
-        [McpDescription("Operation to perform: Search, Inspect, Read, Dependencies, Dependents, Stats, Types, Selection, Preview, Serialize, Snapshot, Context, Structure, ReferenceGraph, Impact, ResolveMissing, or SemanticDiff.", Required = false, Default = AssetIntelligenceAction.Search)]
+        [McpDescription("Operation to perform: Search, Inspect, Read/ReadText, Dependencies, Dependents, Stats, Types, Selection, Preview, Serialize, Snapshot, Context, Structure, ReferenceGraph, Impact, ResolveMissing, or SemanticDiff.", Required = false, Default = AssetIntelligenceAction.Search)]
         public AssetIntelligenceAction Action { get; set; } = AssetIntelligenceAction.Search;
 
         [McpDescription("Natural search text or AssetDatabase query fragment. Examples: 'player controller', 't:Prefab enemy', 'l:ui'.", Required = false)]

@@ -1,6 +1,27 @@
-# UniBridge 0.2.33 Release Notes
+# UniBridge 0.2.34 Release Notes
 
 Release date: 2026-06-21
+
+This polish release keeps the 0.2.33 behavior stable while reducing friction
+for AI agents and maintainers.
+
+`UniBridge_AssetIntelligence` now accepts `Action=ReadText` as an alias for
+`Action=Read`. The tool already described reading text-like assets, and agents
+may naturally request the action as `ReadText`; that call now works instead of
+failing enum parsing and writing an avoidable error to the Unity Console.
+
+Internally, the legacy `UniBridge_Script` router has been split so script
+validation lives in `ManageScript.Validation.cs`. This does not change the
+validation contract used by `UniBridge_ValidateScript`, script edits, or the
+legacy route, but it makes the large tool easier to review and safer for future
+maintenance.
+
+While testing the split, two old Unity-specific validation checks were tightened:
+`FindObjectOfType` and `GameObject.Find` warnings now require a real invocation
+inside a parameterless `Update()` method. This avoids false positives when a
+script merely contains those phrases in diagnostic strings.
+
+## Previous 0.2.33 Notes
 
 This release adds a shared project path resolver and wires it into the
 path-sensitive tools agents use during scripting, asset inspection, semantic

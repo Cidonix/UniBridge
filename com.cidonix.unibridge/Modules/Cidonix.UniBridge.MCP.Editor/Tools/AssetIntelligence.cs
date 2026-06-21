@@ -47,7 +47,7 @@ Use this when you need to understand the Project window: search assets, inspect 
 Actions:
     Search: Ranked AssetDatabase search with filters for query, type, labels, extensions, folder scope, pagination, and optional previews.
     Inspect: Detailed metadata for one asset, including GUID, type, labels, importer, sub-assets, dependencies, dependents, and type-specific hints.
-    Read: Read text-like assets such as .cs, .prefab, .unity, .mat, .json, .asset, .asmdef with line/byte slicing or multiple chunks.
+    Read / ReadText: Read text-like assets such as .cs, .prefab, .unity, .mat, .json, .asset, .asmdef with line/byte slicing or multiple chunks.
     Dependencies: List assets used by the target.
     Dependents: Scan project assets and list assets that reference the target.
     Stats / Types: Compact asset distribution summaries for orientation.

@@ -19,6 +19,8 @@ through an approval-based connection flow.
   prefabs, UI, capture, validation, animation, rendering, physics, navigation,
   tilemaps, input actions, timeline, audio, VFX, runtime profiling, runtime
   state probing, and workflow recipes.
+- Natural aliases for common agent phrasing, such as `AssetIntelligence`
+  `Action=ReadText` for text asset reads.
 - Read-only asset structure workflows for prefab and already-loaded scene
   assets, including compact hierarchy list/search/read with duplicate-safe
   indexed paths and optional serialized field matching.

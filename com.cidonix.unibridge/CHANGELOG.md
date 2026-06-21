@@ -2,6 +2,20 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.34
+
+### Improved
+
+- `UniBridge_AssetIntelligence` now accepts `Action=ReadText` as a natural
+  alias for `Action=Read`, so agents that ask to read a text asset do not
+  trigger enum-deserialization errors in the Unity Console.
+- Split the legacy `UniBridge_Script` validation internals into
+  `ManageScript.Validation.cs`. The script validation behavior stays the same,
+  but the large tool implementation is easier to inspect and maintain.
+- Tightened two legacy Unity validation warnings so `FindObjectOfType` and
+  `GameObject.Find` warnings only fire for real calls inside `Update()`, not
+  for diagnostic text literals inside a script.
+
 ## 0.2.33
 
 ### Improved

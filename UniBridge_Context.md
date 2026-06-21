@@ -5,6 +5,35 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-21: UniBridge 0.2.34 Large Tool Internal Refactor
+
+Четвертий крок planned polish: зменшити розмір/когнітивне навантаження
+великих tool-файлів без зміни зовнішньої поведінки.
+
+Зміна:
+
+- `ManageScript` зроблено partial;
+- script validation internals винесено в `ManageScript.Validation.cs`;
+- `ValidateScriptSource`, validation levels, basic/Roslyn/Unity validation і
+  `Update()` string allocation analyzer залишились тим самим pipeline, але
+  фізично відокремлені від legacy script routing/editing code;
+- під час live перевірки тестового проекту знайдено дві Unity Console errors
+  від природного, але не підтриманого виклику
+  `UniBridge_AssetIntelligence Action=ReadText`;
+- `AssetIntelligenceAction.ReadText` додано як alias для `Read`, щоб агенти
+  більше не отримували enum-deserialization errors у Console при такому
+  формулюванні.
+- під час `ValidateScript` нового partial знайдено legacy false positives:
+  валідатор бачив фрази `FindObjectOfType in Update()` і
+  `GameObject.Find in Update()` у власних diagnostic strings;
+- ці два checks переведено з `string.Contains(...)` на Roslyn syntax scan:
+  warning тепер з'являється тільки якщо реальний invocation знаходиться у
+  parameterless `Update()` method.
+
+Очікуваний результат: майбутнім агентам легше підтримувати script tool, а
+читання текстових assets через `AssetIntelligence` стає менш крихким до
+природних назв action; validation warnings стають менш хибно-позитивними.
+
 ## 2026-06-21: UniBridge 0.2.33 Shared Project Path Resolver
 
 Третій крок planned polish: зменшити роз'їзд між тулзами, які по-різному
