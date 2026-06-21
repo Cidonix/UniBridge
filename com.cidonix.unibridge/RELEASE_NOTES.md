@@ -1,6 +1,24 @@
-# UniBridge 0.2.34 Release Notes
+# UniBridge 0.2.35 Release Notes
 
 Release date: 2026-06-21
+
+This release adds a repeatable MCP smoke regression suite for live Unity
+projects.
+
+`Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1` runs the bundled
+UniBridge relay in MCP stdio mode through a Python JSON-RPC helper and checks
+the package through the same surface an AI agent uses. It verifies tool
+discovery, `UniBridge_Discover`,
+console health, editor readiness, package script validation,
+`AssetIntelligence Action=ReadText`, compact `ContextSnapshot`,
+`SceneObjectView`, workflow recipe execution, refresh/compile reload boundaries,
+compilation diagnostics, and final console diagnostics.
+
+The runner writes a JSON report to the target project's `Library/UniBridge`
+folder by default and exits with a non-zero code when a step fails. Optional
+switches can add Play Mode, UI recipe, and asset recipe smoke coverage.
+
+## Previous 0.2.34 Notes
 
 This polish release keeps the 0.2.33 behavior stable while reducing friction
 for AI agents and maintainers.

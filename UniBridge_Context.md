@@ -5,6 +5,45 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-06-21: UniBridge 0.2.35 MCP Smoke Regression Suite
+
+Додано repeatable regression runner для живого тестування пакета через той
+самий MCP stdio surface, яким користуються агенти.
+
+Нові файли:
+
+- `com.cidonix.unibridge/Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1`;
+- `com.cidonix.unibridge/Tools~/McpSmokeRegression/run_mcp_smoke_regression.py`;
+- `com.cidonix.unibridge/Tools~/McpSmokeRegression/README.md`.
+
+Що перевіряє базовий suite:
+
+- `tools/list` і наявність core UniBridge tools;
+- `UniBridge_Discover Action=Ping`;
+- `UniBridge_ReadConsole Action=ClearConsole`;
+- `UniBridge_ManageEditor Action=WaitForReady`;
+- `UniBridge_ValidateScript` для package script path у `Packages/...`;
+- `UniBridge_AssetIntelligence Action=ReadText`;
+- compact `UniBridge_ContextSnapshot`;
+- bounded `UniBridge_SceneObjectView`;
+- `UniBridge_WorkflowRecipes Execute RunCoreSmokeTest` з cleanup;
+- reload-safe `RefreshAssets`;
+- `RequestScriptCompilationNoWait` + `WaitForReadyAfterReload`;
+- `GetCompilationDiagnostics` з build-system/assembly freshness guardrails;
+- фінальний `ReadConsole DiagnosticSummary`.
+
+Runner пише JSON report у `Library/UniBridge/mcp-smoke-regression-*.json` у
+цільовому Unity проекті та повертає non-zero exit code, якщо будь-який step
+не проходить. Опційні switches: `-IncludePlayMode`, `-IncludeUiRecipe`,
+`-IncludeAssetRecipe`, `-SkipRefresh`, `-SkipCompile`.
+
+PowerShell файл є зручним Windows entrypoint, а MCP stdio/JSON-RPC loop винесено
+у Python helper, бо він стабільніше працює з UTF-8 line-delimited JSON і
+перезапуском relay між кроками.
+
+Очікуваний результат: перед кожним релізом/синком у Domovyk або інший проект
+можна запускати один repeatable smoke gate замість ручної серії MCP викликів.
+
 ## 2026-06-21: UniBridge 0.2.34 Large Tool Internal Refactor
 
 Четвертий крок planned polish: зменшити розмір/когнітивне навантаження

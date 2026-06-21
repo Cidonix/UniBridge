@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.34",
+  "version": "0.2.35",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Improved\n\n- UniBridge_AssetIntelligence now accepts Action=ReadText as a natural alias for Action=Read, preventing noisy enum-deserialization console errors when agents ask to read a text asset.\n- Split UniBridge_Script validation internals into ManageScript.Validation.cs so the legacy script router is easier to maintain without changing script validation behavior.\n\n### Previous Changes\n\n- Added a shared ProjectPathResolver used by high-risk path workflows so Assets, Packages, ProjectSettings, file URIs, and absolute project paths resolve consistently.\n- UniBridge_ValidateScript can now validate C# files from Packages and absolute project paths, not only Assets paths.\n- Asset intelligence, semantic YAML diff, script intelligence, Unity search, additive scene validation, and batch rollback diagnostics now share the same path resolver for more reliable exists/path evidence."
+    "changelog": "### Added\n\n- Added Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1, a repeatable MCP stdio smoke regression runner for live Unity projects. It validates tool discovery, ping, console, editor readiness, ValidateScript, AssetIntelligence ReadText, ContextSnapshot, SceneObjectView, WorkflowRecipes, refresh/compile reload boundaries, compilation diagnostics, and final console health with a JSON report and non-zero exit code on failure.\n\n### Previous Changes\n\n- UniBridge_AssetIntelligence accepts Action=ReadText as a natural alias for Action=Read.\n- Split UniBridge_Script validation internals into ManageScript.Validation.cs so the legacy script router is easier to maintain without changing script validation behavior.\n- Added a shared ProjectPathResolver used by high-risk path workflows so Assets, Packages, ProjectSettings, file URIs, and absolute project paths resolve consistently."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

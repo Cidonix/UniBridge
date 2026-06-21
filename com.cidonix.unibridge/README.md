@@ -19,6 +19,8 @@ through an approval-based connection flow.
   prefabs, UI, capture, validation, animation, rendering, physics, navigation,
   tilemaps, input actions, timeline, audio, VFX, runtime profiling, runtime
   state probing, and workflow recipes.
+- Development smoke regression runner under `Tools~/McpSmokeRegression` for
+  repeatable live MCP validation before release/package sync.
 - Natural aliases for common agent phrasing, such as `AssetIntelligence`
   `Action=ReadText` for text asset reads.
 - Read-only asset structure workflows for prefab and already-loaded scene
@@ -99,6 +101,32 @@ Full documentation lives in `Documentation~/unibridge.md`.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
+
+## MCP Smoke Regression
+
+For release validation against a live Unity project, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass `
+  -File .\com.cidonix.unibridge\Tools~\McpSmokeRegression\Run-McpSmokeRegression.ps1 `
+  -ProjectPath H:\Repos\UnityRepos\UniBridge_Test_Project
+```
+
+The suite talks to Unity through the bundled relay and real MCP stdio, then
+writes a JSON report to the target project's `Library/UniBridge` folder. Use
+`-IncludePlayMode`, `-IncludeUiRecipe`, or `-IncludeAssetRecipe` for broader
+coverage. Python must be available on `PATH`; the PowerShell script is the
+Windows entrypoint and launches the Python helper that manages JSON-RPC.
+
+## Known 0.2.35 Notes
+
+- Added a repeatable MCP smoke regression runner that checks core tool
+  discovery, editor readiness, console health, script validation, asset text
+  reads, compact context snapshots, scene/object hierarchy reads, workflow
+  recipe execution, refresh/compile reload boundaries, compilation diagnostics,
+  and final console diagnostics.
+- The runner exits non-zero on failed assertions so it can be used as a local
+  release gate before syncing UniBridge into downstream Unity projects.
 
 ## Known 0.2.33 Notes
 

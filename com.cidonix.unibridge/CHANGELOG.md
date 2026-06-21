@@ -2,6 +2,23 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.35
+
+### Added
+
+- Added `Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1`, with a Python
+  JSON-RPC helper, as a repeatable MCP stdio smoke regression suite for live
+  Unity projects.
+- The suite verifies core `tools/list` discoverability, `UniBridge_Discover`,
+  console clear/read, editor readiness, `ValidateScript` for package scripts,
+  `AssetIntelligence Action=ReadText`, compact `ContextSnapshot`,
+  `SceneObjectView`, `WorkflowRecipes Execute RunCoreSmokeTest`,
+  refresh/compile reload boundaries, `GetCompilationDiagnostics`, and final
+  console health.
+- The runner writes a JSON report under the target project by default and exits
+  non-zero when any regression assertion fails. Optional switches extend
+  coverage to Play Mode, UI recipe, and asset recipe smoke checks.
+
 ## 0.2.34
 
 ### Improved
