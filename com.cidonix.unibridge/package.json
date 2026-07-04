@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.37",
+  "version": "0.2.38",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- ManageGameObject SetComponentProperty now handles Unity object references more reliably, including objectIdString, asset path/GUID, {guid,fileID,type} subassets, and {find,component} scene component payloads.\n- TextMeshPro font assignment now syncs m_fontAsset, m_sharedMaterial, font/fontSharedMaterial, and renderer shared material when a matching TMP material can be resolved, and responses include before/after font/material evidence.\n- MeshRenderer sharedMaterial/sharedMaterials now accept material reference payloads directly and return actionable errors instead of misleading property-not-found messages.\n- ManageUI SetGraphic can update world-space TMPro.TextMeshPro font/material/color targets and reports the resulting TMP font/material state.\n- BatchActions ValidateScript now supports read-only validation of scripts under both Assets/... and Packages/....\n\n### Previous Changes\n\n- RuntimeStateProbe and RuntimeProfiler read-only sampling now honor MCP/client cancellation and scheduler timeouts.\n- UniBridge_ExecutionStatus adds Action=ReapStale to cancel and release stale read-only scheduler operations.\n- Added Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1, a repeatable MCP stdio smoke regression runner for live Unity projects."
+    "changelog": "### Fixed\n\n- WorkSession semantic review now detects stale/noisy scene baselines when loaded scene object ids no longer overlap after reloads or object-id churn, and returns a compact semanticBaselineStale/reviewSkipped status instead of thousands of fake deleted/created changes.\n- Compact WorkSession review now uses a lightweight scene identity/count capture, so ExecutionStatus and post-batch review can diagnose stale baselines without serializing components, renderers, prefab info, and transforms for every loaded object.\n- Compact WorkSession changed-file review now uses metadata-only scanning instead of hashing every tracked file; full hash-accurate review remains available through UniBridge_WorkSession Action=Review.\n- BatchActions post-action WorkSession review is lightweight by default and does not run scene semantic review unless IncludeWorkSessionSemanticReview=true is explicitly requested.\n- ExecutionStatus WorkSession summaries now expose bounded semantic review controls so agents can keep scheduler diagnostics quick while still requesting stale-baseline evidence when needed.\n\n### Previous Changes\n\n- ManageGameObject SetComponentProperty handles Unity object references more reliably, including objectIdString, asset path/GUID, subassets, and scene component payloads.\n- TextMeshPro font assignment syncs serialized/runtime font and material state.\n- BatchActions ValidateScript supports read-only validation of scripts under both Assets/... and Packages/...."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

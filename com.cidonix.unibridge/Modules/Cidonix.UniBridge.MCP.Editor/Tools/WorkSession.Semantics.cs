@@ -60,6 +60,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         }
 
         static object BuildSemanticReview(SessionState state, bool include, int maxChanges)
+            => BuildSemanticReview(state, include, maxChanges, lightweight: false);
+
+        static object BuildSemanticReview(SessionState state, bool include, int maxChanges, bool lightweight)
         {
             if (!include)
             {
@@ -96,8 +99,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             try
             {
                 var baseline = JsonConvert.DeserializeObject<SceneSemanticCollection>(File.ReadAllText(baselinePath));
-                var current = CaptureSceneSemantics(state.Options ?? new ScanOptions());
-                var comparison = CompareSceneSemantics(baseline, current, Math.Max(1, maxChanges));
+                var current = CaptureSceneSemantics(state.Options ?? new ScanOptions(), lightweight);
+                var comparison = CompareSceneSemantics(baseline, current, Math.Max(1, maxChanges), lightweight);
                 var warnings = new List<string>();
                 warnings.AddRange(state.SemanticBaseline.Warnings ?? new List<string>());
                 warnings.AddRange(baseline?.Warnings ?? new List<string>());
@@ -107,7 +110,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 return new
                 {
                     enabled = true,
+                    reviewMode = comparison.ReviewMode,
+                    lightweight,
                     comparedBy = "loaded scene objectId, with hierarchy path/indexedPath for explanation",
+                    semanticBaselineStale = comparison.SemanticBaselineStale,
+                    reviewSkipped = comparison.ReviewSkipped,
+                    changeDetailsSkipped = comparison.ChangeDetailsSkipped,
+                    reason = comparison.SkipReason,
+                    suggestedAction = comparison.SuggestedAction,
+                    suppressedChangeCount = comparison.SuppressedChangeCount,
                     baseline = new
                     {
                         capturedUtc = state.SemanticBaseline.CapturedUtc,
@@ -128,7 +139,11 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     changes = comparison.Changes.Select(ToSemanticChangeDto).ToArray(),
                     truncated = comparison.Truncated,
                     warnings = warnings.Distinct().ToArray(),
-                    nextSuggestedCalls = comparison.Summary.TotalChanges > 0
+                    nextSuggestedCalls = comparison.ReviewSkipped
+                        ? BuildSemanticBaselineRefreshSuggestions(state)
+                        : comparison.ChangeDetailsSkipped
+                        ? new[] { $"UniBridge_WorkSession Action=Review SessionId={state.SessionId} IncludeSemanticReview=true MaxSemanticChanges={Math.Max(DefaultMaxSemanticChanges, maxChanges * 2)}" }
+                        : comparison.Summary.TotalChanges > 0
                         ? new[] { $"UniBridge_WorkSession Action=Review SessionId={state.SessionId} MaxSemanticChanges={Math.Max(DefaultMaxSemanticChanges, maxChanges * 2)}" }
                         : Array.Empty<string>()
                 };
@@ -144,12 +159,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
         }
 
-        static SceneSemanticCollection CaptureSceneSemantics(ScanOptions options)
+        static SceneSemanticCollection CaptureSceneSemantics(ScanOptions options, bool lightweight = false)
         {
             var maxObjects = Math.Max(0, options?.MaxSemanticObjects ?? DefaultMaxSemanticObjects);
             var collection = new SceneSemanticCollection
             {
                 Version = 1,
+                CaptureMode = lightweight ? "Lightweight" : "Full",
                 CapturedUtc = DateTime.UtcNow.ToString("o"),
                 ProjectRoot = NormalizeSlashes(ProjectRoot),
                 UnityVersion = Application.unityVersion,
@@ -176,7 +192,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
                 foreach (var root in scene.GetRootGameObjects().OrderBy(go => go.transform.GetSiblingIndex()))
                 {
-                    TraverseSemanticObject(root, null, 0, collection, sceneSnapshot, ref traversalIndex, maxObjects);
+                    TraverseSemanticObject(root, null, 0, collection, sceneSnapshot, ref traversalIndex, maxObjects, lightweight);
                     if (collection.Truncated)
                     {
                         break;
@@ -206,7 +222,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             SceneSemanticCollection collection,
             SemanticSceneSnapshot scene,
             ref int traversalIndex,
-            int maxObjects)
+            int maxObjects,
+            bool lightweight)
         {
             if (gameObject == null || collection.Truncated)
             {
@@ -224,13 +241,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 return;
             }
 
-            scene.Objects.Add(BuildSemanticObject(gameObject, parent, depth, traversalIndex++));
+            scene.Objects.Add(BuildSemanticObject(gameObject, parent, depth, traversalIndex++, lightweight));
             collection.TotalObjects++;
 
             var transform = gameObject.transform;
             for (var i = 0; i < transform.childCount; i++)
             {
-                TraverseSemanticObject(transform.GetChild(i).gameObject, gameObject, depth + 1, collection, scene, ref traversalIndex, maxObjects);
+                TraverseSemanticObject(transform.GetChild(i).gameObject, gameObject, depth + 1, collection, scene, ref traversalIndex, maxObjects, lightweight);
                 if (collection.Truncated)
                 {
                     return;
@@ -238,14 +255,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
         }
 
-        static SemanticObjectSnapshot BuildSemanticObject(GameObject gameObject, GameObject parent, int depth, int traversalIndex)
+        static SemanticObjectSnapshot BuildSemanticObject(GameObject gameObject, GameObject parent, int depth, int traversalIndex, bool lightweight)
         {
             var transform = gameObject.transform;
             var parentTransform = transform.parent;
             var parentGameObject = parentTransform != null ? parentTransform.gameObject : parent;
-            var components = gameObject.GetComponents<Component>();
 
-            return new SemanticObjectSnapshot
+            var snapshot = new SemanticObjectSnapshot
             {
                 TraversalIndex = traversalIndex,
                 Depth = depth,
@@ -263,14 +279,22 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 ActiveInHierarchy = gameObject.activeInHierarchy,
                 Tag = SafeTag(gameObject),
                 Layer = gameObject.layer,
-                LayerName = LayerMask.LayerToName(gameObject.layer),
-                ComponentTypes = components.Select(component => component == null ? "<missing>" : component.GetType().FullName ?? component.GetType().Name).ToList(),
-                MissingScripts = components.Count(component => component == null),
-                Renderers = gameObject.GetComponents<Renderer>().Where(renderer => renderer != null).Select(BuildRendererSnapshot).ToList(),
-                Prefab = BuildPrefabSnapshot(gameObject),
-                LocalTransform = BuildLocalTransformSignature(transform),
-                WorldTransform = BuildWorldTransformSignature(transform)
+                LayerName = LayerMask.LayerToName(gameObject.layer)
             };
+
+            if (lightweight)
+            {
+                return snapshot;
+            }
+
+            var components = gameObject.GetComponents<Component>();
+            snapshot.ComponentTypes = components.Select(component => component == null ? "<missing>" : component.GetType().FullName ?? component.GetType().Name).ToList();
+            snapshot.MissingScripts = components.Count(component => component == null);
+            snapshot.Renderers = gameObject.GetComponents<Renderer>().Where(renderer => renderer != null).Select(BuildRendererSnapshot).ToList();
+            snapshot.Prefab = BuildPrefabSnapshot(gameObject);
+            snapshot.LocalTransform = BuildLocalTransformSignature(transform);
+            snapshot.WorldTransform = BuildWorldTransformSignature(transform);
+            return snapshot;
         }
 
         static SemanticRendererSnapshot BuildRendererSnapshot(Renderer renderer)
@@ -314,7 +338,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
         }
 
-        static SemanticComparison CompareSceneSemantics(SceneSemanticCollection before, SceneSemanticCollection after, int maxChanges)
+        static SemanticComparison CompareSceneSemantics(SceneSemanticCollection before, SceneSemanticCollection after, int maxChanges, bool lightweight = false)
         {
             before ??= new SceneSemanticCollection();
             after ??= new SceneSemanticCollection();
@@ -324,9 +348,55 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             var allIds = new HashSet<long>(beforeObjects.Keys);
             allIds.UnionWith(afterObjects.Keys);
 
-            var comparison = new SemanticComparison();
+            var comparison = new SemanticComparison
+            {
+                ReviewMode = lightweight ? "Lightweight" : "Full"
+            };
             var allChanges = new List<SemanticChange>();
             var sceneCounts = BuildSceneCounts(before, after);
+            var commonObjectCount = beforeObjects.Keys.Count(id => afterObjects.ContainsKey(id));
+
+            comparison.Summary.ScenesTracked = sceneCounts.Count;
+            comparison.Summary.BaselineObjects = before.TotalObjects;
+            comparison.Summary.CurrentObjects = after.TotalObjects;
+            comparison.Summary.CommonObjects = commonObjectCount;
+
+            if (before.TotalObjects > 0 &&
+                after.TotalObjects > 0 &&
+                beforeObjects.Count > 0 &&
+                afterObjects.Count > 0 &&
+                commonObjectCount == 0)
+            {
+                comparison.SemanticBaselineStale = true;
+                comparison.ReviewSkipped = true;
+                comparison.SkipReason = "noCommonSceneObjectIds";
+                comparison.SuggestedAction = "refreshWorkSessionBaseline";
+                comparison.SuppressedChangeCount = beforeObjects.Count + afterObjects.Count;
+                comparison.Truncated = false;
+                comparison.Changes = new List<SemanticChange>();
+                comparison.Scenes = sceneCounts.Values
+                    .Where(scene => scene.BaselineObjects != scene.CurrentObjects)
+                    .OrderBy(scene => scene.ScenePath ?? scene.SceneName)
+                    .Cast<object>()
+                    .ToArray();
+                comparison.Warnings.Add("No common scene object ids were found between baseline and current semantic snapshots. The scene may have been reloaded or object ids changed, so semantic review was skipped instead of returning noisy fake deleted/created changes.");
+                return comparison;
+            }
+
+            if (lightweight)
+            {
+                comparison.ChangeDetailsSkipped = true;
+                comparison.SuggestedAction = "runFullWorkSessionReview";
+                comparison.SuppressedChangeCount = allIds.Count;
+                comparison.Truncated = false;
+                comparison.Changes = new List<SemanticChange>();
+                comparison.Scenes = sceneCounts.Values
+                    .Where(scene => scene.BaselineObjects != scene.CurrentObjects)
+                    .OrderBy(scene => scene.ScenePath ?? scene.SceneName)
+                    .Cast<object>()
+                    .ToArray();
+                return comparison;
+            }
 
             foreach (var id in allIds.OrderBy(value => value))
             {
@@ -353,6 +423,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             comparison.Summary.ScenesTracked = sceneCounts.Count;
             comparison.Summary.BaselineObjects = before.TotalObjects;
             comparison.Summary.CurrentObjects = after.TotalObjects;
+            comparison.Summary.CommonObjects = commonObjectCount;
             comparison.Summary.TotalChanges = allChanges.Count;
             comparison.Truncated = allChanges.Count > maxChanges;
             comparison.Changes = allChanges.Take(maxChanges).ToList();
@@ -362,16 +433,20 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 .Cast<object>()
                 .ToArray();
 
-            if (before.TotalObjects > 0 &&
-                after.TotalObjects > 0 &&
-                comparison.Summary.CommonObjects == 0 &&
-                comparison.Summary.ObjectsCreated > 0 &&
-                comparison.Summary.ObjectsDeleted > 0)
-            {
-                comparison.Warnings.Add("No common scene object ids were found between baseline and current semantic snapshots. The scene may have been reloaded or object ids changed, so semantic diff may be noisy.");
-            }
-
             return comparison;
+        }
+
+        static string[] BuildSemanticBaselineRefreshSuggestions(SessionState state)
+        {
+            var name = string.IsNullOrWhiteSpace(state?.Name)
+                ? "refresh semantic baseline"
+                : state.Name;
+            return new[]
+            {
+                $"UniBridge_WorkSession Action=End SessionId={state?.SessionId}",
+                $"UniBridge_WorkSession Action=Begin Name=\"{name}\" IncludeSceneSemantics=true",
+                "Use the new WorkSession sessionId for future Review/Diff calls."
+            };
         }
 
         static void CompareExistingSemanticObject(
@@ -808,6 +883,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         sealed class SceneSemanticCollection
         {
             public int Version;
+            public string CaptureMode;
             public string CapturedUtc;
             public string ProjectRoot;
             public string UnityVersion;
@@ -882,11 +958,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         sealed class SemanticComparison
         {
+            public string ReviewMode = "Full";
             public SemanticSummary Summary = new();
             public object[] Scenes = Array.Empty<object>();
             public List<SemanticChange> Changes = new();
             public bool Truncated;
             public List<string> Warnings = new();
+            public bool SemanticBaselineStale;
+            public bool ReviewSkipped;
+            public bool ChangeDetailsSkipped;
+            public string SkipReason;
+            public string SuggestedAction;
+            public int SuppressedChangeCount;
         }
 
         sealed class SemanticSummary

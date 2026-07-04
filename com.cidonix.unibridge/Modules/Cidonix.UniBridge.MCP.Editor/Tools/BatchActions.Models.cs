@@ -30,6 +30,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             public bool RollbackAssets;
             public bool IncludeImpact;
             public bool IncludeWorkSessionReview;
+            public bool IncludeWorkSessionSemanticReview;
             public int WorkSessionReviewMaxChanged;
             public bool IncludeConsoleDelta;
             public string ConsoleDeltaMarkerLabel;
@@ -54,6 +55,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     RollbackAssets = GetBool(raw, true, "RollbackAssets", "rollbackAssets", "rollback_assets", "AssetRollback", "assetRollback", "asset_rollback"),
                     IncludeImpact = GetBool(raw, true, "IncludeImpact", "includeImpact", "include_impact", "Impact", "impact", "Plan", "plan"),
                     IncludeWorkSessionReview = GetBool(raw, !dryRun, "IncludeWorkSessionReview", "includeWorkSessionReview", "include_work_session_review", "WorkSessionReview", "workSessionReview", "AutoReview", "autoReview"),
+                    IncludeWorkSessionSemanticReview = GetBool(raw, false, "IncludeWorkSessionSemanticReview", "includeWorkSessionSemanticReview", "include_work_session_semantic_review", "WorkSessionSemanticReview", "workSessionSemanticReview", "SemanticReview", "semanticReview"),
                     WorkSessionReviewMaxChanged = Math.Max(1, GetInt(raw, 20, "WorkSessionReviewMaxChanged", "workSessionReviewMaxChanged", "work_session_review_max_changed")),
                     IncludeConsoleDelta = GetBool(raw, false, "IncludeConsoleDelta", "includeConsoleDelta", "include_console_delta", "ConsoleDelta", "consoleDelta", "PostActionConsole", "postActionConsole"),
                     ConsoleDeltaMarkerLabel = string.IsNullOrWhiteSpace(consoleMarkerLabel) ? null : consoleMarkerLabel.Trim(),

@@ -234,7 +234,11 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             });
         }
 
-        public static object BuildCompactActiveReview(int maxChanged = 20, bool includeChangedFiles = true)
+        public static object BuildCompactActiveReview(
+            int maxChanged = 20,
+            bool includeChangedFiles = true,
+            bool includeSemanticReview = true,
+            int maxSemanticChanges = 10)
         {
             try
             {
@@ -255,12 +259,18 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
 
                 var state = LoadStateById(sessionId);
                 var limit = Math.Max(1, maxChanged);
-                var changes = BuildChanges(state, state.Options, limit);
-                var semanticReview = BuildSemanticReview(state, include: true, maxChanges: Math.Max(10, limit));
+                var semanticLimit = Math.Max(1, Math.Min(maxSemanticChanges, 10));
+                var changes = BuildChanges(state, state.Options, limit, computeHashes: false);
+                var semanticReview = BuildSemanticReview(state, includeSemanticReview, semanticLimit, lightweight: true);
                 return new
                 {
                     active = true,
                     reviewAvailable = true,
+                    reviewMode = "Compact",
+                    bounded = true,
+                    fileReviewMode = "MetadataOnly",
+                    semanticReviewIncluded = includeSemanticReview,
+                    semanticReviewMaxChanges = includeSemanticReview ? semanticLimit : 0,
                     session = ToSessionSummary(state),
                     summary = changes.Summary,
                     semanticReview,
@@ -424,7 +434,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             });
         }
 
-        static ProjectScan ScanProject(ScanOptions options, CaptureBudget capture, string sessionId)
+        static ProjectScan ScanProject(ScanOptions options, CaptureBudget capture, string sessionId, bool computeHashes = true)
         {
             var warnings = new List<string>();
             var files = new Dictionary<string, FileSnapshot>(StringComparer.OrdinalIgnoreCase);
@@ -463,7 +473,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 if (string.IsNullOrWhiteSpace(relative) || files.ContainsKey(relative))
                     return;
 
-                var snapshot = BuildSnapshot(relative, absolutePath, capture, sessionId);
+                var snapshot = BuildSnapshot(relative, absolutePath, capture, sessionId, computeHashes);
                 files[relative] = snapshot;
             }
         }
@@ -490,7 +500,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             return roots;
         }
 
-        static FileSnapshot BuildSnapshot(string relativePath, string absolutePath, CaptureBudget capture, string sessionId)
+        static FileSnapshot BuildSnapshot(string relativePath, string absolutePath, CaptureBudget capture, string sessionId, bool computeHash)
         {
             var info = new FileInfo(absolutePath);
             var extension = Path.GetExtension(relativePath);
@@ -500,7 +510,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 Exists = true,
                 SizeBytes = info.Length,
                 LastWriteUtc = info.LastWriteTimeUtc.ToString("o"),
-                Sha256 = TryComputeSha256(absolutePath),
+                Sha256 = computeHash ? TryComputeSha256(absolutePath) : null,
                 Kind = ClassifyPath(relativePath),
                 TextLike = IsTextLike(relativePath)
             };
@@ -517,9 +527,9 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             return snapshot;
         }
 
-        static ChangeSet BuildChanges(SessionState state, ScanOptions options, int maxChanged)
+        static ChangeSet BuildChanges(SessionState state, ScanOptions options, int maxChanged, bool computeHashes = true)
         {
-            var current = ScanProject(options ?? state.Options ?? new ScanOptions(), new CaptureBudget(0, 0), state.SessionId);
+            var current = ScanProject(options ?? state.Options ?? new ScanOptions(), new CaptureBudget(0, 0), state.SessionId, computeHashes);
             var items = new List<FileChange>();
             var allPaths = new HashSet<string>(state.Files.Keys, StringComparer.OrdinalIgnoreCase);
             allPaths.UnionWith(current.Files.Keys);

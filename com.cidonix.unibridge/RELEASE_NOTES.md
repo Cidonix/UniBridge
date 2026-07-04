@@ -1,6 +1,62 @@
-# UniBridge 0.2.37 Release Notes
+# UniBridge 0.2.38 Release Notes
 
 Release date: 2026-07-04
+
+This hotfix makes `UniBridge_WorkSession` review safe for large scenes after
+Unity reloads or object-id churn.
+
+Previously, a WorkSession semantic baseline captured across many loaded or
+additive scenes could become stale after a reload. When the current loaded-scene
+snapshot had no common object ids with the baseline, semantic review treated
+almost every object as deleted and recreated. In large scenes this could create
+thousands of fake changes, make `UniBridge_ExecutionStatus
+IncludeWorkSession=true` slow, and let `UniBridge_BatchActions` spend too much
+time in post-action WorkSession review even though the actual batch had already
+completed.
+
+`UniBridge_WorkSession` now detects this condition before building the change
+list. If both snapshots contain scene objects but `commonObjects=0`, semantic
+review returns a compact stale-baseline result:
+
+- `semanticBaselineStale=true`;
+- `reviewSkipped=true`;
+- `reason=noCommonSceneObjectIds`;
+- `suggestedAction=refreshWorkSessionBaseline`;
+- `suppressedChangeCount=<baseline objects + current objects>`.
+
+No fake deleted/created scene-object diff is returned in this case. The
+recommended recovery is to end the old WorkSession and begin a new one after the
+current scene/prefab/additive scene state is stable.
+
+Compact WorkSession review, used by `UniBridge_ExecutionStatus` and batch
+post-action review, now uses a lightweight scene identity/count capture. It
+does not serialize component lists, renderer state, prefab metadata, or
+transform signatures for every loaded object just to determine whether a
+semantic baseline is stale. Full semantic diffs are still available through
+`UniBridge_WorkSession Action=Review` when an agent explicitly needs detailed
+scene-object changes.
+
+Compact changed-file review now uses a metadata-only scan instead of hashing
+every tracked file in large projects. Full hash-accurate review remains
+available from `UniBridge_WorkSession Action=Review`, while scheduler snapshots
+and post-batch summaries stay fast enough for routine agent self-checks.
+
+`UniBridge_BatchActions` also keeps post-action WorkSession review lightweight
+by default. Executing batches still append changed-file review data when
+`IncludeWorkSessionReview` is true, but loaded-scene semantic review is skipped
+unless the caller explicitly passes `IncludeWorkSessionSemanticReview=true`.
+This prevents small mutating batches from timing out because of a heavy
+post-action semantic review.
+
+`UniBridge_ExecutionStatus` now exposes bounded WorkSession semantic review
+controls for diagnostics:
+
+- `IncludeWorkSessionSemanticReview` controls whether semantic review is
+  included in Snapshot/Recent WorkSession summaries;
+- `WorkSessionMaxSemanticChanges` bounds the returned semantic change samples
+  in compact scheduler diagnostics.
+
+## Previous 0.2.37 Notes
 
 This hotfix improves `SetComponentProperty` for the Unity object-reference
 cases that matter when an AI agent edits world-space UI and scene wiring.

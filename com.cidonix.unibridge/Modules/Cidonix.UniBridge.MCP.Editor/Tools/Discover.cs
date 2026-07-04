@@ -124,7 +124,7 @@ Use this first when a Codex agent is unsure whether UniBridge is connected or wh
                     calls = new[]
                     {
                         "UniBridge_WorkSession Action=Begin Name=<task>",
-                        "Run normal UniBridge tools for the task; UniBridge_BatchActions DryRun=false appends data.workSessionReview by default",
+                        "Run normal UniBridge tools for the task; UniBridge_BatchActions DryRun=false appends lightweight data.workSessionReview by default; pass IncludeWorkSessionSemanticReview=true only when loaded-scene semantic review is needed",
                         "UniBridge_ExecutionStatus Action=Snapshot to see scheduler state plus active WorkSession summary",
                         "UniBridge_WorkSession Action=Review",
                         "UniBridge_WorkSession Action=Diff Paths=[Assets/...]",

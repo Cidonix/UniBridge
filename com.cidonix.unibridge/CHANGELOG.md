@@ -2,6 +2,34 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.38
+
+### Fixed
+
+- `UniBridge_WorkSession` semantic review now detects stale/noisy scene
+  baselines when a reload, prefab-stage transition, additive scene reload, or
+  object-id churn leaves no common scene object ids between the baseline and
+  current loaded-scene snapshot. Instead of returning thousands of fake
+  deleted/created object changes, it returns a compact
+  `semanticBaselineStale=true`, `reviewSkipped=true`,
+  `reason=noCommonSceneObjectIds`, `suggestedAction=refreshWorkSessionBaseline`
+  status with the suppressed change count.
+- Compact WorkSession review now uses a lightweight scene identity/count
+  capture. `UniBridge_ExecutionStatus` and batch post-review can detect stale
+  semantic baselines without serializing component lists, renderer state,
+  prefab metadata, and transform signatures for every loaded scene object.
+- Compact WorkSession changed-file review now uses a metadata-only scan instead
+  of hashing every tracked file. Full hash-accurate file review remains
+  available through `UniBridge_WorkSession Action=Review`.
+- `UniBridge_BatchActions` post-action WorkSession review is now lightweight by
+  default. It still appends changed-file review data for executing batches, but
+  loaded-scene semantic review only runs when
+  `IncludeWorkSessionSemanticReview=true` is passed explicitly.
+- `UniBridge_ExecutionStatus` active WorkSession summaries now expose bounded
+  semantic review controls: `IncludeWorkSessionSemanticReview` and
+  `WorkSessionMaxSemanticChanges`. This keeps scheduler diagnostics quick while
+  still letting agents request stale semantic-baseline evidence on demand.
+
 ## 0.2.37
 
 ### Fixed

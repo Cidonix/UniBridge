@@ -5,6 +5,69 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-07-04: UniBridge 0.2.38 WorkSession Semantic Review Timeout/Stale Baseline Hotfix
+
+Причина: у `Domovyk` активний `UniBridge_WorkSession`
+`20260703T231547Z-37aae486db58` мав semantic baseline для багатьох
+loaded/additive сцен. Після reload/object-id churn
+`UniBridge_ExecutionStatus Action=Snapshot IncludeWorkSession=true
+WorkSessionMaxChanged=10` завершувався успішно, але тривав приблизно 76 секунд
+і повертав шумний semantic diff:
+
+- baseline scene object count ~1981;
+- current scene object count ~1988;
+- `commonObjects=0`;
+- `totalChanges` майже 4000;
+- усі об'єкти виглядали як fake deleted/created;
+- warning уже казав, що scene may have been reloaded або object ids changed.
+
+Через це mutating `UniBridge_BatchActions` із дефолтним
+`IncludeWorkSessionReview=true` міг виходити за MCP timeout/cancel boundary,
+хоча сама операція в Unity завершувалась нормально.
+
+Hotfix:
+
+- `WorkSession.CompareSceneSemantics(...)` тепер до побудови change list
+  перевіряє stale/noisy baseline case: якщо baseline і current мають об'єкти,
+  але `commonObjects=0`, semantic review не генерує тисячі fake
+  deleted/created changes;
+- відповідь у такому випадку компактна:
+  `semanticBaselineStale=true`, `reviewSkipped=true`,
+  `reason=noCommonSceneObjectIds`,
+  `suggestedAction=refreshWorkSessionBaseline`,
+  `suppressedChangeCount=<baseline+current flattened objects>`;
+- `nextSuggestedCalls` для skipped semantic review підказує завершити старий
+  WorkSession і почати новий із `IncludeSceneSemantics=true`;
+- `WorkSession.BuildCompactActiveReview(...)` отримав bounded semantic control:
+  `includeSemanticReview` і `maxSemanticChanges` із compact cap;
+- compact WorkSession review тепер використовує lightweight scene
+  identity/count capture. Він не серіалізує списки компонентів, renderer-и,
+  prefab info і transform signatures для кожного об'єкта, коли агенту треба
+  лише швидко визначити stale/noisy semantic baseline;
+- compact changed-file review у `ExecutionStatus` / post-batch self-check
+  тепер використовує metadata-only scan замість SHA256 для всіх tracked файлів.
+  Повний hash-accurate review лишається в
+  `UniBridge_WorkSession Action=Review`;
+- `BatchActions` зберігає changed-file WorkSession review після executing
+  batch, але не запускає scene semantic review за замовчуванням. Для явного
+  semantic self-check агент має передати
+  `IncludeWorkSessionSemanticReview=true`;
+- `ExecutionStatus Snapshot/Recent` отримав параметри
+  `IncludeWorkSessionSemanticReview` і `WorkSessionMaxSemanticChanges`, щоб
+  можна було свідомо робити швидкий scheduler-only/changed-files status або
+  bounded semantic diagnostics.
+
+Очікувана поведінка після 0.2.38:
+
+- compile diagnostics, console read, validate script і batch без semantic
+  WorkSession review працюють як раніше;
+- stale WorkSession semantic baseline більше не створює fake diff на тисячі
+  змін;
+- small batch не timeout-иться тільки через post-action WorkSession semantic
+  review;
+- якщо агенту потрібна semantic перевірка після batch, він явно вмикає
+  `IncludeWorkSessionSemanticReview=true`.
+
 ## 2026-07-04: UniBridge 0.2.37 TMP/Object Reference Setter Hotfix
 
 Причина: під час редагування `Domovyk` у Unity 6.5.2f1 агент уперся в три

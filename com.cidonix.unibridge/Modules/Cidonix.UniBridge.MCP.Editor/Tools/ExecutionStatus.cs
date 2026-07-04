@@ -28,6 +28,8 @@ Args:
     IncludeDisabled: For Policies, include tools disabled in the user's UniBridge settings.
     IncludeWorkSession: For Snapshot/Recent, include active UniBridge_WorkSession review summary.
     WorkSessionMaxChanged: Maximum changed files returned in the active WorkSession summary.
+    IncludeWorkSessionSemanticReview: For Snapshot/Recent, include bounded scene semantic review in the active WorkSession summary. Default true.
+    WorkSessionMaxSemanticChanges: Maximum semantic scene changes returned in the active WorkSession summary. Capped internally for compact diagnostics.
 
 Returns:
     success, message, and scheduler/policy diagnostics.";
@@ -52,7 +54,9 @@ Returns:
                     ForceReadOnly = new { type = "boolean", description = "For ReapStale, release stale read-only leases after canceling them.", @default = true },
                     IncludeDisabled = new { type = "boolean", description = "For Policies, include tools disabled in settings.", @default = false },
                     IncludeWorkSession = new { type = "boolean", description = "For Snapshot/Recent, include active UniBridge_WorkSession review summary.", @default = true },
-                    WorkSessionMaxChanged = new { type = "integer", description = "Maximum changed files returned in the active WorkSession summary.", @default = 20 }
+                    WorkSessionMaxChanged = new { type = "integer", description = "Maximum changed files returned in the active WorkSession summary.", @default = 20 },
+                    IncludeWorkSessionSemanticReview = new { type = "boolean", description = "For Snapshot/Recent, include bounded scene semantic review in the active WorkSession summary.", @default = true },
+                    WorkSessionMaxSemanticChanges = new { type = "integer", description = "Maximum semantic scene changes returned in the active WorkSession summary. Compact diagnostics cap this value.", @default = 10 }
                 },
                 additionalProperties = true
             };
@@ -68,6 +72,8 @@ Returns:
             var forceReadOnly = ReadBool(parameters, true, "ForceReadOnly", "forceReadOnly", "force_read_only");
             var includeWorkSession = ReadBool(parameters, true, "IncludeWorkSession", "includeWorkSession", "include_work_session");
             var workSessionMaxChanged = Math.Max(1, ReadInt(parameters, 20, "WorkSessionMaxChanged", "workSessionMaxChanged", "work_session_max_changed"));
+            var includeWorkSessionSemanticReview = ReadBool(parameters, true, "IncludeWorkSessionSemanticReview", "includeWorkSessionSemanticReview", "include_work_session_semantic_review", "SemanticReview", "semanticReview");
+            var workSessionMaxSemanticChanges = Math.Max(1, ReadInt(parameters, 10, "WorkSessionMaxSemanticChanges", "workSessionMaxSemanticChanges", "work_session_max_semantic_changes", "MaxSemanticChanges", "maxSemanticChanges"));
 
             try
             {
@@ -78,7 +84,11 @@ Returns:
                         action = "Recent",
                         recent = ToolExecutionScheduler.Recent(recentLimit),
                         workSession = includeWorkSession
-                            ? WorkSession.BuildCompactActiveReview(workSessionMaxChanged, includeChangedFiles: true)
+                            ? WorkSession.BuildCompactActiveReview(
+                                workSessionMaxChanged,
+                                includeChangedFiles: true,
+                                includeSemanticReview: includeWorkSessionSemanticReview,
+                                maxSemanticChanges: workSessionMaxSemanticChanges)
                             : null
                     }),
                     "policies" or "policy" => Response.Success("Built UniBridge tool execution policy summary.", new
@@ -98,7 +108,11 @@ Returns:
                         action = "Snapshot",
                         scheduler = ToolExecutionScheduler.Snapshot(recentLimit),
                         workSession = includeWorkSession
-                            ? WorkSession.BuildCompactActiveReview(workSessionMaxChanged, includeChangedFiles: true)
+                            ? WorkSession.BuildCompactActiveReview(
+                                workSessionMaxChanged,
+                                includeChangedFiles: true,
+                                includeSemanticReview: includeWorkSessionSemanticReview,
+                                maxSemanticChanges: workSessionMaxSemanticChanges)
                             : null
                     })
                 };
