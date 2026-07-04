@@ -2001,13 +2001,17 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 report.Error($"ValidateScript Uri '{uri}' must resolve to a .cs file.");
             }
 
-            if (!scriptPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+            var resolved = ProjectPathResolver.Resolve(scriptPath, assumeAssetRelative: true);
+            var assetPath = resolved.AssetPath ?? scriptPath;
+            if (!assetPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+                !assetPath.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
             {
-                report.Error($"ValidateScript Uri '{uri}' must resolve under Assets/.");
+                report.Error($"ValidateScript Uri '{uri}' must resolve under Assets/ or Packages/.");
             }
-            else if (AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath) == null && !File.Exists(ToProjectAbsolutePath(scriptPath)))
+            else if (AssetDatabase.LoadAssetAtPath<MonoScript>(assetPath) == null &&
+                     (string.IsNullOrWhiteSpace(resolved.AbsolutePath) || !File.Exists(resolved.AbsolutePath)))
             {
-                report.Error($"Script file was not found at '{scriptPath}'.");
+                report.Error($"Script file was not found at '{assetPath}'.");
             }
 
             var level = GetString(parameters, "Level", "level", "ValidationLevel", "validationLevel", "validation_level") ?? "basic";

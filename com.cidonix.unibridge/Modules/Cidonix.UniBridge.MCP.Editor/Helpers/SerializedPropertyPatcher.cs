@@ -816,6 +816,22 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             }
 
             var expectedType = ResolveObjectReferenceType(property);
+            var resolved = ResolveObjectReferenceValue(expectedType, token);
+            if (resolved == null)
+            {
+                throw new ArgumentException($"Object reference value for '{property.propertyPath}' resolved to null. Provide a valid objectId/objectIdString, asset path/GUID, or a find/component payload.");
+            }
+
+            return resolved;
+        }
+
+        public static Object ResolveObjectReferenceValue(Type expectedType, JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                return null;
+            }
+
             if (token.Type == JTokenType.Integer)
             {
                 return CastObjectReference(UnityApiAdapter.GetObjectFromId(token.ToObject<long>()), expectedType);
@@ -823,12 +839,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
             if (token.Type == JTokenType.String)
             {
-                return ResolveObjectReferenceFromPath(token.ToString(), expectedType);
+                var text = token.ToString().Trim();
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numericId))
+                {
+                    return CastObjectReference(UnityApiAdapter.GetObjectFromId(numericId), expectedType);
+                }
+
+                return ResolveObjectReferenceFromPath(text, expectedType);
             }
 
             if (token is JObject obj)
             {
-                var id = obj.Value<long?>("objectId") ?? obj.Value<long?>("instanceId") ?? obj.Value<long?>("id");
+                var id = ReadLong(obj, "objectId", "object_id", "objectIdString", "object_id_string", "instanceId", "instance_id", "instanceIdString", "instance_id_string", "id", "idString");
                 if (id.HasValue)
                 {
                     return CastObjectReference(UnityApiAdapter.GetObjectFromId(id.Value), expectedType);
@@ -843,17 +865,58 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                         IncludeInactive = true,
                         IncludePrefabStage = true
                     });
+                    if (go == null)
+                    {
+                        throw new ArgumentException($"Scene object '{find}' was not found for object reference payload.");
+                    }
+
+                    var componentName =
+                        obj.Value<string>("component") ??
+                        obj.Value<string>("componentName") ??
+                        obj.Value<string>("component_name") ??
+                        obj.Value<string>("type") ??
+                        obj.Value<string>("typeName") ??
+                        obj.Value<string>("type_name");
+                    if (!string.IsNullOrWhiteSpace(componentName))
+                    {
+                        var componentType = FindType(componentName);
+                        if (componentType == null || !typeof(Component).IsAssignableFrom(componentType))
+                        {
+                            throw new ArgumentException($"Component type '{componentName}' could not be resolved for object reference payload.");
+                        }
+
+                        var component = go.GetComponent(componentType);
+                        if (component == null)
+                        {
+                            throw new ArgumentException($"Scene object '{find}' was found, but it does not have component '{componentName}'.");
+                        }
+
+                        return CastObjectReference(component, expectedType);
+                    }
+
+                    if (expectedType == typeof(Component))
+                    {
+                        var components = go.GetComponents<Component>().Where(component => component != null).ToArray();
+                        if (components.Length == 1)
+                        {
+                            return components[0];
+                        }
+
+                        throw new ArgumentException($"Object reference for '{find}' targets a UnityEngine.Component field. Add component/componentName/type to disambiguate which component to assign.");
+                    }
+
                     return CastObjectReference(go, expectedType);
                 }
 
                 var path = obj.Value<string>("assetPath") ?? obj.Value<string>("path") ?? obj.Value<string>("guid");
                 if (!string.IsNullOrWhiteSpace(path))
                 {
-                    return ResolveObjectReferenceFromPath(path, expectedType);
+                    var fileId = ReadLong(obj, "fileID", "fileId", "localId", "localIdentifierInFile", "localIdentifier");
+                    return ResolveObjectReferenceFromPath(path, expectedType, fileId);
                 }
             }
 
-            throw new ArgumentException("Object reference value must be null, an instance id, asset path/GUID, or an object with assetPath/path/guid/objectId/find.");
+            throw new ArgumentException("Object reference value must be null, an instance id/objectIdString, asset path/GUID, or an object with assetPath/path/guid/fileID/objectId/find/component.");
         }
 
         static object ApplyManagedReference(
@@ -998,7 +1061,37 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             return FindType(trimmed);
         }
 
-        static Object ResolveObjectReferenceFromPath(string pathOrGuid, Type expectedType)
+        static long? ReadLong(JObject obj, params string[] names)
+        {
+            if (obj == null || names == null)
+            {
+                return null;
+            }
+
+            foreach (var name in names)
+            {
+                if (!obj.TryGetValue(name, StringComparison.OrdinalIgnoreCase, out var token) ||
+                    token == null ||
+                    token.Type == JTokenType.Null)
+                {
+                    continue;
+                }
+
+                if (token.Type == JTokenType.Integer)
+                {
+                    return token.Value<long>();
+                }
+
+                if (long.TryParse(token.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+                {
+                    return parsed;
+                }
+            }
+
+            return null;
+        }
+
+        static Object ResolveObjectReferenceFromPath(string pathOrGuid, Type expectedType, long? localFileId = null)
         {
             if (string.IsNullOrWhiteSpace(pathOrGuid))
             {
@@ -1018,6 +1111,28 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             }
 
             var targetType = expectedType ?? typeof(Object);
+            if (localFileId.HasValue)
+            {
+                var allAssets = AssetDatabase.LoadAllAssetsAtPath(path);
+                foreach (var candidate in allAssets)
+                {
+                    if (candidate == null)
+                    {
+                        continue;
+                    }
+
+                    if (!long.TryParse(GetLocalIdentifier(candidate), NumberStyles.Integer, CultureInfo.InvariantCulture, out var candidateId) ||
+                        candidateId != localFileId.Value)
+                    {
+                        continue;
+                    }
+
+                    return CastObjectReference(candidate, targetType);
+                }
+
+                throw new ArgumentException($"Could not load {targetType.Name} at '{path}' with local fileID '{localFileId.Value}'.");
+            }
+
             var asset = AssetDatabase.LoadAssetAtPath(path, targetType);
             if (asset == null && targetType != typeof(Object))
             {
@@ -1031,6 +1146,27 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             }
 
             return asset;
+        }
+
+        static string GetLocalIdentifier(Object obj)
+        {
+            if (obj == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var method = typeof(Unsupported).GetMethod(
+                    "GetLocalIdentifierInFileForPersistentObject",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                var value = method?.Invoke(null, new object[] { obj });
+                return value?.ToString();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         static Object CastObjectReference(Object obj, Type expectedType)

@@ -2,6 +2,37 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.37
+
+### Fixed
+
+- `UniBridge_ManageGameObject Action=SetComponentProperty` now resolves Unity
+  object references more reliably, including `objectIdString`, scene
+  `{find, method, component}` payloads, asset paths/GUIDs, and
+  `{guid,fileID,type}` subasset references.
+- TextMeshPro font assignment now uses a high-level path that updates
+  `m_fontAsset`, `m_sharedMaterial`, `font`, `fontSharedMaterial`, and the
+  attached renderer material when a matching TMP material can be resolved. The
+  response includes before/after font and material evidence instead of a bare
+  success message.
+- `MeshRenderer.sharedMaterial` and `MeshRenderer.sharedMaterials` now accept
+  material reference payloads directly and return actionable resolution errors
+  instead of misleading property-not-found diagnostics.
+- Custom `UnityEngine.Object`/`Component` fields and properties can now be set
+  from stable reference payloads, including hierarchy path plus component type,
+  object id strings, and asset subasset references. Unresolvable non-null
+  payloads fail explicitly instead of reporting a silent success.
+- `UniBridge_ManageUI Action=SetGraphic` can update world-space
+  `TMPro.TextMeshPro` targets, not only `RectTransform` UI graphics, and reports
+  the resulting TMP font/material state.
+- `UniBridge_ValidateScript` no longer reports the generic
+  `Rigidbody operations in Update()` warning just because a file contains both
+  `Rigidbody` references and unrelated `SerializedObject.Update()` calls. The
+  warning is now based on actual `void Update()` method bodies.
+- `UniBridge_BatchActions` now accepts read-only `UniBridge_ValidateScript`
+  steps for scripts under both `Assets/...` and `Packages/...`, so agents can
+  validate embedded package scripts through the same batch workflow.
+
 ## 0.2.36
 
 ### Fixed

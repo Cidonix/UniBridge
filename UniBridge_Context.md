@@ -1,9 +1,81 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-06-21, Europe/Kiev.
+Останнє оновлення: 2026-07-04, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-07-04: UniBridge 0.2.37 TMP/Object Reference Setter Hotfix
+
+Причина: під час редагування `Domovyk` у Unity 6.5.2f1 агент уперся в три
+практичні проблеми `UniBridge_ManageGameObject Action=SetComponentProperty`:
+
+- зміна `TextMeshPro.font` / `FontAssetPath` могла повертати success, але в
+  YAML лишались старі `m_fontAsset` / `m_sharedMaterial`;
+- `MeshRenderer.sharedMaterial/sharedMaterials` з payload
+  `{ guid, fileID, type }` давав misleading "Property not found";
+- кастомні `Component` поля могли репортити success, але лишатися
+  `{fileID: 0}`, якщо payload був не runtime component objectId.
+
+Hotfix:
+
+- `SerializedPropertyPatcher.ResolveObjectReferenceValue(...)` тепер є
+  shared resolver для object references. Він підтримує `objectId`,
+  `objectIdString`, `instanceId`, asset path/GUID, `{guid,fileID,type}`
+  subassets, і scene lookup payload-и через `{ find/target/name, method,
+  component }`;
+- non-null object reference payload, який не вдалось resolve-нути, тепер має
+  повертати явну помилку, а не silent success;
+- для `Component`-typed полів generic `Component` без component hint більше не
+  вгадується мовчки. Треба або передати конкретний runtime object id, або
+  hierarchy lookup із `component`;
+- `ManageGameObject.SetComponentProperty` отримав high-level path для TMP
+  font assignment. Він синхронізує `m_fontAsset`, `m_sharedMaterial`,
+  runtime `font`, runtime `fontSharedMaterial`, і `Renderer.sharedMaterial`,
+  якщо matching TMP material можна знайти з font asset;
+- відповідь `SetComponentProperty` тепер містить `applied[]` з before/after
+  evidence по serialized/object/TMP/material routes;
+- `Renderer.sharedMaterial` і `Renderer.sharedMaterials` можна задавати
+  material reference payload-ами напряму;
+- `ManageUI.SetGraphic` тепер підтримує world-space `TMPro.TextMeshPro`
+  об'єкти без `RectTransform` і повертає TMP font/material state.
+- `ValidateScript` більше не дає generic warning про `Rigidbody` в `Update()`
+  просто через наявність `Rigidbody` і `SerializedObject.Update()` в одному
+  editor-tool файлі. Перевірка тепер AST-based і дивиться на реальні
+  `void Update()` методи.
+- `BatchActions` read-only step `UniBridge_ValidateScript` тепер приймає
+  scripts під `Packages/...`, а не тільки `Assets/...`. Це потрібно для
+  перевірки embedded UniBridge package scripts через той самий batch workflow,
+  яким агенти перевіряють проектні scripts.
+
+Корисні payload приклади для агентів:
+
+```json
+{ "font": "Assets/_Domovyk/Fonts/Kotyhoroshko-Regular.0.2 SDF.asset" }
+```
+
+```json
+{ "sharedMaterial": { "guid": "font-or-material-guid", "fileID": 123456789, "type": 2 } }
+```
+
+```json
+{
+  "textBlock0": {
+    "find": "AllLevel/03_Intro_Cutscene_Leaf/DarknessLevel_Root/IntroSetup/DarknessIntroQuoteText",
+    "method": "ByPath",
+    "component": "TMPro.TextMeshPro"
+  }
+}
+```
+
+```json
+{ "textBlock0": { "objectIdString": "568105589213241482" } }
+```
+
+Очікувана поведінка після hotfix: якщо UniBridge пише success, у відповіді має
+бути видно фактичний current TMP font/material або resolved Component/Material
+reference. Якщо reference неможливо знайти, tool має fail-итись із actionable
+помилкою.
 
 ## 2026-06-21: UniBridge 0.2.36 Scheduler Cancellation/Reap Hotfix
 

@@ -114,7 +114,13 @@ Layout notes:
             var rectTransform = target.GetComponent<RectTransform>();
             if (rectTransform == null)
             {
-                return Response.Error($"Target '{target.name}' does not have a RectTransform.");
+                var worldTextMeshPro = GetWorldTextMeshProText(target);
+                if (worldTextMeshPro != null)
+                {
+                    return SetWorldTextMeshProGraphic(target, worldTextMeshPro, parameters);
+                }
+
+                return Response.Error($"Target '{target.name}' does not have a RectTransform or a supported world-space TMPro.TextMeshPro component.");
             }
 
             return Response.Success($"Inspected UI object '{target.name}'.", new
@@ -1049,6 +1055,90 @@ Layout notes:
                     texture = assignedTexture != null ? BuildAssetReferenceInfo(assignedTexture) : null,
                     material = assignedMaterial != null ? BuildAssetReferenceInfo(assignedMaterial) : null
                 }
+            });
+        }
+
+        static object SetWorldTextMeshProGraphic(GameObject target, Component textMeshPro, ManageUIParams parameters)
+        {
+            var before = BuildWorldTextMeshProInfo(target, textMeshPro);
+            var planned = BuildGraphicPlan(parameters);
+            if (parameters.DryRun ?? false)
+            {
+                return Response.Success("Dry run: world-space TextMeshPro graphic would be updated.", new
+                {
+                    target = BuildGameObjectInfo(target),
+                    textMeshPro = new
+                    {
+                        before,
+                        planned
+                    }
+                });
+            }
+
+            Undo.RecordObject(textMeshPro, "Set UniBridge World TextMeshPro Graphic");
+            if (target.TryGetComponent<Renderer>(out var renderer))
+            {
+                Undo.RecordObject(renderer, "Set UniBridge World TextMeshPro Graphic");
+            }
+
+            Object assignedFontAsset = null;
+            Object assignedMaterial = null;
+            string materialWarning = null;
+
+            if (!string.IsNullOrWhiteSpace(parameters.FontAssetPath))
+            {
+                assignedFontAsset = ResolveTextMeshProFontAsset(parameters.FontAssetPath, parameters.CreateTmpFontAssetIfMissing ?? true);
+                if (assignedFontAsset == null)
+                {
+                    return Response.Error($"TextMesh Pro font asset was not found at '{parameters.FontAssetPath}'.");
+                }
+
+                assignedMaterial = ResolveTextMeshProFontMaterial(assignedFontAsset);
+                ApplyWorldTextMeshProFont(target, textMeshPro, assignedFontAsset, assignedMaterial, out materialWarning);
+            }
+
+            if (!string.IsNullOrWhiteSpace(parameters.MaterialPath))
+            {
+                assignedMaterial = LoadMaterialAsset(parameters.MaterialPath);
+                if (assignedMaterial == null)
+                {
+                    return Response.Error($"Material asset was not found at '{parameters.MaterialPath}'.");
+                }
+
+                ApplyWorldTextMeshProMaterial(target, textMeshPro, assignedMaterial as Material);
+                materialWarning = null;
+            }
+
+            var currentColor = ReadTextMeshProColor(textMeshPro);
+            if (TryReadGraphicColor(parameters, currentColor, out var color))
+            {
+                SetMemberValue(textMeshPro, "color", color);
+            }
+
+            ForceTextMeshProMeshUpdate(textMeshPro);
+            EditorUtility.SetDirty(textMeshPro);
+            if (target.TryGetComponent<Renderer>(out var finalRenderer))
+            {
+                EditorUtility.SetDirty(finalRenderer);
+            }
+
+            MarkSceneDirty(target);
+            SceneView.RepaintAll();
+
+            return Response.Success($"Updated world-space TextMeshPro graphic on '{target.name}'.", new
+            {
+                target = BuildGameObjectInfo(target),
+                textMeshPro = new
+                {
+                    before,
+                    after = BuildWorldTextMeshProInfo(target, textMeshPro)
+                },
+                assigned = new
+                {
+                    fontAsset = assignedFontAsset != null ? BuildAssetReferenceInfo(assignedFontAsset) : null,
+                    material = assignedMaterial != null ? BuildAssetReferenceInfo(assignedMaterial) : null
+                },
+                warning = materialWarning
             });
         }
 
@@ -2484,6 +2574,113 @@ Layout notes:
             return textMeshProType != null ? gameObject.GetComponent(textMeshProType) : null;
         }
 
+        static Component GetWorldTextMeshProText(GameObject gameObject)
+        {
+            var textMeshProType = FindLoadedType("TMPro.TextMeshPro");
+            return textMeshProType != null ? gameObject.GetComponent(textMeshProType) : null;
+        }
+
+        static void ApplyWorldTextMeshProFont(
+            GameObject target,
+            Component textMeshPro,
+            Object fontAsset,
+            Object material,
+            out string materialWarning)
+        {
+            materialWarning = null;
+            using var serializedObject = new SerializedObject(textMeshPro);
+            serializedObject.Update();
+
+            var fontProperty = serializedObject.FindProperty("m_fontAsset");
+            if (fontProperty == null || !fontProperty.editable)
+            {
+                throw new InvalidOperationException("World-space TextMeshPro component did not expose editable serialized property 'm_fontAsset'.");
+            }
+
+            fontProperty.objectReferenceValue = fontAsset;
+
+            var sharedMaterialProperty = serializedObject.FindProperty("m_sharedMaterial");
+            if (sharedMaterialProperty != null && sharedMaterialProperty.editable && material != null)
+            {
+                sharedMaterialProperty.objectReferenceValue = material;
+            }
+            else if (sharedMaterialProperty != null && material == null)
+            {
+                materialWarning = "TMP font asset was changed, but no matching shared material could be resolved from the font asset; m_sharedMaterial was left unchanged.";
+            }
+            else if (sharedMaterialProperty == null)
+            {
+                materialWarning = "TMP font asset was changed, but this TMP component did not expose m_sharedMaterial; material was left unchanged.";
+            }
+
+            serializedObject.ApplyModifiedProperties();
+            serializedObject.Update();
+
+            SetMemberValue(textMeshPro, "font", fontAsset);
+            if (material is Material materialAsset)
+            {
+                ApplyWorldTextMeshProMaterial(target, textMeshPro, materialAsset);
+            }
+        }
+
+        static void ApplyWorldTextMeshProMaterial(GameObject target, Component textMeshPro, Material material)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            using var serializedObject = new SerializedObject(textMeshPro);
+            serializedObject.Update();
+            var sharedMaterialProperty = serializedObject.FindProperty("m_sharedMaterial");
+            if (sharedMaterialProperty != null && sharedMaterialProperty.editable)
+            {
+                sharedMaterialProperty.objectReferenceValue = material;
+                serializedObject.ApplyModifiedProperties();
+            }
+
+            SetMemberValue(textMeshPro, "fontSharedMaterial", material);
+            if (target != null && target.TryGetComponent<Renderer>(out var renderer))
+            {
+                renderer.sharedMaterial = material;
+                EditorUtility.SetDirty(renderer);
+            }
+        }
+
+        static Object ResolveTextMeshProFontMaterial(Object fontAsset)
+        {
+            var reflected = GetMemberValue(fontAsset, "material") as Object
+                            ?? GetMemberValue(fontAsset, "material_EditorRef") as Object
+                            ?? GetMemberValue(fontAsset, "m_Material") as Object;
+            if (reflected is Material)
+            {
+                return reflected;
+            }
+
+            var assetPath = AssetDatabase.GetAssetPath(fontAsset);
+            return string.IsNullOrWhiteSpace(assetPath)
+                ? null
+                : AssetDatabase.LoadAllAssetsAtPath(assetPath).OfType<Material>().FirstOrDefault();
+        }
+
+        static Material LoadMaterialAsset(string pathOrGuid)
+        {
+            var path = ResolveAssetPathOrGuid(pathOrGuid);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Material>(path)
+                   ?? AssetDatabase.LoadAllAssetsAtPath(path).OfType<Material>().FirstOrDefault();
+        }
+
+        static Color ReadTextMeshProColor(Component textMeshPro)
+        {
+            var value = GetMemberValue(textMeshPro, "color");
+            return value is Color color ? color : Color.white;
+        }
+
         static string MapTextMeshProAlignment(UITextAlignment alignment)
         {
             return alignment switch
@@ -3286,6 +3483,57 @@ Layout notes:
             }
 
             return data;
+        }
+
+        static object BuildWorldTextMeshProInfo(GameObject gameObject, Component textMeshPro)
+        {
+            if (gameObject == null || textMeshPro == null)
+            {
+                return null;
+            }
+
+            ForceTextMeshProMeshUpdate(textMeshPro);
+            Object serializedFont = null;
+            Object serializedMaterial = null;
+            try
+            {
+                using var serializedObject = new SerializedObject(textMeshPro);
+                serializedFont = serializedObject.FindProperty("m_fontAsset")?.objectReferenceValue;
+                serializedMaterial = serializedObject.FindProperty("m_sharedMaterial")?.objectReferenceValue;
+            }
+            catch
+            {
+                // Best-effort diagnostics only.
+            }
+
+            var fontAsset = GetMemberValue(textMeshPro, "font") as Object ?? serializedFont;
+            var sharedMaterial = GetMemberValue(textMeshPro, "fontSharedMaterial") as Object ?? serializedMaterial;
+            var rendererMaterial = gameObject.TryGetComponent<Renderer>(out var renderer)
+                ? renderer.sharedMaterial
+                : null;
+
+            return new
+            {
+                type = textMeshPro.GetType().Name,
+                fullType = textMeshPro.GetType().FullName,
+                text = GetMemberValue(textMeshPro, "text") as string,
+                fontSize = ReadFloatMember(textMeshPro, "fontSize"),
+                color = ToArray((Vector4)ReadTextMeshProColor(textMeshPro)),
+                alignment = GetMemberValue(textMeshPro, "alignment")?.ToString(),
+                richText = ReadBoolMember(textMeshPro, "richText"),
+                autoSizing = ReadBoolMember(textMeshPro, "enableAutoSizing"),
+                minFontSize = ReadFloatMember(textMeshPro, "fontSizeMin"),
+                maxFontSize = ReadFloatMember(textMeshPro, "fontSizeMax"),
+                overflowMode = GetMemberValue(textMeshPro, "overflowMode")?.ToString(),
+                preferredWidth = ReadFloatMember(textMeshPro, "preferredWidth"),
+                preferredHeight = ReadFloatMember(textMeshPro, "preferredHeight"),
+                isOverflowing = IsTextMeshProOverflowing(textMeshPro),
+                fontAsset = BuildAssetReferenceInfo(fontAsset),
+                serializedFontAsset = BuildAssetReferenceInfo(serializedFont),
+                fontSharedMaterial = BuildAssetReferenceInfo(sharedMaterial),
+                serializedSharedMaterial = BuildAssetReferenceInfo(serializedMaterial),
+                rendererSharedMaterial = BuildAssetReferenceInfo(rendererMaterial)
+            };
         }
 
         static object BuildSelectableInfo(GameObject gameObject)

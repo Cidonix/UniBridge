@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.36",
+  "version": "0.2.37",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- RuntimeStateProbe and RuntimeProfiler read-only sampling now honor MCP/client cancellation and scheduler timeouts, so canceled or timed-out probes release their read slots instead of blocking captures or mutating tools.\n- UniBridge_ExecutionStatus adds Action=ReapStale to cancel and release stale read-only scheduler operations, with cancellation/timed-out/reaped counters in snapshots.\n- MCP smoke regression now includes a targeted RuntimeStateProbe cancel/timeout slot-release check.\n\n### Previous Changes\n\n- Added Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1, a repeatable MCP stdio smoke regression runner for live Unity projects.\n- UniBridge_AssetIntelligence accepts Action=ReadText as a natural alias for Action=Read.\n- Added a shared ProjectPathResolver used by high-risk path workflows so Assets, Packages, ProjectSettings, file URIs, and absolute project paths resolve consistently."
+    "changelog": "### Fixed\n\n- ManageGameObject SetComponentProperty now handles Unity object references more reliably, including objectIdString, asset path/GUID, {guid,fileID,type} subassets, and {find,component} scene component payloads.\n- TextMeshPro font assignment now syncs m_fontAsset, m_sharedMaterial, font/fontSharedMaterial, and renderer shared material when a matching TMP material can be resolved, and responses include before/after font/material evidence.\n- MeshRenderer sharedMaterial/sharedMaterials now accept material reference payloads directly and return actionable errors instead of misleading property-not-found messages.\n- ManageUI SetGraphic can update world-space TMPro.TextMeshPro font/material/color targets and reports the resulting TMP font/material state.\n- BatchActions ValidateScript now supports read-only validation of scripts under both Assets/... and Packages/....\n\n### Previous Changes\n\n- RuntimeStateProbe and RuntimeProfiler read-only sampling now honor MCP/client cancellation and scheduler timeouts.\n- UniBridge_ExecutionStatus adds Action=ReapStale to cancel and release stale read-only scheduler operations.\n- Added Tools~/McpSmokeRegression/Run-McpSmokeRegression.ps1, a repeatable MCP stdio smoke regression runner for live Unity projects."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

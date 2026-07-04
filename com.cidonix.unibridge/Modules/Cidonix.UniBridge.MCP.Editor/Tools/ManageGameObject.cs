@@ -1561,15 +1561,25 @@ Returns:
                 );
             }
 
-            var setResult = SetComponentPropertiesInternal(targetGo, compName, propertiesToSet);
+            var appliedChanges = new List<object>();
+            var setResult = SetComponentPropertiesInternal(targetGo, compName, propertiesToSet, appliedChanges: appliedChanges);
             if (setResult != null)
                 return setResult; // Return error
 
             EditorUtility.SetDirty(targetGo);
+            if (targetGo.scene.IsValid())
+            {
+                EditorSceneManager.MarkSceneDirty(targetGo.scene);
+            }
              // Use the new serializer helper
             return Response.Success(
                 $"Properties set for component '{compName}' on '{targetGo.name}'.",
-                GameObjectSerializer.GetGameObjectData(targetGo)
+                new
+                {
+                    target = GameObjectSerializer.GetGameObjectData(targetGo),
+                    componentName = compName,
+                    applied = appliedChanges
+                }
             );
         }
 
@@ -2127,7 +2137,8 @@ Returns:
             GameObject targetGo,
             string compName,
             JObject propertiesToSet,
-            Component targetComponentInstance = null
+            Component targetComponentInstance = null,
+            List<object> appliedChanges = null
         )
         {
             Component targetComponent = targetComponentInstance;
@@ -2163,6 +2174,37 @@ Returns:
 
                 try
                 {
+                    if (TryApplyTextMeshProFont(targetGo, targetComponent, serializedObject, propName, propValue, out var tmpFontReport, out var tmpFontError))
+                    {
+                        if (tmpFontError != null)
+                        {
+                            Debug.LogWarning($"[ManageGameObject] {tmpFontError}");
+                            failures.Add(tmpFontError);
+                        }
+                        else
+                        {
+                            serializedChanged = true;
+                            appliedChanges?.Add(tmpFontReport);
+                        }
+
+                        continue;
+                    }
+
+                    if (TryApplyRendererMaterial(targetComponent, propName, propValue, out var rendererReport, out var rendererError))
+                    {
+                        if (rendererError != null)
+                        {
+                            Debug.LogWarning($"[ManageGameObject] {rendererError}");
+                            failures.Add(rendererError);
+                        }
+                        else
+                        {
+                            appliedChanges?.Add(rendererReport);
+                        }
+
+                        continue;
+                    }
+
                     var serializedResult = SerializedPropertyPatcher.TryApplyProperty(
                         targetComponent,
                         serializedObject,
@@ -2175,11 +2217,39 @@ Returns:
                         if (serializedResult.Success)
                         {
                             serializedChanged = serializedChanged || serializedResult.Changes.Count > 0;
+                            foreach (var change in serializedResult.Changes)
+                            {
+                                appliedChanges?.Add(new
+                                {
+                                    requestedName = change.requestedName,
+                                    propertyPath = change.propertyPath,
+                                    propertyType = change.propertyType,
+                                    before = change.before,
+                                    after = change.after,
+                                    dryRun = change.dryRun,
+                                    route = "serializedProperty"
+                                });
+                            }
                         }
                         else
                         {
                             Debug.LogWarning($"[ManageGameObject] {serializedResult.Error}");
                             failures.Add(serializedResult.Error);
+                        }
+
+                        continue;
+                    }
+
+                    if (TrySetUnityObjectMember(targetComponent, propName, propValue, out var objectMemberReport, out var objectMemberError))
+                    {
+                        if (objectMemberError != null)
+                        {
+                            Debug.LogWarning($"[ManageGameObject] {objectMemberError}");
+                            failures.Add(objectMemberError);
+                        }
+                        else
+                        {
+                            appliedChanges?.Add(objectMemberReport);
                         }
 
                         continue;
@@ -2215,6 +2285,686 @@ Returns:
             return failures.Count == 0
                 ? null
                 : Response.Error($"One or more properties failed on '{compName}'.", new { errors = failures });
+        }
+
+        static bool TryApplyTextMeshProFont(
+            GameObject targetGo,
+            Component targetComponent,
+            SerializedObject serializedObject,
+            string propName,
+            JToken propValue,
+            out object report,
+            out string error)
+        {
+            report = null;
+            error = null;
+            if (!IsTextMeshProComponent(targetComponent))
+            {
+                return false;
+            }
+
+            var key = NormalizeMemberKey(propName);
+            if (key != "font" &&
+                key != "fontasset" &&
+                key != "fontassetpath" &&
+                key != "tmpfontasset" &&
+                key != "tmpfontassetpath")
+            {
+                return false;
+            }
+
+            try
+            {
+                var fontType = ResolveTextMeshProFontAssetType(targetComponent) ?? typeof(UnityEngine.Object);
+                var fontAsset = SerializedPropertyPatcher.ResolveObjectReferenceValue(fontType, propValue);
+                if (fontAsset == null)
+                {
+                    error = $"TextMeshPro font property '{propName}' resolved to null. Provide a valid TMP_FontAsset path/GUID/objectId.";
+                    return true;
+                }
+
+                var material = ResolveTextMeshProSharedMaterial(fontAsset, propValue);
+                var before = BuildTextMeshProFontState(targetGo, targetComponent);
+
+                var fontProperty = serializedObject.FindProperty("m_fontAsset");
+                if (fontProperty == null || !fontProperty.editable)
+                {
+                    error = $"TextMeshPro component '{targetComponent.GetType().FullName}' does not expose editable serialized property 'm_fontAsset'.";
+                    return true;
+                }
+
+                fontProperty.objectReferenceValue = fontAsset;
+
+                var materialChanged = false;
+                var materialWarning = (string)null;
+                var sharedMaterialProperty = serializedObject.FindProperty("m_sharedMaterial");
+                if (sharedMaterialProperty != null && sharedMaterialProperty.editable && material != null)
+                {
+                    sharedMaterialProperty.objectReferenceValue = material;
+                    materialChanged = true;
+                }
+                else if (sharedMaterialProperty != null && material == null)
+                {
+                    materialWarning = "TMP font asset was changed, but no matching shared material could be resolved from the font asset; m_sharedMaterial was left unchanged.";
+                }
+                else if (sharedMaterialProperty == null)
+                {
+                    materialWarning = "TMP font asset was changed, but this TMP component did not expose m_sharedMaterial; material was left unchanged.";
+                }
+
+                serializedObject.ApplyModifiedProperties();
+                serializedObject.Update();
+
+                TrySetUnityObjectMemberValue(targetComponent, "font", fontAsset);
+                if (material != null)
+                {
+                    TrySetUnityObjectMemberValue(targetComponent, "fontSharedMaterial", material);
+                    if (targetGo != null && targetGo.TryGetComponent<Renderer>(out var renderer))
+                    {
+                        renderer.sharedMaterial = material as Material;
+                        EditorUtility.SetDirty(renderer);
+                    }
+                }
+
+                EditorUtility.SetDirty(targetComponent);
+                var after = BuildTextMeshProFontState(targetGo, targetComponent);
+                report = new
+                {
+                    requestedName = propName,
+                    route = "textMeshProFont",
+                    propertyPath = "m_fontAsset",
+                    syncedMaterialPropertyPath = sharedMaterialProperty?.propertyPath,
+                    before,
+                    after,
+                    assignedFontAsset = BuildObjectReferenceInfo(fontAsset),
+                    assignedSharedMaterial = BuildObjectReferenceInfo(material),
+                    sharedMaterialChanged = materialChanged,
+                    warning = materialWarning
+                };
+            }
+            catch (Exception ex)
+            {
+                error = $"TextMeshPro font property '{propName}' could not be applied: {ex.Message}";
+            }
+
+            return true;
+        }
+
+        static bool TryApplyRendererMaterial(
+            Component targetComponent,
+            string propName,
+            JToken propValue,
+            out object report,
+            out string error)
+        {
+            report = null;
+            error = null;
+            var renderer = targetComponent as Renderer;
+            if (renderer == null)
+            {
+                return false;
+            }
+
+            var key = NormalizeMemberKey(propName);
+            if (key == "sharedmaterial")
+            {
+                try
+                {
+                    var before = renderer.sharedMaterial;
+                    var material = SerializedPropertyPatcher.ResolveObjectReferenceValue(typeof(Material), propValue) as Material;
+                    if (material == null && propValue != null && propValue.Type != JTokenType.Null)
+                    {
+                        error = $"Renderer sharedMaterial payload for '{propName}' resolved to null. Use an asset path/GUID or {{guid,fileID,type}} for a Material subasset.";
+                        return true;
+                    }
+
+                    renderer.sharedMaterial = material;
+                    EditorUtility.SetDirty(renderer);
+                    report = new
+                    {
+                        requestedName = propName,
+                        route = "rendererSharedMaterial",
+                        before = BuildObjectReferenceInfo(before),
+                        after = BuildObjectReferenceInfo(renderer.sharedMaterial)
+                    };
+                }
+                catch (Exception ex)
+                {
+                    error = $"Renderer sharedMaterial could not be set: {ex.Message}";
+                }
+
+                return true;
+            }
+
+            if (key == "sharedmaterials")
+            {
+                try
+                {
+                    var before = renderer.sharedMaterials?.Select(BuildObjectReferenceInfo).ToArray() ?? Array.Empty<object>();
+                    var materials = ResolveMaterialArray(propValue);
+                    renderer.sharedMaterials = materials;
+                    EditorUtility.SetDirty(renderer);
+                    report = new
+                    {
+                        requestedName = propName,
+                        route = "rendererSharedMaterials",
+                        before,
+                        after = renderer.sharedMaterials?.Select(BuildObjectReferenceInfo).ToArray() ?? Array.Empty<object>()
+                    };
+                }
+                catch (Exception ex)
+                {
+                    error = $"Renderer sharedMaterials could not be set: {ex.Message}";
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        static bool TrySetUnityObjectMember(
+            Component targetComponent,
+            string propName,
+            JToken propValue,
+            out object report,
+            out string error)
+        {
+            report = null;
+            error = null;
+            if (targetComponent == null || string.IsNullOrWhiteSpace(propName))
+            {
+                return false;
+            }
+
+            var member = FindWritableObjectMember(targetComponent.GetType(), propName);
+            if (member.Member == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var beforeValue = member.GetValue(targetComponent);
+                object afterValue;
+                if (member.IsObjectArray)
+                {
+                    afterValue = ResolveObjectArray(propValue, member.ElementType);
+                }
+                else
+                {
+                    afterValue = SerializedPropertyPatcher.ResolveObjectReferenceValue(member.MemberType, propValue);
+                }
+
+                member.SetValue(targetComponent, afterValue);
+                EditorUtility.SetDirty(targetComponent);
+                var currentValue = member.GetValue(targetComponent);
+                report = new
+                {
+                    requestedName = propName,
+                    route = member.IsField ? "unityObjectField" : "unityObjectProperty",
+                    memberType = member.MemberType.FullName,
+                    before = SerializeMemberObjectValue(beforeValue),
+                    after = SerializeMemberObjectValue(currentValue),
+                    resolved = propValue == null || propValue.Type == JTokenType.Null || currentValue != null
+                };
+            }
+            catch (Exception ex)
+            {
+                error = $"Unity object reference member '{propName}' on '{targetComponent.GetType().FullName}' could not be set: {ex.Message}";
+            }
+
+            return true;
+        }
+
+        static bool IsTextMeshProComponent(Component component)
+        {
+            var type = component?.GetType();
+            while (type != null)
+            {
+                var fullName = type.FullName ?? string.Empty;
+                if (fullName == "TMPro.TMP_Text" ||
+                    fullName == "TMPro.TextMeshPro" ||
+                    fullName == "TMPro.TextMeshProUGUI")
+                {
+                    return true;
+                }
+
+                type = type.BaseType;
+            }
+
+            return false;
+        }
+
+        static Type ResolveTextMeshProFontAssetType(Component component)
+        {
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase;
+            var fontProperty = component?.GetType().GetProperty("font", flags);
+            if (fontProperty != null && typeof(UnityEngine.Object).IsAssignableFrom(fontProperty.PropertyType))
+            {
+                return fontProperty.PropertyType;
+            }
+
+            return FindLoadedUnityObjectType("TMPro.TMP_FontAsset");
+        }
+
+        static UnityEngine.Object ResolveTextMeshProSharedMaterial(UnityEngine.Object fontAsset, JToken fontPayload)
+        {
+            if (fontPayload is JObject obj)
+            {
+                var materialToken =
+                    obj["sharedMaterial"] ??
+                    obj["shared_material"] ??
+                    obj["material"] ??
+                    obj["materialPath"] ??
+                    obj["material_path"];
+                if (materialToken != null)
+                {
+                    return SerializedPropertyPatcher.ResolveObjectReferenceValue(typeof(Material), materialToken);
+                }
+            }
+
+            var reflected = ReadUnityObjectMember(fontAsset, "material", "material_EditorRef", "m_Material");
+            if (reflected is Material)
+            {
+                return reflected;
+            }
+
+            var assetPath = AssetDatabase.GetAssetPath(fontAsset);
+            if (string.IsNullOrWhiteSpace(assetPath))
+            {
+                return null;
+            }
+
+            return AssetDatabase.LoadAllAssetsAtPath(assetPath)
+                .OfType<Material>()
+                .FirstOrDefault();
+        }
+
+        static object BuildTextMeshProFontState(GameObject targetGo, Component textComponent)
+        {
+            UnityEngine.Object serializedFont = null;
+            UnityEngine.Object serializedMaterial = null;
+            try
+            {
+                using var so = new SerializedObject(textComponent);
+                serializedFont = so.FindProperty("m_fontAsset")?.objectReferenceValue;
+                serializedMaterial = so.FindProperty("m_sharedMaterial")?.objectReferenceValue;
+            }
+            catch
+            {
+                // Best-effort diagnostics only.
+            }
+
+            var font = ReadUnityObjectMember(textComponent, "font") ?? serializedFont;
+            var fontSharedMaterial = ReadUnityObjectMember(textComponent, "fontSharedMaterial", "sharedMaterial") ?? serializedMaterial;
+            var rendererMaterial = targetGo != null && targetGo.TryGetComponent<Renderer>(out var renderer)
+                ? renderer.sharedMaterial
+                : null;
+
+            return new
+            {
+                font = BuildObjectReferenceInfo(font),
+                serializedFontAsset = BuildObjectReferenceInfo(serializedFont),
+                fontSharedMaterial = BuildObjectReferenceInfo(fontSharedMaterial),
+                serializedSharedMaterial = BuildObjectReferenceInfo(serializedMaterial),
+                rendererSharedMaterial = BuildObjectReferenceInfo(rendererMaterial)
+            };
+        }
+
+        static bool TrySetUnityObjectMemberValue(object target, string memberName, UnityEngine.Object value)
+        {
+            if (target == null || string.IsNullOrWhiteSpace(memberName))
+            {
+                return false;
+            }
+
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase;
+            var property = target.GetType().GetProperty(memberName, flags);
+            if (property != null && property.CanWrite && typeof(UnityEngine.Object).IsAssignableFrom(property.PropertyType))
+            {
+                property.SetValue(target, value);
+                return true;
+            }
+
+            var field = target.GetType().GetField(memberName, flags);
+            if (field != null && typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType))
+            {
+                field.SetValue(target, value);
+                return true;
+            }
+
+            return false;
+        }
+
+        static UnityEngine.Object ReadUnityObjectMember(object target, params string[] memberNames)
+        {
+            if (target == null || memberNames == null)
+            {
+                return null;
+            }
+
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase;
+            foreach (var memberName in memberNames)
+            {
+                if (string.IsNullOrWhiteSpace(memberName))
+                {
+                    continue;
+                }
+
+                var property = target.GetType().GetProperty(memberName, flags);
+                if (property != null && property.CanRead && typeof(UnityEngine.Object).IsAssignableFrom(property.PropertyType))
+                {
+                    return property.GetValue(target) as UnityEngine.Object;
+                }
+
+                var field = target.GetType().GetField(memberName, flags);
+                if (field != null && typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType))
+                {
+                    return field.GetValue(target) as UnityEngine.Object;
+                }
+            }
+
+            return null;
+        }
+
+        static Material[] ResolveMaterialArray(JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                return Array.Empty<Material>();
+            }
+
+            if (token is not JArray array)
+            {
+                var material = SerializedPropertyPatcher.ResolveObjectReferenceValue(typeof(Material), token) as Material;
+                if (material == null)
+                {
+                    throw new ArgumentException("Material payload resolved to null.");
+                }
+
+                return new[] { material };
+            }
+
+            var materials = new Material[array.Count];
+            for (var i = 0; i < array.Count; i++)
+            {
+                materials[i] = SerializedPropertyPatcher.ResolveObjectReferenceValue(typeof(Material), array[i]) as Material;
+                if (materials[i] == null && array[i] != null && array[i].Type != JTokenType.Null)
+                {
+                    throw new ArgumentException($"Material payload at index {i} resolved to null.");
+                }
+            }
+
+            return materials;
+        }
+
+        static Array ResolveObjectArray(JToken token, Type elementType)
+        {
+            if (elementType == null || !typeof(UnityEngine.Object).IsAssignableFrom(elementType))
+            {
+                throw new ArgumentException("Object array element type must derive from UnityEngine.Object.");
+            }
+
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                return Array.CreateInstance(elementType, 0);
+            }
+
+            var array = token as JArray ?? new JArray(token.DeepClone());
+            var result = Array.CreateInstance(elementType, array.Count);
+            for (var i = 0; i < array.Count; i++)
+            {
+                var value = SerializedPropertyPatcher.ResolveObjectReferenceValue(elementType, array[i]);
+                result.SetValue(value, i);
+            }
+
+            return result;
+        }
+
+        static ObjectMemberAccessor FindWritableObjectMember(Type type, string memberName)
+        {
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase;
+            var property = type.GetProperty(memberName, flags);
+            if (property != null && property.CanWrite)
+            {
+                var memberType = property.PropertyType;
+                if (typeof(UnityEngine.Object).IsAssignableFrom(memberType))
+                {
+                    return ObjectMemberAccessor.ForProperty(property, memberType);
+                }
+
+                if (memberType.IsArray && typeof(UnityEngine.Object).IsAssignableFrom(memberType.GetElementType()))
+                {
+                    return ObjectMemberAccessor.ForProperty(property, memberType);
+                }
+            }
+
+            var field = type.GetField(memberName, flags);
+            if (field != null)
+            {
+                var memberType = field.FieldType;
+                if (typeof(UnityEngine.Object).IsAssignableFrom(memberType))
+                {
+                    return ObjectMemberAccessor.ForField(field, memberType);
+                }
+
+                if (memberType.IsArray && typeof(UnityEngine.Object).IsAssignableFrom(memberType.GetElementType()))
+                {
+                    return ObjectMemberAccessor.ForField(field, memberType);
+                }
+            }
+
+            return default;
+        }
+
+        static object SerializeMemberObjectValue(object value)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            if (value is UnityEngine.Object obj)
+            {
+                return BuildObjectReferenceInfo(obj);
+            }
+
+            if (value is Array array)
+            {
+                return array.Cast<object>()
+                    .Select(item => item is UnityEngine.Object objectValue ? BuildObjectReferenceInfo(objectValue) : null)
+                    .ToArray();
+            }
+
+            return value.ToString();
+        }
+
+        static object BuildObjectReferenceInfo(UnityEngine.Object obj)
+        {
+            if (obj == null)
+            {
+                return null;
+            }
+
+            var objectId = UnityApiAdapter.GetObjectId(obj);
+            if (obj is GameObject gameObject)
+            {
+                return new
+                {
+                    type = "GameObject",
+                    name = gameObject.name,
+                    path = BuildHierarchyPath(gameObject),
+                    objectId,
+                    objectIdString = objectId.ToString(CultureInfo.InvariantCulture)
+                };
+            }
+
+            if (obj is Component component)
+            {
+                return new
+                {
+                    type = component.GetType().Name,
+                    fullType = component.GetType().FullName,
+                    name = component.name,
+                    path = BuildHierarchyPath(component.gameObject),
+                    objectId,
+                    objectIdString = objectId.ToString(CultureInfo.InvariantCulture),
+                    gameObject = new
+                    {
+                        name = component.gameObject.name,
+                        path = BuildHierarchyPath(component.gameObject)
+                    }
+                };
+            }
+
+            var assetPath = AssetDatabase.GetAssetPath(obj);
+            return new
+            {
+                type = obj.GetType().Name,
+                fullType = obj.GetType().FullName,
+                name = obj.name,
+                path = string.IsNullOrWhiteSpace(assetPath) ? null : assetPath,
+                guid = string.IsNullOrWhiteSpace(assetPath) ? null : AssetDatabase.AssetPathToGUID(assetPath),
+                fileID = GetLocalIdentifier(obj),
+                objectId,
+                objectIdString = objectId.ToString(CultureInfo.InvariantCulture)
+            };
+        }
+
+        static string BuildHierarchyPath(GameObject gameObject)
+        {
+            if (gameObject == null)
+            {
+                return null;
+            }
+
+            var parts = new Stack<string>();
+            var current = gameObject.transform;
+            while (current != null)
+            {
+                parts.Push(current.name);
+                current = current.parent;
+            }
+
+            return string.Join("/", parts);
+        }
+
+        static string GetLocalIdentifier(UnityEngine.Object obj)
+        {
+            if (obj == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var method = typeof(Unsupported).GetMethod(
+                    "GetLocalIdentifierInFileForPersistentObject",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                var value = method?.Invoke(null, new object[] { obj });
+                return value?.ToString();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static string NormalizeMemberKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var normalized = value.Trim().Replace(" ", string.Empty).Replace("_", string.Empty).Replace("-", string.Empty);
+            if (normalized.StartsWith("m", StringComparison.OrdinalIgnoreCase) && normalized.Length > 1)
+            {
+                normalized = normalized.Substring(1);
+            }
+
+            return normalized.ToLowerInvariant();
+        }
+
+        static Type FindLoadedUnityObjectType(string fullNameOrName)
+        {
+            if (string.IsNullOrWhiteSpace(fullNameOrName))
+            {
+                return null;
+            }
+
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type[] types;
+                try
+                {
+                    types = assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    types = ex.Types.Where(t => t != null).ToArray();
+                }
+
+                foreach (var type in types)
+                {
+                    if (!typeof(UnityEngine.Object).IsAssignableFrom(type))
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(type.FullName, fullNameOrName, StringComparison.Ordinal) ||
+                        string.Equals(type.Name, fullNameOrName, StringComparison.Ordinal))
+                    {
+                        return type;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        readonly struct ObjectMemberAccessor
+        {
+            public MemberInfo Member { get; }
+            public Type MemberType { get; }
+            public Type ElementType { get; }
+            public bool IsObjectArray { get; }
+            public bool IsField => Member is FieldInfo;
+
+            ObjectMemberAccessor(MemberInfo member, Type memberType)
+            {
+                Member = member;
+                MemberType = memberType;
+                ElementType = memberType.IsArray ? memberType.GetElementType() : null;
+                IsObjectArray = ElementType != null && typeof(UnityEngine.Object).IsAssignableFrom(ElementType);
+            }
+
+            public static ObjectMemberAccessor ForProperty(PropertyInfo property, Type memberType) => new(property, memberType);
+            public static ObjectMemberAccessor ForField(FieldInfo field, Type memberType) => new(field, memberType);
+
+            public object GetValue(object target)
+            {
+                return Member switch
+                {
+                    PropertyInfo property => property.GetValue(target),
+                    FieldInfo field => field.GetValue(target),
+                    _ => null
+                };
+            }
+
+            public void SetValue(object target, object value)
+            {
+                switch (Member)
+                {
+                    case PropertyInfo property:
+                        property.SetValue(target, value);
+                        break;
+                    case FieldInfo field:
+                        field.SetValue(target, value);
+                        break;
+                }
+            }
         }
 
         /// <summary>
@@ -2557,6 +3307,16 @@ Returns:
 
             try
             {
+                if (targetType.IsArray && typeof(UnityEngine.Object).IsAssignableFrom(targetType.GetElementType()))
+                {
+                    return ResolveObjectArray(token, targetType.GetElementType());
+                }
+
+                if (typeof(UnityEngine.Object).IsAssignableFrom(targetType))
+                {
+                    return SerializedPropertyPatcher.ResolveObjectReferenceValue(targetType, token);
+                }
+
                 // Use the provided serializer instance which includes our custom converters
                 return token.ToObject(targetType, inputSerializer);
             }

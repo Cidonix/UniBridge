@@ -1,6 +1,50 @@
-# UniBridge 0.2.36 Release Notes
+# UniBridge 0.2.37 Release Notes
 
-Release date: 2026-06-21
+Release date: 2026-07-04
+
+This hotfix improves `SetComponentProperty` for the Unity object-reference
+cases that matter when an AI agent edits world-space UI and scene wiring.
+
+`UniBridge_ManageGameObject Action=SetComponentProperty` now has a dedicated
+TextMeshPro font path. Setting `font`, `FontAssetPath`, `tmpFontAsset`, or
+`tmpFontAssetPath` on a TMP component updates the serialized `m_fontAsset`, the
+matching `m_sharedMaterial` when one can be resolved from the font asset, the
+runtime `font`/`fontSharedMaterial` members, and the attached renderer's shared
+material for world-space text. The tool response now includes before/after TMP
+font/material evidence so an agent can verify what Unity actually holds.
+
+Renderer material assignment is also stricter and more useful. `sharedMaterial`
+and `sharedMaterials` on a `Renderer` accept asset path/GUID references and
+subasset payloads such as `{ "guid": "...", "fileID": 123, "type": 2 }`. If a
+material cannot be resolved, UniBridge now returns an actionable material
+resolution error instead of a misleading "property not found" message.
+
+Custom `UnityEngine.Object` and `Component` fields/properties can now be set
+from stable reference payloads:
+
+- `{ "objectIdString": "..." }`;
+- `{ "find": "Root/Child/Text", "method": "ByPath", "component": "TMPro.TextMeshPro" }`;
+- asset paths or GUIDs;
+- `{ "guid": "...", "fileID": 123, "type": 2 }` for subassets.
+
+If a non-null reference payload cannot be resolved, the operation fails
+explicitly instead of reporting success while leaving `{fileID: 0}` in the
+scene.
+
+`UniBridge_ManageUI Action=SetGraphic` now also supports world-space
+`TMPro.TextMeshPro` objects. That gives agents a high-level way to update
+font/material/color on 3D text objects that do not have a `RectTransform`.
+
+The script validator also received a small false-positive cleanup: the
+`Rigidbody operations in Update()` warning is now based on actual `void
+Update()` method bodies instead of a broad file-level string scan.
+
+`UniBridge_BatchActions` can now run read-only `UniBridge_ValidateScript` steps
+for package scripts under `Packages/...` as well as project scripts under
+`Assets/...`. This keeps package hotfix validation inside the same safe batch
+workflow agents use for normal project scripts.
+
+## Previous 0.2.36 Notes
 
 This hotfix makes long-running read-only sampling resilient to client
 cancellation, timeouts, and reconnects.

@@ -498,10 +498,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 errors.Add("WARNING: StartCoroutine typically requires IEnumerator methods");
             }
 
-            if (contents.Contains("Rigidbody") && contents.Contains("Update()") && !contents.Contains("FixedUpdate()"))
-            {
-                errors.Add("WARNING: Consider using FixedUpdate() for Rigidbody operations");
-            }
+            errors.AddRange(FindUpdateRigidbodyWarnings(contents));
 
             if (contents.Contains("GetComponent<") && !contents.Contains("!= null"))
             {
@@ -568,6 +565,71 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             string receiver = member.Expression.ToString();
             return string.Equals(receiver, "GameObject", StringComparison.Ordinal) ||
                    string.Equals(receiver, "UnityEngine.GameObject", StringComparison.Ordinal);
+        }
+
+        static IEnumerable<string> FindUpdateRigidbodyWarnings(string contents)
+        {
+            SyntaxNode root;
+            try
+            {
+                root = CSharpSyntaxTree.ParseText(contents).GetRoot();
+            }
+            catch
+            {
+                return Array.Empty<string>();
+            }
+
+            bool hasFixedUpdate = root.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Any(method =>
+                    string.Equals(method.Identifier.ValueText, "FixedUpdate", StringComparison.Ordinal) &&
+                    method.ParameterList.Parameters.Count == 0);
+            if (hasFixedUpdate)
+            {
+                return Array.Empty<string>();
+            }
+
+            var warnings = new List<string>();
+            foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            {
+                if (!string.Equals(method.Identifier.ValueText, "Update", StringComparison.Ordinal) ||
+                    method.ParameterList.Parameters.Count != 0 ||
+                    method.Body == null)
+                {
+                    continue;
+                }
+
+                var rigidbodyNode = method.Body.DescendantNodes().FirstOrDefault(IsRigidbodyRelatedNode);
+                if (rigidbodyNode != null)
+                {
+                    warnings.Add(FormatUpdateAllocationWarning(
+                        "Consider using FixedUpdate() for Rigidbody operations",
+                        rigidbodyNode));
+                }
+            }
+
+            return warnings;
+        }
+
+        static bool IsRigidbodyRelatedNode(SyntaxNode node)
+        {
+            return node switch
+            {
+                IdentifierNameSyntax identifier => ContainsRigidbodyName(identifier.Identifier.ValueText),
+                GenericNameSyntax generic => generic.TypeArgumentList.Arguments.Any(arg => ContainsRigidbodyName(arg.ToString())),
+                MemberAccessExpressionSyntax member => ContainsRigidbodyName(member.Name.Identifier.ValueText) ||
+                                                       ContainsRigidbodyName(member.Expression?.ToString()),
+                ObjectCreationExpressionSyntax creation => ContainsRigidbodyName(creation.Type?.ToString()),
+                VariableDeclarationSyntax declaration => ContainsRigidbodyName(declaration.Type?.ToString()),
+                CastExpressionSyntax cast => ContainsRigidbodyName(cast.Type?.ToString()),
+                _ => false
+            };
+        }
+
+        static bool ContainsRigidbodyName(string value)
+        {
+            return !string.IsNullOrWhiteSpace(value) &&
+                   value.IndexOf("Rigidbody", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         static IEnumerable<string> FindUpdateStringAllocationWarnings(string contents)
