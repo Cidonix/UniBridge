@@ -63,7 +63,99 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             if (parameters == null || parameterType == null)
                 return null;
 
-            return parameters.ToObject(parameterType, JsonSerializer.Create(ToolHandlerSettings.DefaultSettings));
+            var normalizedParameters = NormalizeJsonArrayProperties(parameters, parameterType);
+            return normalizedParameters.ToObject(parameterType, JsonSerializer.Create(ToolHandlerSettings.DefaultSettings));
+        }
+
+        /// <summary>
+        /// Accepts a single JSON object for JArray-backed parameters and wraps it as
+        /// a one-item array. The generated schema still advertises the canonical array.
+        /// </summary>
+        static JObject NormalizeJsonArrayProperties(JObject parameters, Type parameterType)
+        {
+            if (!NeedsJsonArrayNormalization(parameters, parameterType))
+                return parameters;
+
+            var normalized = (JObject)parameters.DeepClone();
+            NormalizeObject(normalized, parameterType);
+            return normalized;
+        }
+
+        static bool NeedsJsonArrayNormalization(JObject source, Type targetType)
+        {
+            if (source == null || targetType == null)
+                return false;
+
+            foreach (var propertyInfo in targetType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!propertyInfo.CanWrite)
+                    continue;
+
+                var jsonName = propertyInfo.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName;
+                var sourceProperty = FindProperty(source, string.IsNullOrWhiteSpace(jsonName) ? propertyInfo.Name : jsonName);
+                if (sourceProperty?.Value == null || sourceProperty.Value.Type == JTokenType.Null)
+                    continue;
+
+                var propertyType = Nullable.GetUnderlyingType(propertyInfo.PropertyType) ?? propertyInfo.PropertyType;
+                if (typeof(JArray).IsAssignableFrom(propertyType) && sourceProperty.Value is JObject)
+                    return true;
+
+                if (sourceProperty.Value is JObject nestedObject &&
+                    propertyType != typeof(object) &&
+                    !typeof(JToken).IsAssignableFrom(propertyType) &&
+                    !propertyType.IsPrimitive &&
+                    propertyType != typeof(string) &&
+                    NeedsJsonArrayNormalization(nestedObject, propertyType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static void NormalizeObject(JObject source, Type targetType)
+        {
+            if (source == null || targetType == null)
+                return;
+
+            foreach (var propertyInfo in targetType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!propertyInfo.CanWrite)
+                    continue;
+
+                var jsonName = propertyInfo.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName;
+                var sourceProperty = FindProperty(source, string.IsNullOrWhiteSpace(jsonName) ? propertyInfo.Name : jsonName);
+                if (sourceProperty?.Value == null || sourceProperty.Value.Type == JTokenType.Null)
+                    continue;
+
+                var propertyType = Nullable.GetUnderlyingType(propertyInfo.PropertyType) ?? propertyInfo.PropertyType;
+                if (typeof(JArray).IsAssignableFrom(propertyType) && sourceProperty.Value is JObject singleObject)
+                {
+                    sourceProperty.Value = new JArray(singleObject.DeepClone());
+                    continue;
+                }
+
+                if (sourceProperty.Value is JObject nestedObject &&
+                    propertyType != typeof(object) &&
+                    !typeof(JToken).IsAssignableFrom(propertyType) &&
+                    !propertyType.IsPrimitive &&
+                    propertyType != typeof(string))
+                {
+                    NormalizeObject(nestedObject, propertyType);
+                }
+            }
+        }
+
+        static JProperty FindProperty(JObject source, string propertyName)
+        {
+            foreach (var property in source.Properties())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    return property;
+            }
+
+            return null;
         }
 
         /// <summary>

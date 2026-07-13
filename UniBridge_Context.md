@@ -1,9 +1,44 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-04, Europe/Kiev.
+Останнє оновлення: 2026-07-13, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-07-13: UniBridge 0.2.39 RuntimeStateProbe Assertions schema hotfix
+
+Мета: виправити невідповідність між C# контрактом
+`RuntimeStateProbeParams.Assertions : JArray` і MCP input schema, яка помилково
+рекламувала поле як object та провокувала `JObject is not compatible with
+expected type JArray` під час виклику агентом.
+
+Зміни:
+
+- `SchemaGenerator` тепер окремо розпізнає `JArray` і генерує
+  `type: array, items: { type: object }`;
+- `ToolExecutionHelper` перед typed deserialization визначає, чи потрібна
+  нормалізація; лише тоді клонує payload і для `JArray`-полів толерантно
+  обгортає одиночний `JObject` у one-item `JArray`;
+- canonical MCP schema лишається масивом, але спрощений одиночний assertion
+  більше не спричиняє exception;
+- MCP smoke regression доповнено перевіркою `tools/list` schema і живим
+  `RuntimeStateProbe Action=Assert` із одиночним object у `Assertions`;
+- package version піднято до `0.2.39`.
+
+Live MCP перевірка:
+
+- `UniBridge_Test_Project` отримав `0.2.39`; фінальний regression report:
+  `Library/UniBridge/mcp-smoke-regression-20260713-075239.json`;
+- повний smoke: `17 passed, 0 failed`;
+- `Assertions.type=array`, `Assertions.items.type=object` підтверджено через
+  реальний `tools/list`;
+- `RuntimeStateProbe Action=Assert` з `Assertions={...}` нормалізувався в один
+  rule і пройшов без stack trace;
+- reload-safe refresh/compile, scheduler cancellation regression,
+  compilation/build health і console summary пройшли;
+- перевірений пакет синхронізовано в `Domovyk`; final MCP health:
+  compile errors/warnings `0/0`, critical build issues `0`, stale/missing
+  assemblies `0/0`, console entries `0`.
 
 ## 2026-07-04: UniBridge 0.2.38 WorkSession Semantic Review Timeout/Stale Baseline Hotfix
 

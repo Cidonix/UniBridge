@@ -2,6 +2,21 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.39
+
+### Fixed
+
+- MCP schema generation now distinguishes `Newtonsoft.Json.Linq.JArray` from
+  other `JToken` types. `RuntimeStateProbeParams.Assertions` is advertised as
+  `type: array` with object items instead of the incorrect dictionary-like
+  object schema.
+- Shared typed-tool deserialization now accepts a single JSON object for a
+  `JArray`-backed property and safely normalizes it to a one-item array. This
+  keeps simplified agent calls compatible without changing the canonical MCP
+  schema.
+- The MCP smoke regression suite now verifies both the generated Assertions
+  schema and a live single-object RuntimeStateProbe assertion call.
+
 ## 0.2.38
 
 ### Fixed

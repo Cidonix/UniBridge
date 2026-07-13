@@ -78,7 +78,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 type = Nullable.GetUnderlyingType(type);
             }
 
-            // Set JSON type
+            // Newtonsoft's JArray is not a generic collection, so it needs an
+            // explicit array schema instead of falling through as JToken/object.
             schema["type"] = GetJsonType(type);
 
             // Add description from DisplayName or Description attributes
@@ -96,7 +97,12 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             }
 
             // Handle arrays/collections
-            if (type.IsArray || (type.IsGenericType && IsCollectionType(type)))
+            if (IsJsonArrayType(type))
+            {
+                schema["type"] = "array";
+                schema["items"] = CreateFlexibleObjectSchema();
+            }
+            else if (type.IsArray || (type.IsGenericType && IsCollectionType(type)))
             {
                 schema["type"] = "array";
                 var itemType = type.IsArray ? type.GetElementType() : type.GetGenericArguments()[0];
@@ -115,13 +121,18 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
         static object GenerateTypeSchema(Type type)
         {
-            if (type == typeof(object) || IsJsonObjectType(type) || IsDictionaryType(type))
+            if (IsJsonArrayType(type))
             {
                 return new Dictionary<string, object>
                 {
-                    ["type"] = "object",
-                    ["additionalProperties"] = true
+                    ["type"] = "array",
+                    ["items"] = CreateFlexibleObjectSchema()
                 };
+            }
+
+            if (type == typeof(object) || IsJsonObjectType(type) || IsDictionaryType(type))
+            {
+                return CreateFlexibleObjectSchema();
             }
 
             if (type.IsEnum)
@@ -162,11 +173,17 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 var t when t == typeof(string) || t == typeof(char) || t == typeof(Guid) => "string",
                 var t when t == typeof(DateTime) || t == typeof(DateTimeOffset) => "string", // ISO 8601
                 var t when t.IsEnum => "string",
-                var t when t.IsArray || IsCollectionType(t) => "array",
+                var t when t.IsArray || IsCollectionType(t) || IsJsonArrayType(t) => "array",
                 var t when IsDictionaryType(t) || IsJsonObjectType(t) => "object",
                 _ => "object"
             };
         }
+
+        static Dictionary<string, object> CreateFlexibleObjectSchema() => new()
+        {
+            ["type"] = "object",
+            ["additionalProperties"] = true
+        };
 
         static bool IsNullableType(Type type) =>
             type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>);
@@ -195,8 +212,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
         }
 
+        static bool IsJsonArrayType(Type type) =>
+            type != null && typeof(JArray).IsAssignableFrom(type);
+
         static bool IsJsonObjectType(Type type) =>
-            type != null && typeof(JToken).IsAssignableFrom(type);
+            type != null && typeof(JToken).IsAssignableFrom(type) && !IsJsonArrayType(type);
 
         static bool IsRequiredProperty(PropertyInfo property)
         {

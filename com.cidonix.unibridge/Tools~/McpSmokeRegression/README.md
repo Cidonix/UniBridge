@@ -25,6 +25,8 @@ powershell -ExecutionPolicy Bypass `
 ## What It Checks
 
 - `tools/list` includes the core UniBridge MCP tools.
+- `RuntimeStateProbe.Assertions` is advertised as an array of objects, and a
+  legacy/simplified single assertion object is safely normalized at execution.
 - `UniBridge_Discover Action=Ping` returns package/project identity.
 - Console clear/read workflows work.
 - `WaitForReady`, `RefreshAssets`, `RequestScriptCompilationNoWait`, and

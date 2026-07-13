@@ -380,6 +380,8 @@ class SmokeSuite:
             self.run_step("request_compile_no_wait", "Request script compilation as a reload boundary.", self.step_request_compile)
             self.run_step("wait_ready_after_reload", "Wait after refresh/compile reload boundary and read health evidence.", self.step_wait_ready_after_reload)
 
+        self.run_step("runtime_probe_assertions_schema", "Verify RuntimeStateProbe Assertions is advertised as an array of objects.", self.step_runtime_probe_assertions_schema)
+        self.run_step("runtime_probe_single_assertion_object", "Verify a single RuntimeStateProbe assertion object is normalized to a one-item array.", self.step_runtime_probe_single_assertion_object)
         self.run_step("compilation_diagnostics", "Read compilation diagnostics and build-system health.", self.step_compilation_diagnostics)
 
         if self.args.include_ui_recipe:
@@ -411,6 +413,20 @@ class SmokeSuite:
         if missing:
             raise AssertionError(f"Missing required tools: {', '.join(missing)}")
         return {"toolCount": len(names), "requiredTools": required}
+
+    def step_runtime_probe_assertions_schema(self):
+        with self.make_client() as client:
+            tools = client.list_tools()
+        tool = next((item for item in tools if item.get("name") == "UniBridge_RuntimeStateProbe"), None)
+        if not tool:
+            raise AssertionError("UniBridge_RuntimeStateProbe is missing from tools/list.")
+        assertions = prop(tool, "inputSchema", "properties", "Assertions", default={}) or {}
+        if assertions.get("type") != "array":
+            raise AssertionError(f"RuntimeStateProbe Assertions schema type is not array: {assertions}")
+        items = assertions.get("items") or {}
+        if items.get("type") != "object":
+            raise AssertionError(f"RuntimeStateProbe Assertions items schema type is not object: {items}")
+        return {"type": assertions.get("type"), "itemType": items.get("type")}
 
     def step_discover_ping(self):
         data = self.tool("UniBridge_Discover", {"Action": "Ping"})["data"] or {}
@@ -483,6 +499,38 @@ class SmokeSuite:
             timeout=self.args.reload_timeout_seconds,
         )["data"] or {}
         return {"message": prop(data, "message"), "recipe": prop(data, "recipe"), "batchStatus": prop(data, "batchResult", "status")}
+
+    def step_runtime_probe_single_assertion_object(self):
+        result = self.tool(
+            "UniBridge_RuntimeStateProbe",
+            {
+                "Action": "Assert",
+                "Component": "Transform",
+                "SearchMethod": "ByComponent",
+                "MaxTargets": 1,
+                "SampleFrames": 1,
+                "TimeoutMs": 5000,
+                "RequirePlayMode": False,
+                "SaveToFile": False,
+                "ReturnSamples": False,
+                "FailOnFailedAssertions": False,
+                "Assertions": {
+                    "name": "single_object_schema_smoke",
+                    "member": "localScale.x",
+                    "operator": ">=",
+                    "value": -1000000,
+                },
+            },
+        )
+        data = response_payload(result["data"])
+        summary = prop(data, "assertionSummary", default={}) or {}
+        if summary.get("total") != 1:
+            raise AssertionError(f"Single assertion object was not normalized to one assertion: {summary}")
+        return {
+            "message": prop(result["data"] or {}, "message"),
+            "assertionTotal": summary.get("total"),
+            "assertionPassed": prop(data, "passed"),
+        }
 
     def step_runtime_probe_timeout_releases_slot(self):
         error_text = None

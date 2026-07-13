@@ -1,6 +1,21 @@
-# UniBridge 0.2.38 Release Notes
+# UniBridge 0.2.39 Release Notes
 
-Release date: 2026-07-04
+Release date: 2026-07-13
+
+This hotfix aligns `UniBridge_RuntimeStateProbe` MCP metadata with its C#
+parameter contract. `RuntimeStateProbeParams.Assertions` is now published as a
+JSON array whose items are objects, matching the documented
+`Assertions=[{...}]` request shape.
+
+The shared typed-tool deserializer is also tolerant of callers that send one
+assertion as a bare JSON object. It clones and normalizes that value to a
+one-item `JArray` before Newtonsoft deserialization, preventing the previous
+`JObject is not compatible with expected type JArray` exception.
+
+The MCP smoke regression suite now checks the tool schema from `tools/list` and
+executes a live editor-time assertion using the simplified single-object form.
+
+## Previous 0.2.38 Notes
 
 This hotfix makes `UniBridge_WorkSession` review safe for large scenes after
 Unity reloads or object-id churn.

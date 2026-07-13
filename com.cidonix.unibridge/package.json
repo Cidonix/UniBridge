@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.38",
+  "version": "0.2.39",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- WorkSession semantic review now detects stale/noisy scene baselines when loaded scene object ids no longer overlap after reloads or object-id churn, and returns a compact semanticBaselineStale/reviewSkipped status instead of thousands of fake deleted/created changes.\n- Compact WorkSession review now uses a lightweight scene identity/count capture, so ExecutionStatus and post-batch review can diagnose stale baselines without serializing components, renderers, prefab info, and transforms for every loaded object.\n- Compact WorkSession changed-file review now uses metadata-only scanning instead of hashing every tracked file; full hash-accurate review remains available through UniBridge_WorkSession Action=Review.\n- BatchActions post-action WorkSession review is lightweight by default and does not run scene semantic review unless IncludeWorkSessionSemanticReview=true is explicitly requested.\n- ExecutionStatus WorkSession summaries now expose bounded semantic review controls so agents can keep scheduler diagnostics quick while still requesting stale-baseline evidence when needed.\n\n### Previous Changes\n\n- ManageGameObject SetComponentProperty handles Unity object references more reliably, including objectIdString, asset path/GUID, subassets, and scene component payloads.\n- TextMeshPro font assignment syncs serialized/runtime font and material state.\n- BatchActions ValidateScript supports read-only validation of scripts under both Assets/... and Packages/...."
+    "changelog": "### Fixed\n\n- RuntimeStateProbe Assertions now has the correct MCP schema: array with object items.\n- Typed tool parameter deserialization accepts a single object for JArray-backed properties and safely normalizes it to a one-item array.\n- MCP smoke regression now verifies both the canonical Assertions schema and tolerant single-object execution.\n\n### Previous Changes\n\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status instead of fake deleted/created changes.\n- BatchActions post-action WorkSession review is lightweight by default.\n- ManageGameObject SetComponentProperty handles Unity object references more reliably."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {
