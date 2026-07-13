@@ -1,21 +1,33 @@
-# UniBridge 0.2.41 Release Notes
+# UniBridge 0.2.42 Release Notes
 
 Release date: 2026-07-13
 
-This hotfix makes `UniBridge_ManageUI Action=SetGraphic` a verified text-editing
-path for legacy UI Text and `TMPro.TextMeshProUGUI`, including Prefab Stage.
-Text, font size, TMP font asset, alignment, rich-text, auto-sizing, overflow,
-color, material, and raycast settings now update the actual component rather
-than only its base `Graphic` properties.
+This hotfix aligns `UniBridge_ScriptApplyEdits` with its documented anchor edit
+contract. `anchor_insert`, `anchor_delete`, and `anchor_replace` now work in
+both text-only calls and mixed text/structured calls.
 
-TMP changes are synchronized with serialized prefab fields, recorded with
-Undo, marked dirty on both the component and Prefab Stage, and verified before
-success is returned. Responses expose complete text/TMP `before` and `after`
-state plus requested/applied/changed fields and explicit no-change signals.
+Preview is now a reliable safety boundary. A mixed Preview computes the anchor
+text diff and reports the structured operations that would follow, but does not
+write the text portion to disk. Actual apply continues through the existing
+transactional text editor and C# validation path.
 
-The MCP smoke suite now writes `Мама` and a Ukrainian sentence into TMP labels
-inside an isolated Prefab Stage, saves the prefab, rereads its YAML, and checks
-the serialized strings and font sizes.
+Anchor matching is intentionally strict: a missing anchor fails unless
+`allowNoop=true`, and a regex with multiple matches fails unless the caller
+uses a zero-based `matchIndex` or explicitly supplies `preferLast=true/false`.
+`PreconditionSha256` is now enforced consistently across structured, text, and
+mixed routes.
+
+The standard MCP smoke suite creates a temporary C# script, previews and
+applies every anchor operation, rereads text and SHA after each stage, validates
+the final source, verifies stale/missing/ambiguous failures, and removes the
+temporary script.
+
+## Previous 0.2.41 Notes
+
+`UniBridge_ManageUI Action=SetGraphic` is a verified text-editing path for
+legacy UI Text and `TMPro.TextMeshProUGUI`, including Prefab Stage. TMP changes
+preserve Unicode, record Undo, mark the component/prefab stage dirty, and return
+complete text/TMP before-and-after evidence.
 
 ## Previous 0.2.40 Notes
 

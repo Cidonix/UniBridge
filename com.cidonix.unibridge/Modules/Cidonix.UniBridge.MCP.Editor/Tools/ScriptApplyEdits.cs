@@ -33,6 +33,8 @@ Args:
     path: Folder under Assets/ containing the script.
     edits: List of structured edits.
     options: Optional validate, refresh, and applyMode settings.
+    preconditionSha256: Optional SHA256 guard. The edit fails with stale_file if the script changed.
+    preview: When true, return a diff without modifying the script.
 
 Supported edit ops:
     replace_method, insert_method, delete_method, anchor_insert, anchor_delete, anchor_replace.
@@ -45,6 +47,13 @@ Common fields:
     afterMethodName / beforeMethodName: Anchor method names for positional insertions.
     anchor: Regex anchor for anchor_* operations.
     text: Text inserted or used by anchor_insert/anchor_replace.
+    matchIndex: Optional zero-based match index when the regex has multiple matches.
+    preferLast: Explicitly select the last (true) or first (false) match.
+    allowNoop: Explicitly allow a missing anchor to produce no changes; defaults to false.
+
+Anchor safety:
+    Missing anchors fail by default. Ambiguous anchors fail unless matchIndex, preferLast,
+    or allowAmbiguous is supplied explicitly.
 
 Examples:
 1) Replace a method:
@@ -172,6 +181,13 @@ Examples:
                     optionsToUse = new Dictionary<string, object>(optionsToUse);
                     optionsToUse["preview"] = true;
                 }
+                if (!string.IsNullOrWhiteSpace(parameters.PreconditionSha256) &&
+                    !optionsToUse.ContainsKey("preconditionSha256"))
+                {
+                    if (ReferenceEquals(optionsToUse, parameters.Options))
+                        optionsToUse = new Dictionary<string, object>(optionsToUse);
+                    optionsToUse["preconditionSha256"] = parameters.PreconditionSha256.Trim();
+                }
 
                 // Execute edits based on routing
                 switch (routing)
@@ -219,6 +235,10 @@ Examples:
                 ["options"] = JObject.FromObject(opts)
             };
 
+            var precondition = GetPreconditionSha256(opts);
+            if (!string.IsNullOrEmpty(precondition))
+                managementParams["precondition_sha256"] = precondition;
+
             var result = ManageScript.HandleCommand(managementParams);
 
             // Enhance result with routing information
@@ -261,6 +281,10 @@ Examples:
             {
                 return Response.Error("Failed to read script contents for text editing.");
             }
+
+            var preconditionError = ValidatePrecondition(contents, options);
+            if (preconditionError != null)
+                return preconditionError;
 
             // Try to convert and apply text edits directly
             var result = ConvertAndApplyTextEdits(name, path, namespaceName, scriptType, edits, contents, options);
@@ -452,107 +476,57 @@ Examples:
             try
             {
                 var baseText = contents;
+                var preconditionError = ValidatePrecondition(baseText, options);
+                if (preconditionError != null)
+                    return preconditionError;
 
-                // Process text edits with inline conversion
-                if (textEdits.Any())
+                var computedTextEdits = BuildComputedTextEdits(textEdits, baseText);
+                var preview = GetBoolValue(options, "preview");
+                if (preview)
                 {
-                    var atEdits = new List<Dictionary<string, object>>();
-
-                    foreach (var edit in textEdits)
+                    var previewText = ApplyComputedTextEditsLocally(baseText, computedTextEdits);
+                    return Response.Success("Preview only (no write)", new
                     {
-                        var opx = GetStringValue(edit, "op") ??
-                                 GetStringValue(edit, "operation") ??
-                                 GetStringValue(edit, "type") ??
-                                 GetStringValue(edit, "mode") ?? "";
-                        opx = opx.Trim().ToLowerInvariant();
+                        diff = GenerateUnifiedDiff(baseText, previewText),
+                        normalizedEdits = edits,
+                        computedTextEdits,
+                        plannedStructuredEdits = structEdits,
+                        routing = "mixed/preview",
+                        preconditionSha256 = ComputeSha256(baseText)
+                    });
+                }
 
-                        var textField = GetStringValue(edit, "text") ??
-                                       GetStringValue(edit, "insert") ??
-                                       GetStringValue(edit, "content") ??
-                                       GetStringValue(edit, "replacement") ?? "";
-
-                        switch (opx)
-                        {
-                            case "anchor_insert":
-                                var anchorEdit = ProcessMixedAnchorInsert(edit, baseText);
-                                if (anchorEdit != null) atEdits.Add(anchorEdit);
-                                break;
-
-                            case "replace_range":
-                                var rangeEdit = ProcessMixedReplaceRange(edit, textField);
-                                if (rangeEdit != null) atEdits.Add(rangeEdit);
-                                break;
-
-                            case "regex_replace":
-                                // NOTE: NO confirmation logic here
-                                var regexEdit = ProcessMixedRegexReplace(edit, baseText, textField);
-                                if (regexEdit != null) atEdits.Add(regexEdit);
-                                break;
-
-                            case "prepend":
-                                atEdits.Add(new Dictionary<string, object>
-                                {
-                                    ["startLine"] = 1,
-                                    ["startCol"] = 1,
-                                    ["endLine"] = 1,
-                                    ["endCol"] = 1,
-                                    ["newText"] = textField
-                                });
-                                break;
-
-                            case "append":
-                                var eofIdx = baseText.Length;
-                                var (sl, sc) = GetLineColFromIndex(baseText, eofIdx);
-                                var newText = (!baseText.EndsWith("\n") ? "\n" : "") + textField;
-                                atEdits.Add(new Dictionary<string, object>
-                                {
-                                    ["startLine"] = sl,
-                                    ["startCol"] = sc,
-                                    ["endLine"] = sl,
-                                    ["endCol"] = sc,
-                                    ["newText"] = newText
-                                });
-                                break;
-
-                            default:
-                                return Response.Error($"Unsupported text edit op: {opx}", new
-                                {
-                                    normalizedEdits = edits,
-                                    routing = "mixed/text-first"
-                                });
-                        }
-                    }
-
-                    // Send text edits to Unity
-                    if (atEdits.Any())
+                object textResult = null;
+                if (computedTextEdits.Any())
+                {
+                    string sha = ComputeSha256(baseText);
+                    var paramsText = new JObject
                     {
-                        string sha = ComputeSha256(baseText);
-                        var paramsText = new JObject
+                        ["action"] = "apply_text_edits",
+                        ["name"] = name,
+                        ["path"] = path,
+                        ["namespace"] = namespaceName,
+                        ["scriptType"] = scriptType,
+                        ["edits"] = JArray.FromObject(computedTextEdits),
+                        ["precondition_sha256"] = sha,
+                        ["options"] = JObject.FromObject(new Dictionary<string, object>
                         {
-                            ["action"] = "apply_text_edits",
-                            ["name"] = name,
-                            ["path"] = path,
-                            ["namespace"] = namespaceName,
-                            ["scriptType"] = scriptType,
-                            ["edits"] = JArray.FromObject(atEdits),
-                            ["precondition_sha256"] = sha,
-                            ["options"] = JObject.FromObject(new Dictionary<string, object>
-                            {
-                                ["refresh"] = GetStringValue(options, "refresh") ?? "debounced",
-                                ["validate"] = GetStringValue(options, "validate") ?? "standard",
-                                ["applyMode"] = atEdits.Count > 1 ? "atomic" : GetStringValue(options, "applyMode") ?? "sequential"
-                            })
-                        };
+                            ["refresh"] = GetStringValue(options, "refresh") ?? "debounced",
+                            ["validate"] = GetStringValue(options, "validate") ?? "standard",
+                            ["applyMode"] = computedTextEdits.Count > 1 ? "atomic" : GetStringValue(options, "applyMode") ?? "sequential"
+                        })
+                    };
 
-                        var respText = ManageScript.HandleCommand(paramsText);
-                        if (!IsSuccessResponse(respText))
+                    textResult = ManageScript.HandleCommand(paramsText);
+                    if (!IsSuccessResponse(textResult))
+                    {
+                        return Response.Error("Text edit failed in mixed processing", new
                         {
-                            return Response.Error("Text edit failed in mixed processing", new
-                            {
-                                normalizedEdits = edits,
-                                routing = "mixed/text-first"
-                            });
-                        }
+                            normalizedEdits = edits,
+                            computedTextEdits,
+                            routing = "mixed/text-first",
+                            result = textResult
+                        });
                     }
                 }
 
@@ -595,6 +569,8 @@ Examples:
                 return Response.Success("Applied text edits (no structured ops)", new
                 {
                     normalizedEdits = edits,
+                    computedTextEdits,
+                    result = textResult,
                     routing = "mixed/text-first"
                 });
             }
@@ -608,6 +584,113 @@ Examples:
             }
         }
 
+        static List<Dictionary<string, object>> BuildComputedTextEdits(
+            IEnumerable<Dictionary<string, object>> edits,
+            string contents)
+        {
+            var computed = new List<Dictionary<string, object>>();
+            foreach (var edit in edits ?? Enumerable.Empty<Dictionary<string, object>>())
+            {
+                var op = (GetStringValue(edit, "op") ?? string.Empty).Trim().ToLowerInvariant();
+                var text = GetStringValue(edit, "text") ??
+                           GetStringValue(edit, "insert") ??
+                           GetStringValue(edit, "content") ??
+                           GetStringValue(edit, "replacement") ?? string.Empty;
+                Dictionary<string, object> converted = op switch
+                {
+                    "anchor_insert" => ProcessAnchorInsert(edit, contents),
+                    "anchor_delete" => ProcessAnchorDelete(edit, contents),
+                    "anchor_replace" => ProcessAnchorReplace(edit, contents),
+                    "replace_range" => ProcessReplaceRange(edit),
+                    "regex_replace" => ProcessRegexReplace(edit, contents),
+                    "prepend" => new Dictionary<string, object>
+                    {
+                        ["startLine"] = 1,
+                        ["startCol"] = 1,
+                        ["endLine"] = 1,
+                        ["endCol"] = 1,
+                        ["newText"] = text
+                    },
+                    "append" => BuildAppendTextEdit(contents, text),
+                    _ => throw new InvalidOperationException($"Unsupported text edit op: {op}")
+                };
+
+                if (converted != null)
+                    computed.Add(converted);
+            }
+
+            return computed;
+        }
+
+        static Dictionary<string, object> BuildAppendTextEdit(string contents, string text)
+        {
+            var (line, col) = GetEndOfFilePosition(contents);
+            return new Dictionary<string, object>
+            {
+                ["startLine"] = line,
+                ["startCol"] = col,
+                ["endLine"] = line,
+                ["endCol"] = col,
+                ["newText"] = (!contents.EndsWith("\n") ? "\n" : string.Empty) + text
+            };
+        }
+
+        static string ApplyComputedTextEditsLocally(
+            string contents,
+            IEnumerable<Dictionary<string, object>> edits)
+        {
+            var ranges = (edits ?? Enumerable.Empty<Dictionary<string, object>>())
+                .Select(edit => new
+                {
+                    start = GetIndexFromLineCol(contents, GetIntValue(edit, "startLine"), GetIntValue(edit, "startCol")),
+                    end = GetIndexFromLineCol(contents, GetIntValue(edit, "endLine"), GetIntValue(edit, "endCol")),
+                    text = GetStringValue(edit, "newText") ?? string.Empty
+                })
+                .OrderByDescending(range => range.start)
+                .ToArray();
+
+            for (var index = 1; index < ranges.Length; index++)
+            {
+                if (ranges[index].end > ranges[index - 1].start)
+                    throw new InvalidOperationException("Computed text edits overlap; use sequential calls or more specific anchors.");
+            }
+
+            var result = contents;
+            foreach (var range in ranges)
+                result = result.Remove(range.start, range.end - range.start).Insert(range.start, range.text);
+            return result;
+        }
+
+        static int GetIndexFromLineCol(string text, int targetLine, int targetCol)
+        {
+            if (targetLine < 1 || targetCol < 1)
+                throw new ArgumentOutOfRangeException(nameof(targetLine), "Text edit line and column are 1-based and must be positive.");
+
+            var line = 1;
+            var col = 1;
+            for (var index = 0; index <= text.Length; index++)
+            {
+                if (line == targetLine && col == targetCol)
+                    return index;
+                if (index == text.Length)
+                    break;
+
+                if (text[index] == '\n')
+                {
+                    line++;
+                    col = 1;
+                }
+                else if (text[index] != '\r')
+                {
+                    col++;
+                }
+            }
+
+            throw new ArgumentOutOfRangeException(
+                nameof(targetLine),
+                $"Text edit position {targetLine}:{targetCol} is outside the current file.");
+        }
+
         /// <summary>
         /// Convert structured operations to apply_text_edits format
         /// </summary>
@@ -616,71 +699,7 @@ Examples:
         {
             try
             {
-                var atEdits = new List<Dictionary<string, object>>();
-
-                foreach (var edit in edits)
-                {
-                    var op = GetStringValue(edit, "op")?.ToLowerInvariant();
-                    var textField = GetStringValue(edit, "text") ??
-                                   GetStringValue(edit, "insert") ??
-                                   GetStringValue(edit, "content") ?? "";
-
-                    switch (op)
-                    {
-                        case "anchor_insert":
-                            var anchorEdit = ProcessAnchorInsert(edit, contents);
-                            if (anchorEdit != null) atEdits.Add(anchorEdit);
-                            break;
-
-                        case "anchor_delete":
-                            var anchorDeleteEdit = ProcessAnchorDelete(edit, contents);
-                            if (anchorDeleteEdit != null) atEdits.Add(anchorDeleteEdit);
-                            break;
-
-                        case "anchor_replace":
-                            var anchorReplaceEdit = ProcessAnchorReplace(edit, contents);
-                            if (anchorReplaceEdit != null) atEdits.Add(anchorReplaceEdit);
-                            break;
-
-                        case "replace_range":
-                            var rangeEdit = ProcessReplaceRange(edit);
-                            if (rangeEdit != null) atEdits.Add(rangeEdit);
-                            break;
-
-                        case "regex_replace":
-                            var regexEdit = ProcessRegexReplace(edit, contents);
-                            if (regexEdit != null) atEdits.Add(regexEdit);
-                            break;
-
-                        case "prepend":
-                            atEdits.Add(new Dictionary<string, object>
-                            {
-                                ["startLine"] = 1,
-                                ["startCol"] = 1,
-                                ["endLine"] = 1,
-                                ["endCol"] = 1,
-                                ["newText"] = textField
-                            });
-                            break;
-
-                        case "append":
-                            var (line, col) = GetEndOfFilePosition(contents);
-                            var newText = (!contents.EndsWith("\n") ? "\n" : "") + textField;
-                            atEdits.Add(new Dictionary<string, object>
-                            {
-                                ["startLine"] = line,
-                                ["startCol"] = col,
-                                ["endLine"] = line,
-                                ["endCol"] = col,
-                                ["newText"] = newText
-                            });
-                            break;
-
-                        default:
-                            // Unsupported operation, return null to trigger fallback
-                            return null;
-                    }
-                }
+                var atEdits = BuildComputedTextEdits(edits, contents);
 
                 if (!atEdits.Any())
                 {
@@ -701,7 +720,7 @@ Examples:
                 {
                     try
                     {
-                        var previewText = ApplyEditsLocally(contents, edits);
+                        var previewText = ApplyComputedTextEditsLocally(contents, atEdits);
                         var diff = GenerateUnifiedDiff(contents, previewText);
                         var data = new
                         {
@@ -770,28 +789,76 @@ Examples:
         /// <summary>
         /// Process anchor_insert operation
         /// </summary>
-        static Dictionary<string, object> ProcessAnchorInsert(Dictionary<string, object> edit, string contents)
+        static Match ResolveAnchorMatch(
+            Dictionary<string, object> edit,
+            string contents,
+            string operation)
         {
             var anchor = GetStringValue(edit, "anchor");
-            var position = GetStringValue(edit, "position")?.ToLowerInvariant() ?? "before";
-            var text = GetStringValue(edit, "text") ?? GetStringValue(edit, "replacement") ?? "";
-            var ignoreCase = GetBoolValue(edit, "ignoreCase");
-            var preferLast = GetBoolValue(edit, "preferLast", true);
-
-            if (string.IsNullOrEmpty(anchor))
-                return null;
+            if (string.IsNullOrWhiteSpace(anchor))
+                throw new InvalidOperationException($"{operation} requires a non-empty anchor regex.");
 
             var options = RegexOptions.Multiline;
-            if (ignoreCase)
+            if (GetBoolValue(edit, "ignoreCase") || GetBoolValue(edit, "ignore_case"))
                 options |= RegexOptions.IgnoreCase;
 
-            var match = AnchorMatcher.FindBestAnchorMatch(anchor, contents, options, preferLast);
-            if (match == null)
+            Match[] matches;
+            try
             {
-                if (GetBoolValue(edit, "allowNoop", true))
-                    return null;
-                throw new InvalidOperationException($"Anchor not found: {anchor}");
+                matches = new Regex(anchor, options, TimeSpan.FromSeconds(2))
+                    .Matches(contents)
+                    .Cast<Match>()
+                    .ToArray();
             }
+            catch (RegexMatchTimeoutException)
+            {
+                throw new InvalidOperationException($"{operation}: anchor regex timed out: {anchor}");
+            }
+            catch (ArgumentException ex)
+            {
+                throw new InvalidOperationException($"{operation}: invalid anchor regex '{anchor}': {ex.Message}");
+            }
+
+            if (matches.Length == 0)
+            {
+                if (GetBoolValue(edit, "allowNoop") || GetBoolValue(edit, "allow_noop"))
+                    return null;
+                throw new InvalidOperationException($"{operation}: anchor not found: {anchor}");
+            }
+
+            if (TryGetIntValue(edit, "matchIndex", out var matchIndex) ||
+                TryGetIntValue(edit, "match_index", out matchIndex))
+            {
+                if (matchIndex < 0 || matchIndex >= matches.Length)
+                    throw new InvalidOperationException(
+                        $"{operation}: matchIndex {matchIndex} is outside 0..{matches.Length - 1} for anchor '{anchor}'.");
+                return matches[matchIndex];
+            }
+
+            if (matches.Length > 1)
+            {
+                var hasExplicitPreference = edit.ContainsKey("preferLast") || edit.ContainsKey("prefer_last");
+                var allowAmbiguous = GetBoolValue(edit, "allowAmbiguous") || GetBoolValue(edit, "allow_ambiguous");
+                if (!hasExplicitPreference && !allowAmbiguous)
+                {
+                    throw new InvalidOperationException(
+                        $"{operation}: anchor is ambiguous ({matches.Length} matches): {anchor}. " +
+                        "Use a more specific regex, matchIndex, or explicit preferLast=true/false.");
+                }
+
+                var preferLast = GetBoolValue(edit, "preferLast", GetBoolValue(edit, "prefer_last", true));
+                return preferLast ? matches[^1] : matches[0];
+            }
+
+            return matches[0];
+        }
+
+        static Dictionary<string, object> ProcessAnchorInsert(Dictionary<string, object> edit, string contents)
+        {
+            var position = GetStringValue(edit, "position")?.ToLowerInvariant() ?? "before";
+            var text = GetStringValue(edit, "text") ?? GetStringValue(edit, "replacement") ?? "";
+            var match = ResolveAnchorMatch(edit, contents, "anchor_insert");
+            if (match == null) return null;
 
             int index = position == "before" ? match.Index : match.Index + match.Length;
             var (line, col) = GetLineColFromIndex(contents, index);
@@ -820,24 +887,8 @@ Examples:
         /// </summary>
         static Dictionary<string, object> ProcessAnchorDelete(Dictionary<string, object> edit, string contents)
         {
-            var anchor = GetStringValue(edit, "anchor");
-            var ignoreCase = GetBoolValue(edit, "ignoreCase");
-            var preferLast = GetBoolValue(edit, "preferLast", true);
-
-            if (string.IsNullOrEmpty(anchor))
-                return null;
-
-            var options = RegexOptions.Multiline;
-            if (ignoreCase)
-                options |= RegexOptions.IgnoreCase;
-
-            var match = AnchorMatcher.FindBestAnchorMatch(anchor, contents, options, preferLast);
-            if (match == null)
-            {
-                if (GetBoolValue(edit, "allowNoop", true))
-                    return null;
-                throw new InvalidOperationException($"Anchor not found: {anchor}");
-            }
+            var match = ResolveAnchorMatch(edit, contents, "anchor_delete");
+            if (match == null) return null;
 
             var (startLine, startCol) = GetLineColFromIndex(contents, match.Index);
             var (endLine, endCol) = GetLineColFromIndex(contents, match.Index + match.Length);
@@ -857,25 +908,9 @@ Examples:
         /// </summary>
         static Dictionary<string, object> ProcessAnchorReplace(Dictionary<string, object> edit, string contents)
         {
-            var anchor = GetStringValue(edit, "anchor");
             var replacement = GetStringValue(edit, "text") ?? GetStringValue(edit, "replacement") ?? "";
-            var ignoreCase = GetBoolValue(edit, "ignoreCase");
-            var preferLast = GetBoolValue(edit, "preferLast", true);
-
-            if (string.IsNullOrEmpty(anchor))
-                return null;
-
-            var options = RegexOptions.Multiline;
-            if (ignoreCase)
-                options |= RegexOptions.IgnoreCase;
-
-            var match = AnchorMatcher.FindBestAnchorMatch(anchor, contents, options, preferLast);
-            if (match == null)
-            {
-                if (GetBoolValue(edit, "allowNoop", true))
-                    return null;
-                throw new InvalidOperationException($"Anchor not found: {anchor}");
-            }
+            var match = ResolveAnchorMatch(edit, contents, "anchor_replace");
+            if (match == null) return null;
 
             var (startLine, startCol) = GetLineColFromIndex(contents, match.Index);
             var (endLine, endCol) = GetLineColFromIndex(contents, match.Index + match.Length);
@@ -1067,6 +1102,30 @@ Examples:
             }
         }
 
+        static string GetPreconditionSha256(Dictionary<string, object> options)
+        {
+            return GetStringValue(options, "preconditionSha256") ??
+                   GetStringValue(options, "precondition_sha256");
+        }
+
+        static object ValidatePrecondition(string contents, Dictionary<string, object> options)
+        {
+            var expected = GetPreconditionSha256(options);
+            if (string.IsNullOrWhiteSpace(expected))
+                return null;
+
+            var current = ComputeSha256(contents);
+            return string.Equals(expected.Trim(), current, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : Response.Error("stale_file", new
+                {
+                    status = "stale_file",
+                    expected_sha256 = expected.Trim(),
+                    current_sha256 = current,
+                    noChangesApplied = true
+                });
+        }
+
         /// <summary>
         /// Extract string value from dictionary
         /// </summary>
@@ -1087,6 +1146,19 @@ Examples:
                 return parsed;
 
             return 0;
+        }
+
+        static bool TryGetIntValue(Dictionary<string, object> dict, string key, out int value)
+        {
+            value = 0;
+            if (dict == null || !dict.TryGetValue(key, out var raw) || raw == null)
+                return false;
+            if (raw is int intValue)
+            {
+                value = intValue;
+                return true;
+            }
+            return int.TryParse(raw.ToString(), out value);
         }
 
         /// <summary>
@@ -1192,140 +1264,8 @@ Examples:
         /// </summary>
         static string ApplyEditsLocally(string originalText, List<Dictionary<string, object>> edits)
         {
-            string text = originalText;
-            foreach (var edit in edits ?? new List<Dictionary<string, object>>())
-            {
-                var op = GetStringValue(edit, "op")?.ToLowerInvariant();
-
-                if (string.IsNullOrEmpty(op))
-                {
-                    throw new ArgumentException("Edit operation is required");
-                }
-
-                switch (op)
-                {
-                    case "prepend":
-                        var prependText = GetStringValue(edit, "text") ?? "";
-                        text = (prependText.EndsWith("\n") ? prependText : prependText + "\n") + text;
-                        break;
-
-                    case "append":
-                        var appendText = GetStringValue(edit, "text") ?? "";
-                        if (!text.EndsWith("\n"))
-                            text += "\n";
-                        text += appendText;
-                        if (!text.EndsWith("\n"))
-                            text += "\n";
-                        break;
-
-                    case "anchor_insert":
-                        var anchor = GetStringValue(edit, "anchor") ?? "";
-                        var position = GetStringValue(edit, "position")?.ToLowerInvariant() ?? "before";
-                        var insertText = GetStringValue(edit, "text") ?? "";
-                        var ignoreCase = GetBoolValue(edit, "ignoreCase");
-                        var preferLast = GetBoolValue(edit, "preferLast", true);
-
-                        if (!string.IsNullOrEmpty(anchor))
-                        {
-                            var flags = RegexOptions.Multiline;
-                            if (ignoreCase) flags |= RegexOptions.IgnoreCase;
-
-                            // Use improved anchor matching logic
-                            var match = AnchorMatcher.FindBestAnchorMatch(anchor, text, flags, preferLast);
-                            if (match != null)
-                            {
-                                int idx = position == "before" ? match.Index : match.Index + match.Length;
-                                text = text.Substring(0, idx) + insertText + text.Substring(idx);
-                            }
-                            else if (!GetBoolValue(edit, "allowNoop", true))
-                            {
-                                throw new InvalidOperationException($"Anchor not found: {anchor}");
-                            }
-                        }
-                        break;
-
-                    case "replace_range":
-                        var startLine = GetIntValue(edit, "startLine");
-                        var startCol = GetIntValue(edit, "startCol");
-                        var endLine = GetIntValue(edit, "endLine");
-                        var endCol = GetIntValue(edit, "endCol");
-                        var rangeReplacement = GetStringValue(edit, "text") ?? "";
-
-                        if (startLine > 0 && startCol > 0 && endLine > 0 && endCol > 0)
-                        {
-                            var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-                            var maxLine = lines.Length + 1; // 1-based, exclusive end
-
-                            if (startLine >= 1 && endLine >= startLine && endLine <= maxLine &&
-                                startCol >= 1 && endCol >= 1)
-                            {
-                                // Convert 1-based line/col to 0-based character indices
-                                int IndexOf(int line, int col)
-                                {
-                                    if (line <= lines.Length)
-                                    {
-                                        int index = 0;
-                                        for (int i = 0; i < line - 1; i++)
-                                        {
-                                            index += lines[i].Length + 1; // +1 for \n
-                                        }
-                                        return index + (col - 1);
-                                    }
-                                    return text.Length;
-                                }
-
-                                int a = IndexOf(startLine, startCol);
-                                int b = IndexOf(endLine, endCol);
-                                text = text.Substring(0, a) + rangeReplacement + text.Substring(b);
-                            }
-                            else
-                            {
-                                throw new ArgumentOutOfRangeException("replace_range out of bounds");
-                            }
-                        }
-                        break;
-
-                    case "regex_replace":
-                        var pattern = GetStringValue(edit, "pattern") ?? GetStringValue(edit, "anchor");
-                        var replacement = GetStringValue(edit, "replacement") ?? GetStringValue(edit, "text") ?? "";
-                        var regexIgnoreCase = GetBoolValue(edit, "ignoreCase");
-                        var count = GetIntValue(edit, "count"); // 0 = replace all
-
-                        if (!string.IsNullOrEmpty(pattern))
-                        {
-                            var options = RegexOptions.Multiline;
-                            if (regexIgnoreCase) options |= RegexOptions.IgnoreCase;
-
-                            // Convert $1, $2.. backreferences to \g<n> format
-                            var convertedReplacement = Regex.Replace(replacement, @"\$(\d+)", @"\g<$1>");
-
-                            if (count > 0)
-                            {
-                                // Replace only 'count' occurrences
-                                var matches = Regex.Matches(text, pattern, options);
-                                int replacements = 0;
-                                for (int i = matches.Count - 1; i >= 0 && replacements < count; i--)
-                                {
-                                    var match = matches[i];
-                                    text = text.Substring(0, match.Index) +
-                                           Regex.Replace(match.Value, pattern, convertedReplacement, options) +
-                                           text.Substring(match.Index + match.Length);
-                                    replacements++;
-                                }
-                            }
-                            else
-                            {
-                                // Replace all occurrences (count = 0)
-                                text = Regex.Replace(text, pattern, convertedReplacement, options);
-                            }
-                        }
-                        break;
-
-                    default:
-                        throw new ArgumentException($"Unknown edit operation for local preview: {op}");
-                }
-            }
-            return text;
+            var computed = BuildComputedTextEdits(edits, originalText);
+            return ApplyComputedTextEditsLocally(originalText, computed);
         }
 
         /// <summary>

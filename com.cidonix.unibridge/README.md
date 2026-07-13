@@ -99,6 +99,11 @@ AI agent/MCP client so it reloads the available Unity projects.
 
 Full documentation lives in `Documentation~/unibridge.md`.
 
+For safe C# changes, use `UniBridge_GetSha` followed by
+`UniBridge_ScriptApplyEdits`. Its anchored operations (`anchor_insert`,
+`anchor_delete`, and `anchor_replace`) support no-write previews, SHA
+preconditions, and explicit missing/ambiguous-anchor diagnostics.
+
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
 

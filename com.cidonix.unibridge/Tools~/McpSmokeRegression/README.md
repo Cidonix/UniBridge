@@ -33,6 +33,9 @@ powershell -ExecutionPolicy Bypass `
   `WaitForReadyAfterReload` survive reload boundaries.
 - `GetCompilationDiagnostics` reports no compile/build-system failures.
 - `ValidateScript` can validate a script under `Packages/...`.
+- `ScriptApplyEdits` previews and applies `anchor_insert`, `anchor_delete`, and
+  `anchor_replace`, preserves SHA guards, rejects missing/ambiguous anchors,
+  and never writes during pure or mixed Preview calls.
 - `AssetIntelligence Action=ReadText` works as a text-read alias.
 - `ContextSnapshot` and `SceneObjectView` return compact AI-readable context.
 - `WorkflowRecipes Execute RunCoreSmokeTest` can create, inspect, and clean up a

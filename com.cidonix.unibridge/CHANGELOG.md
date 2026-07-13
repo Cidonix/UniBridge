@@ -2,6 +2,29 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.42
+
+### Fixed
+
+- `UniBridge_ScriptApplyEdits` now implements `anchor_insert`,
+  `anchor_delete`, and `anchor_replace` consistently in both text-only and
+  mixed text/structured routes. Mixed calls no longer reject the documented
+  delete/replace operations as unsupported.
+- Mixed `Preview=true` is now strictly no-write. It returns the computed text
+  diff and planned structured edits without applying the text portion first.
+- `PreconditionSha256` is enforced for text, mixed, and structured edit routes;
+  stale calls return `stale_file` with current/expected SHA evidence.
+- Missing anchors fail by default, and ambiguous regex anchors return an
+  actionable error. Callers can disambiguate with zero-based `matchIndex` or
+  an explicit `preferLast=true/false`, or opt into missing-anchor no-op behavior
+  with `allowNoop=true`.
+- Invalid and excessively expensive anchor regex patterns return controlled
+  validation errors instead of silently selecting an arbitrary span.
+- The standard MCP smoke suite now creates a temporary C# script and verifies
+  Preview plus actual apply for all three anchor operations, mixed Preview
+  no-write behavior, C# validation, SHA protection, missing/ambiguous errors,
+  and cleanup.
+
 ## 0.2.41
 
 ### Fixed

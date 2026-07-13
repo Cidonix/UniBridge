@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.41",
+  "version": "0.2.42",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- ManageUI SetGraphic now applies and verifies TextMeshProUGUI text, font size, font asset, alignment, rich text, auto-sizing, overflow, color, and raycast settings.\n- Unicode TMP strings are preserved when editing and saving Prefab Stage contents.\n- SetGraphic marks Prefab Stage contents dirty and returns full text/TMP before/after state.\n- Empty or unsupported SetGraphic updates return explicit no-change/error diagnostics instead of silent success.\n- MCP smoke regression saves and rereads TMP Unicode text and font sizes from prefab YAML.\n\n### Previous Changes\n\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- Missing or ambiguous UI parents fail without silently creating root objects in an ordinary scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization.\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status."
+    "changelog": "### Fixed\n\n- ScriptApplyEdits now implements anchor_insert, anchor_delete, and anchor_replace consistently in text and mixed edit routes.\n- Mixed Preview calls are strictly no-write and return the planned text diff plus structured edit plan.\n- SHA preconditions now apply to structured, text, and mixed edits.\n- Missing and ambiguous anchors return actionable validation errors unless the caller explicitly chooses no-op or disambiguation behavior.\n- MCP smoke regression previews and applies every anchor operation and verifies cleanup, C# validation, SHA guards, and failure diagnostics.\n\n### Previous Changes\n\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization.\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

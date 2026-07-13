@@ -121,14 +121,24 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         public bool IgnoreCase { get; set; }
 
         /// <summary>
-        /// Whether to prefer the last match over the first (for anchor operations)
+        /// Whether to explicitly prefer the last match over the first (for anchor operations)
         /// </summary>
-        public bool PreferLast { get; set; } = true;
+        public bool PreferLast { get; set; }
 
         /// <summary>
-        /// Whether to allow no-op if anchor is not found
+        /// Whether to explicitly allow a no-op if the anchor is not found
         /// </summary>
-        public bool AllowNoop { get; set; } = true;
+        public bool AllowNoop { get; set; }
+
+        /// <summary>
+        /// Optional zero-based match index used to disambiguate an anchor regex
+        /// </summary>
+        public int? MatchIndex { get; set; }
+
+        /// <summary>
+        /// Whether an ambiguous anchor may use the explicit first/last preference
+        /// </summary>
+        public bool AllowAmbiguous { get; set; }
 
         /// <summary>
         /// Starting line number for replace_range operations

@@ -1160,6 +1160,14 @@ Use:
 - `UniBridge_ScriptApplyEdits` for safer method, class, or anchor-based edits;
 - `UniBridge_ValidateScript` after script changes.
 
+`UniBridge_ScriptApplyEdits` supports `anchor_insert`, `anchor_delete`, and
+`anchor_replace` with regex anchors. Use `Preview=true` to inspect a no-write
+diff and pass `PreconditionSha256` from `UniBridge_GetSha` before applying.
+Missing anchors fail by default. If a regex matches more than once, use a more
+specific expression, zero-based `matchIndex`, or an explicit
+`preferLast=true/false`; UniBridge will not silently choose an ambiguous match.
+Set `allowNoop=true` only when a missing anchor is intentionally acceptable.
+
 ### Work With Assets
 
 Use `UniBridge_ManageAsset` for generic AssetDatabase operations such as search, folder creation, asset info, delete, duplicate, move, and rename.

@@ -367,6 +367,11 @@ class SmokeSuite:
             "UniBridge_ManageEditor",
             "UniBridge_ReadConsole",
             "UniBridge_ValidateScript",
+            "UniBridge_CreateScript",
+            "UniBridge_DeleteScript",
+            "UniBridge_GetSha",
+            "UniBridge_ReadResource",
+            "UniBridge_ScriptApplyEdits",
             "UniBridge_AssetIntelligence",
             "UniBridge_ContextSnapshot",
             "UniBridge_SceneObjectView",
@@ -385,6 +390,7 @@ class SmokeSuite:
         self.run_step("clear_console", "Clear Unity Console before smoke diagnostics.", self.step_clear_console)
         self.run_step("wait_ready", "Wait for Unity editor readiness before reading project state.", self.step_wait_ready)
         self.run_step("validate_package_script", "Validate a UniBridge package script through MCP.", self.step_validate_package_script)
+        self.run_step("script_anchor_edits", "Verify safe preview and apply behavior for every ScriptApplyEdits anchor operation.", self.step_script_anchor_edits)
         self.run_step("asset_read_text", "Read package.json via AssetIntelligence Action=ReadText alias.", self.step_asset_read_text)
         self.run_step("context_snapshot_brief", "Read compact ContextSnapshot with compact console summary.", self.step_context_snapshot)
         self.run_step("scene_hierarchy_brief", "Read a bounded SceneObjectView hierarchy including inactive objects.", self.step_scene_hierarchy)
@@ -485,6 +491,189 @@ class SmokeSuite:
         errors = first_count(data, ("errors",), ("diagnostics", "errors"), ("summary", "errors"))
         assert_zero_or_missing(errors, "ValidateScript returned errors.")
         return {"message": prop(data, "message"), "errors": errors, "warnings": first_count(data, ("warnings",), ("diagnostics", "warnings"), ("summary", "warnings"))}
+
+    def step_script_anchor_edits(self):
+        suffix = datetime.now().strftime("%H%M%S%f")[:9]
+        script_name = "UBAnchorSmoke_" + suffix
+        folder = "Assets/UniBridgeSmoke"
+        script_path = f"{folder}/{script_name}.cs"
+        source = (
+            f"public sealed class {script_name}\n"
+            "{\n"
+            "    public const string LineFullyShown = \"line\";\n"
+            "    public const string RemoveMe = \"remove\";\n"
+            "    // ANCHOR_DUPLICATE\n"
+            "    // ANCHOR_DUPLICATE\n"
+            "}\n"
+        )
+        created = False
+
+        def require_success(result, label):
+            envelope = result.get("envelope") or result.get("data") or {}
+            if isinstance(envelope, dict) and envelope.get("success") is False:
+                raise AssertionError(f"{label} failed: {envelope}")
+            return result.get("data") or {}
+
+        def require_failure(result, expected_text, label):
+            envelope = result.get("envelope") or {}
+            if not isinstance(envelope, dict) or envelope.get("success") is not False:
+                raise AssertionError(f"{label} unexpectedly succeeded: {envelope or result}")
+            serialized = json.dumps(envelope, ensure_ascii=False).lower()
+            if expected_text.lower() not in serialized:
+                raise AssertionError(f"{label} did not report '{expected_text}': {envelope}")
+
+        def read_script():
+            result = self.tool("UniBridge_ReadResource", {"Uri": script_path})
+            data = require_success(result, "ReadResource")
+            text_value = prop(data, "text", default=prop(data, "Text"))
+            sha_value = prop(data, "metadata", "sha256", default=prop(data, "Metadata", "Sha256"))
+            if text_value is None or not sha_value:
+                raise AssertionError(f"ReadResource returned incomplete script evidence: {data}")
+            return text_value, sha_value
+
+        def call_edit(edit, preview, sha):
+            return self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Edits": [edit],
+                    "Preview": preview,
+                    "PreconditionSha256": sha,
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+
+        def preview_then_apply(edit, expected_after):
+            before_text, before_sha = read_script()
+            preview_result = call_edit(edit, True, before_sha)
+            preview_data = require_success(preview_result, f"{edit['op']} preview")
+            if "preview" not in str(prop(preview_result.get("envelope") or {}, "message", default="")).lower():
+                raise AssertionError(f"{edit['op']} did not identify its response as preview-only: {preview_result}")
+            if expected_after not in str(prop(preview_data, "diff", default="")):
+                raise AssertionError(f"{edit['op']} preview diff omitted expected text '{expected_after}': {preview_data}")
+            after_preview_text, after_preview_sha = read_script()
+            if after_preview_text != before_text or after_preview_sha != before_sha:
+                raise AssertionError(f"{edit['op']} preview modified the script.")
+
+            apply_result = call_edit(edit, False, before_sha)
+            require_success(apply_result, f"{edit['op']} apply")
+            after_text, after_sha = read_script()
+            if expected_after not in after_text:
+                raise AssertionError(f"{edit['op']} apply omitted expected text '{expected_after}'.")
+            if after_sha == before_sha:
+                raise AssertionError(f"{edit['op']} apply did not change the script SHA.")
+            return after_text, after_sha
+
+        try:
+            require_success(
+                self.tool("UniBridge_CreateScript", {"Path": script_path, "Contents": source}),
+                "CreateScript",
+            )
+            created = True
+
+            initial_text, initial_sha = read_script()
+            mixed_preview = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": True,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": [
+                        {
+                            "op": "anchor_replace",
+                            "anchor": "public const string LineFullyShown = \"line\";",
+                            "text": "public const string LineFullyShown = \"line-preview\";",
+                        },
+                        {
+                            "op": "insert_method",
+                            "className": script_name,
+                            "replacement": "public string PlannedOnly() => LineFullyShown;",
+                            "position": "end",
+                        },
+                    ],
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+            mixed_data = require_success(mixed_preview, "mixed anchor_replace preview")
+            if prop(mixed_data, "routing") != "mixed/preview":
+                raise AssertionError(f"Mixed preview did not use the safe preview route: {mixed_data}")
+            if read_script() != (initial_text, initial_sha):
+                raise AssertionError("Mixed ScriptApplyEdits Preview modified the script.")
+
+            _, sha = preview_then_apply(
+                {
+                    "op": "anchor_replace",
+                    "anchor": "public const string LineFullyShown = \"line\";",
+                    "text": "public const string LineFullyShown = \"line\";\n    public const string ContinueRequested = \"continue\";",
+                },
+                "ContinueRequested",
+            )
+            _, sha = preview_then_apply(
+                {
+                    "op": "anchor_insert",
+                    "anchor": "public const string ContinueRequested = \"continue\";",
+                    "position": "after",
+                    "text": "\n    public const string Inserted = \"inserted\";",
+                },
+                "Inserted",
+            )
+            _, sha = preview_then_apply(
+                {
+                    "op": "anchor_delete",
+                    "anchor": "\\s*public const string RemoveMe = \"remove\";",
+                },
+                "LineFullyShown",
+            )
+            final_text, final_sha = read_script()
+            if "RemoveMe" in final_text:
+                raise AssertionError("anchor_delete left the matched declaration in the script.")
+
+            stale_result = call_edit(
+                {"op": "anchor_insert", "anchor": "LineFullyShown", "position": "after", "text": " // stale"},
+                False,
+                "0" * 64,
+            )
+            require_failure(stale_result, "stale_file", "stale SHA guard")
+            if read_script() != (final_text, final_sha):
+                raise AssertionError("A stale precondition modified the script.")
+
+            missing_result = call_edit(
+                {"op": "anchor_replace", "anchor": "ANCHOR_THAT_DOES_NOT_EXIST", "text": "never"},
+                True,
+                final_sha,
+            )
+            require_failure(missing_result, "anchor not found", "missing anchor validation")
+
+            ambiguous_result = call_edit(
+                {"op": "anchor_delete", "anchor": "ANCHOR_DUPLICATE"},
+                True,
+                final_sha,
+            )
+            require_failure(ambiguous_result, "ambiguous", "ambiguous anchor validation")
+
+            validation = self.tool(
+                "UniBridge_ValidateScript",
+                {"Uri": script_path, "Level": "standard", "IncludeDiagnostics": True},
+            )["data"] or {}
+            assert_zero_or_missing(
+                first_count(validation, ("errors",), ("diagnostics", "errors"), ("summary", "errors")),
+                "Anchor smoke script validation returned errors.",
+            )
+            return {
+                "script": script_path,
+                "previewNoWrite": True,
+                "anchorOperations": ["anchor_insert", "anchor_delete", "anchor_replace"],
+                "mixedPreviewNoWrite": True,
+                "staleShaRejected": True,
+                "missingAnchorRejected": True,
+                "ambiguousAnchorRejected": True,
+            }
+        finally:
+            if created:
+                delete_result = self.tool("UniBridge_DeleteScript", {"Uri": script_path})
+                require_success(delete_result, "DeleteScript cleanup")
 
     def step_asset_read_text(self):
         data = self.tool(

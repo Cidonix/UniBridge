@@ -9295,6 +9295,57 @@ Docs/package:
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
 
+## 2026-07-13 - UniBridge 0.2.42 ScriptApplyEdits anchor operations
+
+Виправлено розбіжність між документацією та фактичною поведінкою
+`UniBridge_ScriptApplyEdits`:
+
+- `anchor_insert`, `anchor_delete` і `anchor_replace` тепер підтримуються у
+  text-only та mixed text/structured routes;
+- mixed `Preview=true` більше не застосовує text edits перед structured
+  preview: він повертає no-write diff і planned structured edits;
+- `PreconditionSha256` прокидається та перевіряється у structured, text і mixed
+  routes; stale виклик повертає `stale_file` без запису;
+- missing anchor за замовчуванням є помилкою;
+- ambiguous regex anchor не вибирається мовчки: треба передати zero-based
+  `matchIndex`, явний `preferLast=true/false` або свідомо дозволити ambiguity;
+- invalid regex і regex timeout повертають контрольовані validation errors.
+
+До стандартного MCP regression suite додано живий сценарій із тимчасовим C#
+скриптом. Для кожної anchor-операції він перевіряє:
+
+- Preview diff і незмінні text/SHA після Preview;
+- фактичний apply та зміну SHA;
+- фінальну C# validation;
+- stale SHA, missing anchor та ambiguous anchor failure без запису;
+- mixed `anchor_replace + insert_method` Preview без змін файлу;
+- cleanup тимчасового скрипта.
+
+Попередній цільовий MCP smoke у `UniBridge_Test_Project` пройшов `6/6`, включно
+з новим `script_anchor_edits`; report:
+`Library/UniBridge/mcp-smoke-anchor-preversion-2.json`.
+
+Після синхронізації повного пакета виконано фінальний live MCP regression у
+`UniBridge_Test_Project`: `25/25 passed`, `0 failed`, тривалість приблизно
+`89 s`; report:
+`Library/UniBridge/mcp-smoke-regression-0.2.42-full.json`. Окрім усіх anchor
+guard/apply сценаріїв, пройдено discovery, compile/reload boundaries,
+RuntimeStateProbe cancellation, UI та Prefab Stage recipes, asset authoring,
+Play/Edit Mode і фінальну Console diagnostics.
+
+Версію пакета піднято з `0.2.41` до `0.2.42`.
+
+Downstream sync через MCP:
+
+- `UniBridge_Test_Project`, `Domovyk`, `DomovykPrototype` і `Domovyk_`
+  синхронізовано overlay-копіюванням до `0.2.42`;
+- у кожному виконано `Ping -> ClearConsole -> RefreshAssets ->
+  RequestScriptCompilationNoWait -> WaitForReadyAfterReload ->
+  GetCompilationDiagnostics -> DiagnosticSummary`;
+- усі чотири повернули editor ready, `0 errors / 0 warnings`,
+  `buildSystemHealth.hasCriticalIssues=false`,
+  `assemblyFreshness.staleLikely=false` та порожню Console.
+
 ## 2026-07-13 - UniBridge 0.2.41 Prefab Stage TMP SetGraphic
 
 Виправлено silent no-op у `UniBridge_ManageUI Action=SetGraphic` для
