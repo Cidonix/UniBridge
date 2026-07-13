@@ -1,6 +1,23 @@
-# UniBridge 0.2.42 Release Notes
+# UniBridge 0.2.43 Release Notes
 
-Release date: 2026-07-13
+Release date: 2026-07-14
+
+This hotfix closes a structured-edit safety gap in
+`UniBridge_ScriptApplyEdits`. `Preview=true` is now a strict no-write boundary
+for method and class operations, including multi-edit `replace_method` calls.
+
+The Preview response reports the proposed diff, current and predicted SHA,
+the number of edits previewed, `editsApplied=0`, `noChangesApplied=true`, and
+`scheduledRefresh=false`. It does not write the script or request an
+AssetDatabase refresh. `PreconditionSha256` is checked before both Preview and
+actual apply.
+
+The standard MCP smoke reproduces the reported three-method workflow on a
+temporary C# script. It compares UTF-8 content and SHA before/after Preview,
+verifies the diff and predicted SHA, then applies the same edits separately.
+The existing no-write tests for every `anchor_*` operation remain active.
+
+## Previous 0.2.42 Notes
 
 This hotfix aligns `UniBridge_ScriptApplyEdits` with its documented anchor edit
 contract. `anchor_insert`, `anchor_delete`, and `anchor_replace` now work in

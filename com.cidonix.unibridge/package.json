@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.42",
+  "version": "0.2.43",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- ScriptApplyEdits now implements anchor_insert, anchor_delete, and anchor_replace consistently in text and mixed edit routes.\n- Mixed Preview calls are strictly no-write and return the planned text diff plus structured edit plan.\n- SHA preconditions now apply to structured, text, and mixed edits.\n- Missing and ambiguous anchors return actionable validation errors unless the caller explicitly chooses no-op or disambiguation behavior.\n- MCP smoke regression previews and applies every anchor operation and verifies cleanup, C# validation, SHA guards, and failure diagnostics.\n\n### Previous Changes\n\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization.\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status."
+    "changelog": "### Fixed\n\n- ScriptApplyEdits Preview is now strictly no-write for structured operations such as replace_method, replace_class, insert_method, and delete_method.\n- Structured Preview returns a proposed diff, current and predicted SHA, zero applied edits, and scheduledRefresh=false.\n- Structured edits now enforce PreconditionSha256 before preview or apply.\n- Explicit refresh=none/manual/disabled suppresses structured-edit refresh scheduling.\n- MCP smoke regression verifies three replace_method previews preserve file bytes and SHA before separately applying them.\n\n### Previous Changes\n\n- ScriptApplyEdits implements strict anchor_insert, anchor_delete, and anchor_replace routes.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

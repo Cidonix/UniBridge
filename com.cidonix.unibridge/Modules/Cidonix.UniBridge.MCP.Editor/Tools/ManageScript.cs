@@ -379,7 +379,8 @@ Returns:
                     McpLog.Log("UniBridge_Script.edit is deprecated; prefer apply_text_edits. Serving structured edit for backward compatibility.");
                     var structEdits = @params["edits"] as JArray;
                     var options = @params["options"] as JObject;
-                    return EditScript(fullPath, relativePath, name, structEdits, options);
+                    string structuredPrecondition = @params["precondition_sha256"]?.ToString();
+                    return EditScript(fullPath, relativePath, name, structEdits, options, structuredPrecondition);
                 case "get_sha":
                 {
                     try
@@ -1110,7 +1111,8 @@ Returns:
             string relativePath,
             string name,
             JArray edits,
-            JObject options)
+            JObject options,
+            string preconditionSha256 = null)
         {
             if (!File.Exists(fullPath))
                 return Response.Error($"Script not found at '{relativePath}'.");
@@ -1131,6 +1133,19 @@ Returns:
             string original;
             try { original = File.ReadAllText(fullPath); }
             catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
+
+            var currentSha = ComputeSha256(original);
+            if (!string.IsNullOrWhiteSpace(preconditionSha256) &&
+                !string.Equals(preconditionSha256.Trim(), currentSha, StringComparison.OrdinalIgnoreCase))
+            {
+                return Response.Error("stale_file", new
+                {
+                    status = "stale_file",
+                    expected_sha256 = preconditionSha256.Trim(),
+                    current_sha256 = currentSha,
+                    noChangesApplied = true
+                });
+            }
 
             string working = original;
 
@@ -1464,19 +1479,30 @@ Returns:
                     appliedCount = replacements.Count;
                 }
 
+                bool preview = options?["preview"]?.Value<bool?>() == true;
+
                 // No-op guard for structured edits: if text unchanged, return explicit no-op
                 if (string.Equals(working, original, StringComparison.Ordinal))
                 {
-                    var sameSha = ComputeSha256(original);
                     return Response.Success(
-                        $"No-op: contents unchanged for '{relativePath}'.",
+                        preview
+                            ? $"Previewed {appliedCount} structured edit(s) for '{relativePath}' (no write; contents unchanged)."
+                            : $"No-op: contents unchanged for '{relativePath}'.",
                         new
                         {
                             path = relativePath,
                             uri = $"unity://path/{relativePath}",
+                            preview,
+                            editsPreviewed = preview ? appliedCount : 0,
                             editsApplied = 0,
+                            noChangesApplied = true,
+                            scheduledRefresh = false,
                             no_op = true,
-                            sha256 = sameSha,
+                            currentSha256 = currentSha,
+                            predictedSha256 = currentSha,
+                            sha256 = currentSha,
+                            wouldChange = false,
+                            diff = preview ? ScriptApplyEdits.GenerateUnifiedDiff(original, working) : null,
                             evidence = new { reason = "identical_content" }
                         }
                     );
@@ -1505,10 +1531,33 @@ Returns:
                 else if (errors != null && errors.Length > 0)
                     Debug.LogWarning($"Script validation warnings for {name}:\n" + string.Join("\n", errors));
 
+                if (preview)
+                {
+                    var predictedSha = ComputeSha256(working);
+                    return Response.Success(
+                        $"Previewed {appliedCount} structured edit(s) for '{relativePath}' (no write).",
+                        new
+                        {
+                            path = relativePath,
+                            uri = $"unity://path/{relativePath}",
+                            preview = true,
+                            editsPreviewed = appliedCount,
+                            editsApplied = 0,
+                            noChangesApplied = true,
+                            scheduledRefresh = false,
+                            currentSha256 = currentSha,
+                            predictedSha256 = predictedSha,
+                            wouldChange = !string.Equals(currentSha, predictedSha, StringComparison.OrdinalIgnoreCase),
+                            diff = ScriptApplyEdits.GenerateUnifiedDiff(original, working)
+                        }
+                    );
+                }
+
                 // Atomic write with backup; schedule refresh
                 // Decide refresh behavior
                 string refreshMode = options?["refresh"]?.ToString()?.ToLowerInvariant();
                 bool immediate = refreshMode == "immediate" || refreshMode == "sync";
+                bool suppressRefresh = refreshMode == "none" || refreshMode == "manual" || refreshMode == "disabled";
 
                 // Persist changes atomically (no BOM), then compute/return new file SHA
                 var enc = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
@@ -1541,7 +1590,7 @@ Returns:
                         path = relativePath,
                         uri = $"unity://path/{relativePath}",
                         editsApplied = appliedCount,
-                        scheduledRefresh = !immediate,
+                        scheduledRefresh = !immediate && !suppressRefresh,
                         sha256 = newSha
                     }
                 );
@@ -1551,7 +1600,7 @@ Returns:
                     McpLog.Log($"[ManageScript] EditScript: immediate refresh for '{relativePath}'");
                     ManageScriptRefreshHelpers.ImportAndRequestCompile(relativePath);
                 }
-                else
+                else if (!suppressRefresh)
                 {
                     ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
                 }

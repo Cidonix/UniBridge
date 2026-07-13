@@ -55,6 +55,10 @@ Anchor safety:
     Missing anchors fail by default. Ambiguous anchors fail unless matchIndex, preferLast,
     or allowAmbiguous is supplied explicitly.
 
+Structured Preview safety:
+    Preview=true computes method/class edits in memory, returns diff plus current/predicted SHA,
+    applies zero edits, and never schedules an AssetDatabase refresh.
+
 Examples:
 1) Replace a method:
 {
@@ -1389,7 +1393,7 @@ Examples:
         /// <summary>
         /// Generate unified diff with improved formatting
         /// </summary>
-        static string GenerateUnifiedDiff(string before, string after)
+        internal static string GenerateUnifiedDiff(string before, string after)
         {
             if (before == after)
             {

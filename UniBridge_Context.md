@@ -1,6 +1,6 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-13, Europe/Kiev.
+Останнє оновлення: 2026-07-14, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
@@ -9294,6 +9294,54 @@ Docs/package:
 - після real revert `Review` повернув `post_revert_changed_paths=[]`;
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
+
+## 2026-07-14 - UniBridge 0.2.43 structured ScriptApplyEdits Preview safety
+
+Причина: у `Domovyk` виклик `UniBridge_ScriptApplyEdits Preview=true` із трьома
+`replace_method` для `CutsceneSkipPrompt.cs` повернув `Applied 3 structured
+edit(s)`, записав файл, змінив SHA та запланував refresh. Wrapper передавав
+`preview=true` у structured options, але legacy `ManageScript Action=edit`
+ігнорував цей option.
+
+Виправлення:
+
+- structured editor обчислює повний результат у пам'яті та при Preview
+  завершує операцію до atomic write;
+- response містить proposed diff, `currentSha256`, `predictedSha256`,
+  `editsPreviewed`, `editsApplied=0`, `noChangesApplied=true`,
+  `scheduledRefresh=false` і `wouldChange`;
+- structured Preview та apply перевіряють `PreconditionSha256` до обробки;
+- `refresh=none|manual|disabled` дійсно не планує delayed refresh;
+- MCP regression створює тимчасовий C# script, preview-ить три
+  `replace_method`, порівнює UTF-8 content і SHA, перевіряє diff/predicted SHA,
+  потім окремо застосовує зміни;
+- попередні no-write Preview/apply тести всіх трьох `anchor_*` операцій
+  збережено.
+
+Цільовий pre-release MCP regression у `UniBridge_Test_Project` після явної
+recompilation пройшов повністю; report:
+`Library/UniBridge/mcp-smoke-structured-preview-preversion-3.json`.
+
+Фінальний full MCP regression на package `0.2.43` пройшов `25/25`, `0 failed`;
+report: `Library/UniBridge/mcp-smoke-regression-0.2.43-full.json`. Перевірено
+structured/anchor Preview та apply, SHA guards, C# validation, reload-safe
+compile, scheduler cleanup, UI, Prefab Stage, asset recipe, Play/Edit Mode і
+порожню фінальну Console diagnostics.
+
+Версію пакета піднято з `0.2.42` до `0.2.43`.
+
+Downstream sync через MCP:
+
+- `UniBridge_Test_Project`, `Domovyk`, `DomovykPrototype` і `Domovyk_`
+  синхронізовано overlay-копіюванням до `0.2.43`;
+- у кожному виконано `Ping -> ClearConsole -> RefreshAssets ->
+  RequestScriptCompilationNoWait -> WaitForReadyAfterReload ->
+  GetCompilationDiagnostics -> DiagnosticSummary`;
+- усі чотири повернули editor ready, healthy compilation, `0` critical
+  build-system issues, `0` stale assemblies і порожню Console;
+- read-only SHA check у `Domovyk` підтвердив, що користувацька зміна
+  `CutsceneSkipPrompt.cs` залишилася без змін із SHA
+  `53d7f8d500ad8f11ed171bad3400cef26a6fc6a0eeb3c15265d155f885ef39bd`.
 
 ## 2026-07-13 - UniBridge 0.2.42 ScriptApplyEdits anchor operations
 

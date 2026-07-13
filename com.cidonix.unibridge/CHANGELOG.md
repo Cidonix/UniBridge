@@ -2,6 +2,26 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.43
+
+### Fixed
+
+- `UniBridge_ScriptApplyEdits Preview=true` is now strictly no-write for
+  structured operations (`replace_method`, `insert_method`, `delete_method`,
+  `replace_class`, and `delete_class`) instead of forwarding to a structured
+  writer that ignored the preview option.
+- Structured Preview returns a proposed diff, `currentSha256`,
+  `predictedSha256`, `editsPreviewed`, `editsApplied=0`,
+  `noChangesApplied=true`, and `scheduledRefresh=false`.
+- Structured Preview and actual apply both enforce `PreconditionSha256` before
+  processing, returning `stale_file` without changing the script.
+- Explicit structured-edit refresh modes `none`, `manual`, and `disabled` no
+  longer schedule a delayed AssetDatabase refresh.
+- MCP regression now previews three `replace_method` operations in one call,
+  verifies unchanged UTF-8 content and SHA, checks the response/diff/predicted
+  SHA, applies the same edits separately, and retains the full anchor Preview
+  coverage from `0.2.42`.
+
 ## 0.2.42
 
 ### Fixed

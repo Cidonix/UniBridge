@@ -390,7 +390,7 @@ class SmokeSuite:
         self.run_step("clear_console", "Clear Unity Console before smoke diagnostics.", self.step_clear_console)
         self.run_step("wait_ready", "Wait for Unity editor readiness before reading project state.", self.step_wait_ready)
         self.run_step("validate_package_script", "Validate a UniBridge package script through MCP.", self.step_validate_package_script)
-        self.run_step("script_anchor_edits", "Verify safe preview and apply behavior for every ScriptApplyEdits anchor operation.", self.step_script_anchor_edits)
+        self.run_step("script_apply_edits", "Verify structured and anchor ScriptApplyEdits previews are strictly no-write before actual apply.", self.step_script_anchor_edits)
         self.run_step("asset_read_text", "Read package.json via AssetIntelligence Action=ReadText alias.", self.step_asset_read_text)
         self.run_step("context_snapshot_brief", "Read compact ContextSnapshot with compact console summary.", self.step_context_snapshot)
         self.run_step("scene_hierarchy_brief", "Read a bounded SceneObjectView hierarchy including inactive objects.", self.step_scene_hierarchy)
@@ -504,6 +504,10 @@ class SmokeSuite:
             "    public const string RemoveMe = \"remove\";\n"
             "    // ANCHOR_DUPLICATE\n"
             "    // ANCHOR_DUPLICATE\n"
+            "\n"
+            "    public void Update() { var marker = \"update\"; }\n"
+            "    public void Show() { var marker = \"show\"; }\n"
+            "    public void RequireReleaseBeforeHold() { var marker = \"release\"; }\n"
             "}\n"
         )
         created = False
@@ -573,6 +577,95 @@ class SmokeSuite:
             created = True
 
             initial_text, initial_sha = read_script()
+
+            structured_edits = [
+                {
+                    "op": "replace_method",
+                    "className": script_name,
+                    "methodName": "Update",
+                    "replacement": "public void Update()\n    {\n        var marker = \"structured-preview-update\";\n    }",
+                },
+                {
+                    "op": "replace_method",
+                    "className": script_name,
+                    "methodName": "Show",
+                    "replacement": "public void Show()\n    {\n        var marker = \"structured-preview-show\";\n    }",
+                },
+                {
+                    "op": "replace_method",
+                    "className": script_name,
+                    "methodName": "RequireReleaseBeforeHold",
+                    "replacement": "public void RequireReleaseBeforeHold()\n    {\n        var marker = \"structured-preview-release\";\n    }",
+                },
+            ]
+            structured_preview = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": True,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": structured_edits,
+                    "Options": {"validate": "standard", "refresh": "immediate"},
+                },
+            )
+            structured_preview_data = require_success(structured_preview, "replace_method preview")
+            structured_message = str(prop(structured_preview.get("envelope") or {}, "message", default=""))
+            if "previewed 3 structured edit" not in structured_message.lower() or "applied" in structured_message.lower():
+                raise AssertionError(f"Structured preview returned a misleading message: {structured_message}")
+            if prop(structured_preview_data, "preview") is not True:
+                raise AssertionError(f"Structured preview did not identify itself as preview: {structured_preview_data}")
+            if prop(structured_preview_data, "scheduledRefresh") is not False:
+                raise AssertionError(f"Structured preview scheduled an AssetDatabase refresh: {structured_preview_data}")
+            if prop(structured_preview_data, "editsApplied") != 0 or prop(structured_preview_data, "editsPreviewed") != 3:
+                raise AssertionError(f"Structured preview reported incorrect edit counts: {structured_preview_data}")
+            if prop(structured_preview_data, "currentSha256") != initial_sha:
+                raise AssertionError(f"Structured preview returned the wrong current SHA: {structured_preview_data}")
+            predicted_sha = prop(structured_preview_data, "predictedSha256")
+            if not predicted_sha or predicted_sha == initial_sha:
+                raise AssertionError(f"Structured preview did not return a changed predicted SHA: {structured_preview_data}")
+            structured_diff = str(prop(structured_preview_data, "diff", default=""))
+            if "structured-preview-update" not in structured_diff or "structured-preview-release" not in structured_diff:
+                raise AssertionError(f"Structured preview diff omitted replacement evidence: {structured_preview_data}")
+            after_structured_preview_text, after_structured_preview_sha = read_script()
+            if (
+                after_structured_preview_text.encode("utf-8") != initial_text.encode("utf-8") or
+                after_structured_preview_sha != initial_sha
+            ):
+                raise AssertionError("replace_method Preview changed script bytes or SHA.")
+
+            structured_apply = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": False,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": structured_edits,
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+            require_success(structured_apply, "replace_method apply")
+            after_structured_apply_text, after_structured_apply_sha = read_script()
+            if "structured-preview-update" not in after_structured_apply_text or after_structured_apply_sha == initial_sha:
+                raise AssertionError("replace_method actual apply did not change the script and SHA.")
+
+            structured_stale = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": True,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": [structured_edits[0]],
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+            require_failure(structured_stale, "stale_file", "structured stale SHA guard")
+            if read_script() != (after_structured_apply_text, after_structured_apply_sha):
+                raise AssertionError("A stale structured Preview modified the script.")
+
+            initial_text, initial_sha = after_structured_apply_text, after_structured_apply_sha
             mixed_preview = self.tool(
                 "UniBridge_ScriptApplyEdits",
                 {
@@ -663,6 +756,11 @@ class SmokeSuite:
             )
             return {
                 "script": script_path,
+                "structuredPreviewNoWrite": True,
+                "structuredPreviewNoRefresh": True,
+                "structuredOperations": ["replace_method"],
+                "structuredEditsPreviewed": 3,
+                "structuredStaleShaRejected": True,
                 "previewNoWrite": True,
                 "anchorOperations": ["anchor_insert", "anchor_delete", "anchor_replace"],
                 "mixedPreviewNoWrite": True,

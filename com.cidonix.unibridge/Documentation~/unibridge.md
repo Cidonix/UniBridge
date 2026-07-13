@@ -1168,6 +1168,14 @@ specific expression, zero-based `matchIndex`, or an explicit
 `preferLast=true/false`; UniBridge will not silently choose an ambiguous match.
 Set `allowNoop=true` only when a missing anchor is intentionally acceptable.
 
+`Preview=true` is also a strict no-write boundary for structured method/class
+operations such as `replace_method`, `insert_method`, and `delete_method`.
+The response includes `currentSha256`, `predictedSha256`, a proposed `diff`,
+`editsApplied=0`, and `scheduledRefresh=false`. Use `Preview=false` with the
+same current `PreconditionSha256` to apply the reviewed change. Explicit
+`options.refresh=none|manual|disabled` suppresses structured-edit refresh
+scheduling when the caller owns the refresh/compile boundary.
+
 ### Work With Assets
 
 Use `UniBridge_ManageAsset` for generic AssetDatabase operations such as search, folder creation, asset info, delete, duplicate, move, and rename.

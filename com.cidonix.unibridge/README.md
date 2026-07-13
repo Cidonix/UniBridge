@@ -103,6 +103,9 @@ For safe C# changes, use `UniBridge_GetSha` followed by
 `UniBridge_ScriptApplyEdits`. Its anchored operations (`anchor_insert`,
 `anchor_delete`, and `anchor_replace`) support no-write previews, SHA
 preconditions, and explicit missing/ambiguous-anchor diagnostics.
+Structured method/class edits use the same safety contract: `Preview=true`
+returns a proposed diff and predicted SHA with `editsApplied=0` and
+`scheduledRefresh=false`, while leaving the file and current SHA unchanged.
 
 Version-specific notes live in `RELEASE_NOTES.md`, and package history lives in
 `CHANGELOG.md`.
