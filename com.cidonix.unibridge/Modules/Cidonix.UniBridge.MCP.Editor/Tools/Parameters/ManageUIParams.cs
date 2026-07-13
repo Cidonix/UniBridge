@@ -284,8 +284,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Font size for Text and Button label elements. Default 24 for Text and 22 for Button.", Required = false)]
         public int? FontSize { get; set; }
 
-        [McpDescription("Text alignment for Text and Button label elements.", Required = false, Default = UITextAlignment.MiddleCenter)]
-        public UITextAlignment Alignment { get; set; } = UITextAlignment.MiddleCenter;
+        [McpDescription("Optional text alignment for Text, Button, and SetGraphic text updates. Creation actions default to MiddleCenter when omitted.", Required = false)]
+        public UITextAlignment? Alignment { get; set; }
 
         [McpDescription("Enable Unity UI Text best-fit resizing for Text and Button labels. Default false.", Required = false, Default = false)]
         public bool? BestFit { get; set; }

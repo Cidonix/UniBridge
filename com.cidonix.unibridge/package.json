@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.40",
+  "version": "0.2.41",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- ManageUI creation actions now resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- Missing or ambiguous UI parents fail without silently creating root objects in an ordinary scene.\n- ParentObjectIdString provides duplicate-safe parent targeting for CreateCanvas, CreateElement, CreateTemplate, and CreateScrollView.\n- EventSystem creation is safely skipped while editing prefab contents and the response explains why.\n- MCP smoke regression includes an isolated Prefab Stage UI creation workflow and reads real nested health diagnostics.\n- Expected client-canceled tool calls no longer produce duplicate red Unity Console errors.\n\n### Previous Changes\n\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization.\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status.\n- BatchActions post-action WorkSession review is lightweight by default."
+    "changelog": "### Fixed\n\n- ManageUI SetGraphic now applies and verifies TextMeshProUGUI text, font size, font asset, alignment, rich text, auto-sizing, overflow, color, and raycast settings.\n- Unicode TMP strings are preserved when editing and saving Prefab Stage contents.\n- SetGraphic marks Prefab Stage contents dirty and returns full text/TMP before/after state.\n- Empty or unsupported SetGraphic updates return explicit no-change/error diagnostics instead of silent success.\n- MCP smoke regression saves and rereads TMP Unicode text and font sizes from prefab YAML.\n\n### Previous Changes\n\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- Missing or ambiguous UI parents fail without silently creating root objects in an ordinary scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization.\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

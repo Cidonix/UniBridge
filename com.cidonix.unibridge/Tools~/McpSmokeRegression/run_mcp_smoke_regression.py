@@ -681,6 +681,9 @@ class SmokeSuite:
         prefab_path = f"Assets/UniBridgeSmoke/{root_name}.prefab"
         canvas_name = f"UB_DialogueCanvas_{stamp}"
         stage_open = False
+        font_asset_path = "Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset"
+        speaker_text = "Мама"
+        dialogue_text = "Мамо, світло повернулося додому."
 
         def response(name, arguments, timeout=None):
             result = self.tool(name, arguments, timeout=timeout)
@@ -773,6 +776,95 @@ class SmokeSuite:
             template_root = template_payload.get("root") or {}
             if template_root.get("scenePath") != prefab_path:
                 raise AssertionError(f"CreateTemplate escaped the Prefab Stage: {template_root}")
+
+            speaker_payload = require_success(
+                response(
+                    "UniBridge_ManageUI",
+                    {
+                        "Action": "CreateElement",
+                        "ElementType": "TextMeshProText",
+                        "Name": "Speaker",
+                        "Text": "BROKEN_SPEAKER_TEXT",
+                        "FontSize": 28,
+                        "FontAssetPath": font_asset_path,
+                        "Parent": f"{root_name}/Modal Layer/{canvas_name}/Dialogue Panel",
+                        "CreateParentCanvas": False,
+                        "EnsureEventSystem": False,
+                    },
+                ),
+                "Create Prefab Stage TMP speaker text",
+            )
+            speaker = speaker_payload.get("element") or {}
+            if speaker.get("scenePath") != prefab_path:
+                raise AssertionError(f"TMP speaker escaped the Prefab Stage: {speaker}")
+
+            speaker_update = require_success(
+                response(
+                    "UniBridge_ManageUI",
+                    {
+                        "Action": "SetGraphic",
+                        "Target": f"{root_name}/Modal Layer/{canvas_name}/Dialogue Panel/Speaker",
+                        "Text": speaker_text,
+                        "FontSize": 30,
+                        "FontAssetPath": font_asset_path,
+                        "Color": [0.95, 0.85, 0.25, 1.0],
+                        "Alignment": "MiddleLeft",
+                        "RichText": True,
+                        "RaycastTarget": False,
+                    },
+                ),
+                "Update Prefab Stage TMP speaker text",
+            )
+            speaker_after = (speaker_update.get("after") or {}).get("text") or {}
+            if speaker_after.get("text") != speaker_text or abs(float(speaker_after.get("fontSize") or 0) - 30.0) > 0.01:
+                raise AssertionError(f"SetGraphic did not apply TMP speaker text/font size: {speaker_update}")
+            if (speaker_after.get("fontAsset") or {}).get("path") != font_asset_path:
+                raise AssertionError(f"SetGraphic did not apply TMP font asset: {speaker_update}")
+            if speaker_update.get("noChangesApplied") is True:
+                raise AssertionError(f"SetGraphic falsely reported no TMP changes: {speaker_update}")
+            if (speaker_update.get("prefabStage") or {}).get("isDirty") is not True:
+                raise AssertionError(f"SetGraphic did not mark Prefab Stage dirty: {speaker_update}")
+
+            dialogue_payload = require_success(
+                response(
+                    "UniBridge_ManageUI",
+                    {
+                        "Action": "CreateElement",
+                        "ElementType": "TextMeshProText",
+                        "Name": "Dialogue Text",
+                        "Text": "BROKEN_DIALOGUE_TEXT",
+                        "FontSize": 24,
+                        "FontAssetPath": font_asset_path,
+                        "Parent": f"{root_name}/Modal Layer/{canvas_name}/Dialogue Panel",
+                        "CreateParentCanvas": False,
+                        "EnsureEventSystem": False,
+                    },
+                ),
+                "Create Prefab Stage TMP dialogue text",
+            )
+            dialogue = dialogue_payload.get("element") or {}
+            if dialogue.get("scenePath") != prefab_path:
+                raise AssertionError(f"TMP dialogue escaped the Prefab Stage: {dialogue}")
+
+            dialogue_update = require_success(
+                response(
+                    "UniBridge_ManageUI",
+                    {
+                        "Action": "SetGraphic",
+                        "Target": f"{root_name}/Modal Layer/{canvas_name}/Dialogue Panel/Dialogue Text",
+                        "Text": dialogue_text,
+                        "FontSize": 27,
+                        "FontAssetPath": font_asset_path,
+                        "Alignment": "UpperLeft",
+                        "RichText": False,
+                        "RaycastTarget": False,
+                    },
+                ),
+                "Update Prefab Stage TMP Ukrainian dialogue text",
+            )
+            dialogue_after = (dialogue_update.get("after") or {}).get("text") or {}
+            if dialogue_after.get("text") != dialogue_text or abs(float(dialogue_after.get("fontSize") or 0) - 27.0) > 0.01:
+                raise AssertionError(f"SetGraphic did not preserve Ukrainian TMP text: {dialogue_update}")
 
             scroll_payload = require_success(
                 response(
@@ -869,6 +961,59 @@ class SmokeSuite:
                 raise AssertionError(f"Ambiguous parent did not fail safely: {ambiguous}")
 
             require_success(response("UniBridge_ManagePrefab", {"action": "save_stage"}), "Save Prefab Stage")
+            yaml_payload = require_success(
+                response(
+                    "UniBridge_AssetIntelligence",
+                    {
+                        "Action": "ReadText",
+                        "Path": prefab_path,
+                        "MaxTextChars": 500000,
+                    },
+                    timeout=self.args.reload_timeout_seconds,
+                ),
+                "Read saved prefab YAML",
+            )
+
+            def collect_strings(value):
+                if isinstance(value, str):
+                    return [value]
+                if isinstance(value, dict):
+                    result = []
+                    for item in value.values():
+                        result.extend(collect_strings(item))
+                    return result
+                if isinstance(value, list):
+                    result = []
+                    for item in value:
+                        result.extend(collect_strings(item))
+                    return result
+                return []
+
+            yaml_text = "\n".join(collect_strings(yaml_payload))
+
+            def contains_unicode(value):
+                escaped = json.dumps(value, ensure_ascii=True)[1:-1]
+                compact_yaml = "".join(yaml_text.split()).lower()
+                return (
+                    value in yaml_text
+                    or escaped.lower() in yaml_text.lower()
+                    or "".join(value.split()).lower() in compact_yaml
+                    or "".join(escaped.split()).lower() in compact_yaml
+                )
+
+            if not contains_unicode(speaker_text) or not contains_unicode(dialogue_text):
+                tmp_lines = [
+                    line.strip()
+                    for line in yaml_text.splitlines()
+                    if "m_text:" in line or "m_fontSize:" in line
+                ]
+                raise AssertionError(
+                    "Saved prefab YAML did not preserve the requested Unicode TMP strings. "
+                    f"Serialized TMP samples: {tmp_lines[:12]}"
+                )
+            if "m_fontSize: 30" not in yaml_text or "m_fontSize: 27" not in yaml_text:
+                raise AssertionError("Saved prefab YAML did not preserve the requested TMP font sizes.")
+
             structure = require_success(
                 response(
                     "UniBridge_AssetIntelligence",
@@ -885,7 +1030,7 @@ class SmokeSuite:
                 "Read saved prefab structure",
             )
             structure_text = json.dumps(structure, ensure_ascii=False)
-            expected_names = [canvas_name, "Dialogue Panel", "Dialogue Scroll", "ID Child"]
+            expected_names = [canvas_name, "Dialogue Panel", "Dialogue Scroll", "ID Child", "Speaker", "Dialogue Text"]
             missing_names = [name for name in expected_names if name not in structure_text]
             if missing_names:
                 raise AssertionError(f"Saved prefab structure is missing: {missing_names}")
@@ -925,6 +1070,10 @@ class SmokeSuite:
                 "canvasScenePath": canvas.get("scenePath"),
                 "canvasParent": parent.get("name"),
                 "stageDirtyAfterCreate": prefab_stage.get("isDirty"),
+                "stageDirtyAfterSetGraphic": (speaker_update.get("prefabStage") or {}).get("isDirty"),
+                "tmpUnicodeSpeaker": speaker_after.get("text"),
+                "tmpUnicodeDialogue": dialogue_after.get("text"),
+                "tmpYamlVerified": True,
                 "objectIdParent": parent_object_id,
                 "eventSystemSkippedReason": canvas_payload.get("eventSystemSkippedReason"),
                 "missingParentRejected": True,

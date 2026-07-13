@@ -270,7 +270,7 @@ Layout notes:
                     layoutHorizontal = parameters.LayoutHorizontal.ToString(),
                     layoutVertical = parameters.LayoutVertical.ToString(),
                     fontSize = parameters.FontSize,
-                    alignment = parameters.Alignment.ToString(),
+                    alignment = (parameters.Alignment ?? UITextAlignment.MiddleCenter).ToString(),
                     bestFit = parameters.BestFit ?? false,
                     richText = parameters.RichText,
                     overflowMode = parameters.OverflowMode,
@@ -963,6 +963,41 @@ Layout notes:
                 return Response.Error($"Target '{target.name}' does not have a RectTransform.");
             }
 
+            var requestedFields = BuildRequestedGraphicFields(parameters);
+            if (requestedFields.Count == 0)
+            {
+                return Response.Error("NO_GRAPHIC_CHANGES_REQUESTED", new
+                {
+                    target = BuildGameObjectInfo(target),
+                    noChangesApplied = true,
+                    requestedFields
+                });
+            }
+
+            var textMeshPro = GetTextMeshProText(target);
+            var legacyText = target.GetComponent<Text>();
+            if (HasTextGraphicSettings(parameters) && textMeshPro == null && legacyText == null)
+            {
+                return Response.Error("TEXT_GRAPHIC_NOT_FOUND", new
+                {
+                    target = BuildGameObjectInfo(target),
+                    noChangesApplied = true,
+                    requestedFields,
+                    hint = "Text, FontSize, FontAssetPath, Alignment, RichText, BestFit, or OverflowMode requires UnityEngine.UI.Text or TMPro.TextMeshProUGUI on the target."
+                });
+            }
+
+            if (legacyText != null && (!string.IsNullOrWhiteSpace(parameters.FontAssetPath) || !string.IsNullOrWhiteSpace(parameters.OverflowMode)))
+            {
+                return Response.Error("TMP_SETTINGS_REQUIRE_TEXTMESHPROUGUI", new
+                {
+                    target = BuildGameObjectInfo(target),
+                    noChangesApplied = true,
+                    requestedFields,
+                    actualTextType = legacyText.GetType().FullName
+                });
+            }
+
             var before = BuildGraphicInfo(target);
             var planned = BuildGraphicPlan(parameters);
             if (parameters.DryRun ?? false)
@@ -979,6 +1014,28 @@ Layout notes:
             if (graphic == null)
             {
                 return Response.Error(graphicError ?? $"Target '{target.name}' could not resolve a supported Graphic.");
+            }
+
+            if ((!string.IsNullOrWhiteSpace(parameters.ImageType) || parameters.PreserveAspect.HasValue) && graphic is not Image)
+            {
+                return Response.Error("IMAGE_SETTINGS_REQUIRE_IMAGE", new
+                {
+                    target = BuildGameObjectInfo(target),
+                    noChangesApplied = true,
+                    requestedFields,
+                    actualGraphicType = graphic.GetType().FullName
+                });
+            }
+
+            if ((parameters.SetNativeSize ?? false) && graphic is not Image && graphic is not RawImage)
+            {
+                return Response.Error("NATIVE_SIZE_REQUIRES_IMAGE_OR_RAWIMAGE", new
+                {
+                    target = BuildGameObjectInfo(target),
+                    noChangesApplied = true,
+                    requestedFields,
+                    actualGraphicType = graphic.GetType().FullName
+                });
             }
 
             Undo.RecordObject(graphic, "Set UniBridge UI Graphic");
@@ -1062,6 +1119,22 @@ Layout notes:
                 configuredRawImage.SetNativeSize();
             }
 
+            var textUpdate = ApplyTextGraphicSettings(target, textMeshPro, legacyText, parameters);
+            if (textUpdate.Errors.Count > 0)
+            {
+                var failedAfter = BuildGraphicInfo(target);
+                return Response.Error("TEXT_GRAPHIC_UPDATE_FAILED", new
+                {
+                    target = BuildGameObjectInfo(target),
+                    before,
+                    after = failedAfter,
+                    noChangesApplied = JToken.DeepEquals(JToken.FromObject(before ?? new object()), JToken.FromObject(failedAfter ?? new object())),
+                    requestedFields,
+                    appliedFields = textUpdate.AppliedFields,
+                    errors = textUpdate.Errors
+                });
+            }
+
             ApplySelectableSpriteState(target, parameters);
 
             if (parameters.Select ?? false)
@@ -1073,19 +1146,249 @@ Layout notes:
             MarkSceneDirty(target);
             SceneView.RepaintAll();
 
-            return Response.Success($"Updated UI Graphic on '{target.name}'.", new
+            var after = BuildGraphicInfo(target);
+            var noChangesApplied = JToken.DeepEquals(
+                JToken.FromObject(before ?? new object()),
+                JToken.FromObject(after ?? new object()));
+            var changedFields = noChangesApplied
+                ? Array.Empty<string>()
+                : requestedFields.ToArray();
+
+            return Response.Success(
+                noChangesApplied
+                    ? $"UI Graphic on '{target.name}' already matched the requested values."
+                    : $"Updated UI Graphic on '{target.name}'.",
+                new
             {
                 target = BuildGameObjectInfo(target),
                 before,
-                after = BuildGraphicInfo(target),
+                after,
+                requestedFields,
+                appliedFields = requestedFields,
+                changedFields,
+                noChangesApplied,
+                alreadyUpToDate = noChangesApplied,
+                prefabStage = BuildCurrentPrefabStageInfo(),
                 selectable = BuildSelectableInfo(target),
                 assigned = new
                 {
                     sprite = assignedSprite != null ? BuildAssetReferenceInfo(assignedSprite) : null,
                     texture = assignedTexture != null ? BuildAssetReferenceInfo(assignedTexture) : null,
-                    material = assignedMaterial != null ? BuildAssetReferenceInfo(assignedMaterial) : null
+                    material = assignedMaterial != null ? BuildAssetReferenceInfo(assignedMaterial) : null,
+                    fontAsset = textUpdate.AssignedFontAsset != null ? BuildAssetReferenceInfo(textUpdate.AssignedFontAsset) : null
                 }
             });
+        }
+
+        static TextGraphicUpdateResult ApplyTextGraphicSettings(
+            GameObject target,
+            Component textMeshPro,
+            Text legacyText,
+            ManageUIParams parameters)
+        {
+            var result = new TextGraphicUpdateResult();
+            if (!HasTextGraphicSettings(parameters))
+            {
+                return result;
+            }
+
+            if (textMeshPro != null)
+            {
+                Undo.RecordObject(textMeshPro, "Set UniBridge TextMeshProUGUI Graphic");
+                Object fontAsset = null;
+                Object fontMaterial = null;
+                if (!string.IsNullOrWhiteSpace(parameters.FontAssetPath))
+                {
+                    fontAsset = ResolveTextMeshProFontAsset(parameters.FontAssetPath, parameters.CreateTmpFontAssetIfMissing ?? true);
+                    if (fontAsset == null)
+                    {
+                        result.Errors.Add($"Text Mesh Pro font asset was not found at '{parameters.FontAssetPath}'.");
+                        return result;
+                    }
+
+                    fontMaterial = ResolveTextMeshProFontMaterial(fontAsset);
+                    result.AssignedFontAsset = fontAsset;
+                }
+
+                try
+                {
+                    if (parameters.Text != null && SetMemberValue(textMeshPro, "text", parameters.Text))
+                        result.AppliedFields.Add(nameof(parameters.Text));
+                    if (parameters.FontSize.HasValue && SetMemberValue(textMeshPro, "fontSize", (float)Mathf.Max(1, parameters.FontSize.Value)))
+                        result.AppliedFields.Add(nameof(parameters.FontSize));
+                    if (parameters.Alignment.HasValue && SetEnumMemberValue(textMeshPro, "alignment", MapTextMeshProAlignment(parameters.Alignment.Value)))
+                        result.AppliedFields.Add(nameof(parameters.Alignment));
+                    if (parameters.RichText.HasValue && SetMemberValue(textMeshPro, "richText", parameters.RichText.Value))
+                        result.AppliedFields.Add(nameof(parameters.RichText));
+                    if (parameters.BestFit.HasValue && SetMemberValue(textMeshPro, "enableAutoSizing", parameters.BestFit.Value))
+                        result.AppliedFields.Add(nameof(parameters.BestFit));
+                    if (parameters.MinFontSize.HasValue && SetMemberValue(textMeshPro, "fontSizeMin", (float)Mathf.Max(1, parameters.MinFontSize.Value)))
+                        result.AppliedFields.Add(nameof(parameters.MinFontSize));
+                    if (parameters.MaxFontSize.HasValue && SetMemberValue(textMeshPro, "fontSizeMax", (float)Mathf.Max(1, parameters.MaxFontSize.Value)))
+                        result.AppliedFields.Add(nameof(parameters.MaxFontSize));
+                    if (!string.IsNullOrWhiteSpace(parameters.OverflowMode) && SetEnumMemberValue(textMeshPro, "overflowMode", parameters.OverflowMode.Trim()))
+                        result.AppliedFields.Add(nameof(parameters.OverflowMode));
+                    if (fontAsset != null)
+                    {
+                        if (!SetMemberValue(textMeshPro, "font", fontAsset))
+                        {
+                            result.Errors.Add("TextMeshProUGUI did not expose a writable font property.");
+                        }
+                        else
+                        {
+                            result.AppliedFields.Add(nameof(parameters.FontAssetPath));
+                        }
+
+                        if (fontMaterial != null)
+                            SetMemberValue(textMeshPro, "fontSharedMaterial", fontMaterial);
+                    }
+
+                    SynchronizeTextMeshProSerializedFields(textMeshPro, parameters, fontAsset, fontMaterial);
+                    ForceTextMeshProMeshUpdate(textMeshPro);
+                    EditorUtility.SetDirty(textMeshPro);
+                    RecordPrefabModifications(textMeshPro);
+                    VerifyTextMeshProSettings(textMeshPro, parameters, fontAsset, result.Errors);
+                }
+                catch (Exception ex)
+                {
+                    result.Errors.Add(ex.Message);
+                }
+
+                return result;
+            }
+
+            if (legacyText == null)
+            {
+                result.Errors.Add("No supported UI text component was found.");
+                return result;
+            }
+
+            Undo.RecordObject(legacyText, "Set UniBridge UI Text Graphic");
+            if (parameters.Text != null)
+            {
+                legacyText.text = parameters.Text;
+                result.AppliedFields.Add(nameof(parameters.Text));
+            }
+            if (parameters.FontSize.HasValue)
+            {
+                legacyText.fontSize = Mathf.Max(1, parameters.FontSize.Value);
+                result.AppliedFields.Add(nameof(parameters.FontSize));
+            }
+            if (parameters.Alignment.HasValue)
+            {
+                legacyText.alignment = ConvertTextAnchor(parameters.Alignment.Value);
+                result.AppliedFields.Add(nameof(parameters.Alignment));
+            }
+            if (parameters.RichText.HasValue)
+            {
+                legacyText.supportRichText = parameters.RichText.Value;
+                result.AppliedFields.Add(nameof(parameters.RichText));
+            }
+            if (parameters.BestFit.HasValue)
+            {
+                legacyText.resizeTextForBestFit = parameters.BestFit.Value;
+                result.AppliedFields.Add(nameof(parameters.BestFit));
+            }
+            if (parameters.MinFontSize.HasValue)
+            {
+                legacyText.resizeTextMinSize = Mathf.Max(1, parameters.MinFontSize.Value);
+                result.AppliedFields.Add(nameof(parameters.MinFontSize));
+            }
+            if (parameters.MaxFontSize.HasValue)
+            {
+                legacyText.resizeTextMaxSize = Mathf.Max(1, parameters.MaxFontSize.Value);
+                result.AppliedFields.Add(nameof(parameters.MaxFontSize));
+            }
+
+            EditorUtility.SetDirty(legacyText);
+            RecordPrefabModifications(legacyText);
+            VerifyLegacyTextSettings(legacyText, parameters, result.Errors);
+            return result;
+        }
+
+        static void SynchronizeTextMeshProSerializedFields(
+            Component textMeshPro,
+            ManageUIParams parameters,
+            Object fontAsset,
+            Object fontMaterial)
+        {
+            var serializedObject = new SerializedObject(textMeshPro);
+            serializedObject.Update();
+            if (parameters.Text != null)
+            {
+                var property = serializedObject.FindProperty("m_text");
+                if (property != null && property.editable)
+                    property.stringValue = parameters.Text;
+            }
+            if (parameters.FontSize.HasValue)
+            {
+                var property = serializedObject.FindProperty("m_fontSize");
+                if (property != null && property.editable)
+                    property.floatValue = Mathf.Max(1, parameters.FontSize.Value);
+            }
+            if (parameters.RichText.HasValue)
+            {
+                var property = serializedObject.FindProperty("m_enableRichText");
+                if (property != null && property.editable)
+                    property.boolValue = parameters.RichText.Value;
+            }
+            if (parameters.BestFit.HasValue)
+            {
+                var property = serializedObject.FindProperty("m_enableAutoSizing");
+                if (property != null && property.editable)
+                    property.boolValue = parameters.BestFit.Value;
+            }
+            if (fontAsset != null)
+            {
+                var property = serializedObject.FindProperty("m_fontAsset");
+                if (property != null && property.editable)
+                    property.objectReferenceValue = fontAsset;
+            }
+            if (fontMaterial != null)
+            {
+                var property = serializedObject.FindProperty("m_sharedMaterial");
+                if (property != null && property.editable)
+                    property.objectReferenceValue = fontMaterial;
+            }
+            serializedObject.ApplyModifiedProperties();
+        }
+
+        static void VerifyTextMeshProSettings(
+            Component textMeshPro,
+            ManageUIParams parameters,
+            Object expectedFontAsset,
+            List<string> errors)
+        {
+            if (parameters.Text != null && !string.Equals(GetMemberValue(textMeshPro, "text") as string, parameters.Text, StringComparison.Ordinal))
+                errors.Add("TextMeshProUGUI text did not match the requested Unicode string after assignment.");
+            if (parameters.FontSize.HasValue && Mathf.Abs(ReadFloatMember(textMeshPro, "fontSize") - Mathf.Max(1, parameters.FontSize.Value)) > 0.01f)
+                errors.Add("TextMeshProUGUI fontSize did not match the requested value after assignment.");
+            if (parameters.Alignment.HasValue && !string.Equals(GetMemberValue(textMeshPro, "alignment")?.ToString(), MapTextMeshProAlignment(parameters.Alignment.Value), StringComparison.OrdinalIgnoreCase))
+                errors.Add("TextMeshProUGUI alignment did not match the requested value after assignment.");
+            if (parameters.RichText.HasValue && ReadBoolMember(textMeshPro, "richText") != parameters.RichText.Value)
+                errors.Add("TextMeshProUGUI richText did not match the requested value after assignment.");
+            if (parameters.BestFit.HasValue && ReadBoolMember(textMeshPro, "enableAutoSizing") != parameters.BestFit.Value)
+                errors.Add("TextMeshProUGUI auto-sizing did not match the requested BestFit value after assignment.");
+            if (expectedFontAsset != null && !ReferenceEquals(GetMemberValue(textMeshPro, "font") as Object, expectedFontAsset))
+                errors.Add("TextMeshProUGUI font asset did not match the requested asset after assignment.");
+        }
+
+        static void VerifyLegacyTextSettings(Text legacyText, ManageUIParams parameters, List<string> errors)
+        {
+            if (parameters.Text != null && !string.Equals(legacyText.text, parameters.Text, StringComparison.Ordinal))
+                errors.Add("UI Text value did not match the requested Unicode string after assignment.");
+            if (parameters.FontSize.HasValue && legacyText.fontSize != Mathf.Max(1, parameters.FontSize.Value))
+                errors.Add("UI Text fontSize did not match the requested value after assignment.");
+            if (parameters.Alignment.HasValue && legacyText.alignment != ConvertTextAnchor(parameters.Alignment.Value))
+                errors.Add("UI Text alignment did not match the requested value after assignment.");
+            if (parameters.RichText.HasValue && legacyText.supportRichText != parameters.RichText.Value)
+                errors.Add("UI Text rich-text state did not match the requested value after assignment.");
+        }
+
+        static void RecordPrefabModifications(Object target)
+        {
+            if (target != null && PrefabUtility.IsPartOfPrefabInstance(target))
+                PrefabUtility.RecordPrefabInstancePropertyModifications(target);
         }
 
         static object SetWorldTextMeshProGraphic(GameObject target, Component textMeshPro, ManageUIParams parameters)
@@ -1386,7 +1689,7 @@ Layout notes:
                         parameters.Text ?? element.name,
                         ReadColor(parameters.Color, Color.white),
                         parameters.FontSize ?? 24,
-                        ConvertTextAnchor(parameters.Alignment),
+                        ConvertTextAnchor(parameters.Alignment ?? UITextAlignment.MiddleCenter),
                         parameters);
                     break;
                 case UIElementType.Button:
@@ -1833,7 +2136,7 @@ Layout notes:
                 parameters.Text ?? element.name,
                 ReadColor(parameters.Color, Color.white),
                 parameters.FontSize ?? 22,
-                ConvertTextAnchor(parameters.Alignment),
+                ConvertTextAnchor(parameters.Alignment ?? UITextAlignment.MiddleCenter),
                 parameters);
         }
 
@@ -2233,6 +2536,15 @@ Layout notes:
         {
             return new
             {
+                text = parameters.Text,
+                fontSize = parameters.FontSize,
+                fontAssetPath = parameters.FontAssetPath,
+                alignment = parameters.Alignment?.ToString(),
+                richText = parameters.RichText,
+                bestFit = parameters.BestFit,
+                minFontSize = parameters.MinFontSize,
+                maxFontSize = parameters.MaxFontSize,
+                overflowMode = parameters.OverflowMode,
                 spritePath = parameters.SpritePath,
                 texturePath = parameters.TexturePath,
                 materialPath = parameters.MaterialPath,
@@ -2249,6 +2561,44 @@ Layout notes:
                     disabledSpritePath = parameters.DisabledSpritePath
                 } : null
             };
+        }
+
+        static List<string> BuildRequestedGraphicFields(ManageUIParams parameters)
+        {
+            var fields = new List<string>();
+            if (parameters.Text != null) fields.Add(nameof(parameters.Text));
+            if (parameters.FontSize.HasValue) fields.Add(nameof(parameters.FontSize));
+            if (!string.IsNullOrWhiteSpace(parameters.FontAssetPath)) fields.Add(nameof(parameters.FontAssetPath));
+            if (parameters.Alignment.HasValue) fields.Add(nameof(parameters.Alignment));
+            if (parameters.RichText.HasValue) fields.Add(nameof(parameters.RichText));
+            if (parameters.BestFit.HasValue) fields.Add(nameof(parameters.BestFit));
+            if (parameters.MinFontSize.HasValue) fields.Add(nameof(parameters.MinFontSize));
+            if (parameters.MaxFontSize.HasValue) fields.Add(nameof(parameters.MaxFontSize));
+            if (!string.IsNullOrWhiteSpace(parameters.OverflowMode)) fields.Add(nameof(parameters.OverflowMode));
+            if (parameters.Color is { Length: >= 3 }) fields.Add(nameof(parameters.Color));
+            else if (parameters.BackgroundColor is { Length: >= 3 }) fields.Add(nameof(parameters.BackgroundColor));
+            if (!string.IsNullOrWhiteSpace(parameters.SpritePath)) fields.Add(nameof(parameters.SpritePath));
+            if (!string.IsNullOrWhiteSpace(parameters.TexturePath)) fields.Add(nameof(parameters.TexturePath));
+            if (!string.IsNullOrWhiteSpace(parameters.MaterialPath)) fields.Add(nameof(parameters.MaterialPath));
+            if (!string.IsNullOrWhiteSpace(parameters.ImageType)) fields.Add(nameof(parameters.ImageType));
+            if (parameters.PreserveAspect.HasValue) fields.Add(nameof(parameters.PreserveAspect));
+            if (parameters.RaycastTarget.HasValue) fields.Add(nameof(parameters.RaycastTarget));
+            if (parameters.SetNativeSize ?? false) fields.Add(nameof(parameters.SetNativeSize));
+            if (HasSpriteStateSettings(parameters)) fields.Add("SelectableSpriteState");
+            return fields;
+        }
+
+        static bool HasTextGraphicSettings(ManageUIParams parameters)
+        {
+            return parameters.Text != null
+                   || parameters.FontSize.HasValue
+                   || !string.IsNullOrWhiteSpace(parameters.FontAssetPath)
+                   || parameters.Alignment.HasValue
+                   || parameters.RichText.HasValue
+                   || parameters.BestFit.HasValue
+                   || parameters.MinFontSize.HasValue
+                   || parameters.MaxFontSize.HasValue
+                   || !string.IsNullOrWhiteSpace(parameters.OverflowMode);
         }
 
         static bool TryReadGraphicColor(ManageUIParams parameters, Color fallback, out Color color)
@@ -2526,7 +2876,7 @@ Layout notes:
             SetMemberValue(component, "text", text);
             SetMemberValue(component, "fontSize", (float)Mathf.Max(1, fontSize));
             SetMemberValue(component, "color", color);
-            SetEnumMemberValue(component, "alignment", MapTextMeshProAlignment(parameters.Alignment));
+            SetEnumMemberValue(component, "alignment", MapTextMeshProAlignment(parameters.Alignment ?? UITextAlignment.MiddleCenter));
 
             if (component is Graphic graphic)
             {
@@ -3596,7 +3946,8 @@ Layout notes:
                 : new
                 {
                     primary = graphics[0],
-                    graphics
+                    graphics,
+                    text = BuildTextComponentInfo(gameObject)
                 };
         }
 
@@ -4166,6 +4517,21 @@ Layout notes:
             {
                 EditorSceneManager.MarkSceneDirty(gameObject.scene);
             }
+
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (gameObject != null && prefabStage != null && prefabStage.IsPartOfPrefabContents(gameObject))
+            {
+                if (prefabStage.prefabContentsRoot != null)
+                    EditorUtility.SetDirty(prefabStage.prefabContentsRoot);
+                EditorSceneManager.MarkSceneDirty(prefabStage.scene);
+            }
+        }
+
+        sealed class TextGraphicUpdateResult
+        {
+            public readonly List<string> AppliedFields = new();
+            public readonly List<string> Errors = new();
+            public Object AssignedFontAsset;
         }
 
         sealed class UiAuditReport

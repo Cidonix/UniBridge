@@ -9295,6 +9295,51 @@ Docs/package:
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
 
+## 2026-07-13 - UniBridge 0.2.41 Prefab Stage TMP SetGraphic
+
+Виправлено silent no-op у `UniBridge_ManageUI Action=SetGraphic` для
+`TextMeshProUGUI` у Prefab Stage:
+
+- `Text`, `FontSize`, `FontAssetPath`, `Alignment`, `RichText`, auto-sizing,
+  overflow, color, material і raycast settings застосовуються до фактичного
+  TMP-компонента;
+- TMP serialized backing fields синхронізуються перед збереженням prefab;
+- Unicode-текст, зокрема `Мама` та українські речення, зберігається без
+  пошкодження;
+- операція записує Undo, позначає TMP-компонент, prefab contents root і
+  Prefab Stage scene dirty;
+- `before`/`after` містять реальний legacy/TMP state, а response повертає
+  requested/applied/changed fields, `noChangesApplied` та `alreadyUpToDate`;
+- порожні, несумісні або фактично незастосовані зміни більше не повертають
+  хибний `success=true`.
+
+Версію пакета піднято з `0.2.40` до `0.2.41`. MCP regression suite доповнено
+живим сценарієм: створення TMP labels у тимчасовому prefab, запис `Мама` та
+українського речення, збереження Prefab Stage, повторне читання YAML і
+перевірка `m_text` та `m_fontSize`.
+
+Перевірка в `UniBridge_Test_Project`:
+
+- `dotnet build Cidonix.UniBridge.MCP.Editor.csproj --no-restore`:
+  `0 errors`, `0 warnings`;
+- повний MCP smoke: `24/24 passed`, `0 failed`;
+- report:
+  `Library/UniBridge/mcp-smoke-regression-0.2.41-full.json`;
+- smoke охопив tools/discovery, C# validation, assets/context, scene view,
+  RuntimeStateProbe cancellation/schema, reload-safe refresh/compile,
+  compilation diagnostics, UI, Prefab Stage TMP/YAML, asset recipe,
+  Play/Edit Mode boundaries і фінальну Console diagnostics.
+
+Downstream sync через MCP:
+
+- `Domovyk`, `Domovyk_` і `DomovykPrototype` бачать package `0.2.41`;
+- у кожному виконано reload-safe
+  `RefreshAssets -> RequestScriptCompilationNoWait -> WaitForReadyAfterReload`;
+- у всіх трьох `compileHealth.healthy=true`,
+  `assemblyFreshness.staleLikely=false`, `0 errors / 0 warnings`,
+  `buildSystemHealth.hasCriticalIssues=false`;
+- фінальний `DiagnosticSummary` у кожному: `0` Console entries.
+
 ## 2026-06-14 - UniBridge 0.2.13 WorkSession semantic smoke result
 
 Після синхронізації пакета в

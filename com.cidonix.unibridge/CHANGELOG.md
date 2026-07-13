@@ -2,6 +2,29 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.41
+
+### Fixed
+
+- `UniBridge_ManageUI Action=SetGraphic` now applies the requested
+  `Text`, `FontSize`, `FontAssetPath`, `Alignment`, `RichText`, `BestFit`,
+  font-size bounds, and `OverflowMode` to `TextMeshProUGUI` instead of
+  silently updating only its base `Graphic` state.
+- TMP values are assigned through the loaded public API and synchronized with
+  the serialized backing fields used by prefab YAML. Unicode strings such as
+  `Мама` and Ukrainian sentences survive Prefab Stage save/reload.
+- Text updates record Undo, dirty the component and prefab contents root, and
+  explicitly mark the Prefab Stage scene dirty.
+- `SetGraphic` responses now include full legacy/TMP text state in `before`
+  and `after`, requested/applied/changed field lists, Prefab Stage state, and
+  `noChangesApplied`/`alreadyUpToDate` signals.
+- Calls with no graphic settings, text settings on a non-text target, or
+  incompatible Image/TMP settings fail explicitly instead of returning a
+  misleading success.
+- The MCP Prefab Stage smoke creates two TMP labels, writes `Мама` and a
+  Ukrainian sentence, saves the prefab, rereads YAML, and verifies serialized
+  text and font sizes.
+
 ## 0.2.40
 
 ### Fixed

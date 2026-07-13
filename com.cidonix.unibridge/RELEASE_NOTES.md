@@ -1,19 +1,28 @@
-# UniBridge 0.2.39 Release Notes
+# UniBridge 0.2.41 Release Notes
 
 Release date: 2026-07-13
 
-This hotfix aligns `UniBridge_RuntimeStateProbe` MCP metadata with its C#
-parameter contract. `RuntimeStateProbeParams.Assertions` is now published as a
-JSON array whose items are objects, matching the documented
-`Assertions=[{...}]` request shape.
+This hotfix makes `UniBridge_ManageUI Action=SetGraphic` a verified text-editing
+path for legacy UI Text and `TMPro.TextMeshProUGUI`, including Prefab Stage.
+Text, font size, TMP font asset, alignment, rich-text, auto-sizing, overflow,
+color, material, and raycast settings now update the actual component rather
+than only its base `Graphic` properties.
 
-The shared typed-tool deserializer is also tolerant of callers that send one
-assertion as a bare JSON object. It clones and normalizes that value to a
-one-item `JArray` before Newtonsoft deserialization, preventing the previous
-`JObject is not compatible with expected type JArray` exception.
+TMP changes are synchronized with serialized prefab fields, recorded with
+Undo, marked dirty on both the component and Prefab Stage, and verified before
+success is returned. Responses expose complete text/TMP `before` and `after`
+state plus requested/applied/changed fields and explicit no-change signals.
 
-The MCP smoke regression suite now checks the tool schema from `tools/list` and
-executes a live editor-time assertion using the simplified single-object form.
+The MCP smoke suite now writes `Мама` and a Ukrainian sentence into TMP labels
+inside an isolated Prefab Stage, saves the prefab, rereads its YAML, and checks
+the serialized strings and font sizes.
+
+## Previous 0.2.40 Notes
+
+`ManageUI` creation actions resolve explicit parents inside the current Prefab
+Stage, reject missing/ambiguous parents without scene fallback, support
+`ParentObjectIdString`, and keep Canvas/template/scroll hierarchies in the
+prefab-stage scene.
 
 ## Previous 0.2.38 Notes
 

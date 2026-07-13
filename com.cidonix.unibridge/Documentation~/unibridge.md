@@ -1248,7 +1248,7 @@ It supports:
 - creating Empty, Panel, Image, Text, Button, TextMeshProText, and TextMeshProButton UI objects;
 - creating higher-level UI templates with `CreateTemplate`: `Panel`, `Modal`, `Toolbar`, `List`, `CardGrid`, and `HUD`;
 - creating ScrollRect-based lists with `CreateScrollView` and adding rows with `AddScrollItem`;
-- configuring Image, RawImage, Text, and TextMesh Pro `Graphic` state with `SetGraphic`, including color, sprite, texture, material, raycast target, Image type, preserve aspect, and native size;
+- configuring Image, RawImage, Text, and Text Mesh Pro `Graphic` state with `SetGraphic`, including text, font size/asset, alignment, rich text, color, sprite, texture, material, raycast target, Image type, preserve aspect, and native size;
 - configuring Button/Selectable interaction visuals with `SetSelectableTransition`, including `ColorTint`, `SpriteSwap`, `Animation`, target graphic, color block, and sprite state;
 - adding or clearing persistent Button `onClick` listeners with `SetButtonEvent` and `ClearButtonEvents`;
 - controlling legacy Text/Button and TextMesh Pro label size, alignment, color, rich text, overflow mode, and optional best-fit or auto-sizing behavior;
@@ -1307,7 +1307,7 @@ ValidateAfterCreate: true by default; includes Validate summary in the response
 
 Action aliases such as `create_modal`, `create_toolbar`, `create_list`, `create_card_grid`, and `create_hud` normalize to `Action=CreateTemplate` and set the matching `TemplateType` in batch workflows.
 
-Use `SetGraphic` after creating panels, images, buttons, icons, or raw texture previews when the visual asset should be explicit instead of manually editing Unity components.
+Use `SetGraphic` after creating panels, images, buttons, icons, raw texture previews, or text labels when the visual state should be explicit instead of manually editing Unity components. Text/TMP updates are verified, report full text state in `before`/`after`, and mark an open Prefab Stage dirty.
 
 Useful Graphic parameters:
 
@@ -1319,6 +1319,7 @@ Color / BackgroundColor: [r,g,b] or [r,g,b,a], 0..1 or 0..255
 ImageType: Simple | Sliced | Tiled | Filled
 PreserveAspect / RaycastTarget / SetNativeSize
 HighlightedSpritePath / PressedSpritePath / SelectedSpritePath / DisabledSpritePath
+Text / FontSize / FontAssetPath / Alignment / RichText / BestFit / OverflowMode
 ```
 
 Use `SetSelectableTransition` for buttons and other `Selectable` controls before visual validation. It mirrors Unity's normal Button contract:
