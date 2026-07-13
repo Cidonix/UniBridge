@@ -2,6 +2,39 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.40
+
+### Fixed
+
+- `UniBridge_ManageUI` creation actions now scope explicit `Parent` lookup to
+  the current Prefab Stage. `CreateCanvas`, `CreateElement`, `CreateTemplate`,
+  and `CreateScrollView` create their complete hierarchy in the prefab-stage
+  scene instead of falling back to the active ordinary scene.
+- Explicit parents that are missing or ambiguous now fail before creating any
+  objects. Responses include the requested scope, duplicate candidates where
+  applicable, `noObjectsCreated=true`, and `fallbackSuppressed=true`.
+- UI creation accepts `ParentObjectIdString` for duplicate-safe targeting by a
+  stringified Unity object/EntityId. It takes precedence over `Parent` and
+  `Target`.
+- Newly created UI objects are moved into the resolved parent's scene before
+  parenting. This keeps nested template, label, button, viewport, content, and
+  scroll-item objects inside Prefab Stage as well.
+- `CreateCanvas` does not create scene infrastructure while editing prefab
+  contents. If `EnsureEventSystem=true`, the response returns an explicit
+  `eventSystemSkippedReason` instead of mutating the ordinary scene.
+- `UniBridge_BatchActions` UI preflight now applies the same Prefab Stage,
+  missing-parent, ambiguity, and object-id validation rules as direct tool
+  execution.
+- The MCP smoke regression suite adds optional isolated Prefab Stage UI
+  coverage for path/object-id parent resolution, Canvas/template/scroll
+  creation, safe rejection, saved asset structure, and ordinary-scene leakage.
+- The smoke runner now unwraps the UniBridge response envelope centrally and
+  requires real compilation/console health evidence. Missing nested diagnostic
+  fields can no longer pass as an implicit zero count.
+- Expected client cancellation of a scheduled tool is returned as a
+  controlled canceled MCP result without being duplicated as red registry and
+  bridge errors in the Unity Console.
+
 ## 0.2.39
 
 ### Fixed

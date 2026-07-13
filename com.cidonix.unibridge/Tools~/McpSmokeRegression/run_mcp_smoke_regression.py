@@ -231,20 +231,32 @@ def assert_zero_or_missing(value, message):
         raise AssertionError(f"{message} Count={count}.")
 
 
-def assert_console_healthy(data):
-    assert_zero_or_missing(first_count(data, ("totals", "errors"), ("errors",), ("errorCount",)), "Console has errors.")
-    assert_zero_or_missing(first_count(data, ("totals", "exceptions"), ("exceptions",), ("exceptionCount",)), "Console has exceptions.")
-    assert_zero_or_missing(first_count(data, ("totals", "asserts"), ("asserts",), ("assertCount",)), "Console has asserts.")
+def assert_console_healthy(data, require_evidence=False):
+    errors = first_count(data, ("totals", "errorCount"), ("totals", "errors"), ("errors",), ("errorCount",))
+    exceptions = first_count(data, ("totals", "exceptionCount"), ("totals", "exceptions"), ("exceptions",), ("exceptionCount",))
+    asserts = first_count(data, ("totals", "assertCount"), ("totals", "asserts"), ("asserts",), ("assertCount",))
+    if require_evidence and any(value is None for value in (errors, exceptions, asserts)):
+        raise AssertionError(f"Console health evidence is incomplete: totals={prop(data, 'totals')}")
+    assert_zero_or_missing(errors, "Console has errors.")
+    assert_zero_or_missing(exceptions, "Console has exceptions.")
+    assert_zero_or_missing(asserts, "Console has asserts.")
     assert_zero_or_missing(
         first_count(data, ("criticalIssues",), ("criticalIssueCount",), ("summary", "criticalIssues"), ("summary", "criticalIssueCount")),
         "Console has critical issues.",
     )
 
 
-def assert_compilation_healthy(data):
-    assert_zero_or_missing(first_count(data, ("errors",), ("errorCount",), ("summary", "errors"), ("summary", "errorCount")), "Compilation has errors.")
+def assert_compilation_healthy(data, require_evidence=False):
+    errors = first_count(data, ("diagnostics", "errors"), ("errors",), ("errorCount",), ("summary", "errors"), ("summary", "errorCount"))
+    if require_evidence and errors is None:
+        raise AssertionError(f"Compilation diagnostics did not include an error count: keys={sorted(data.keys())}")
+    assert_zero_or_missing(errors, "Compilation has errors.")
     assert_zero_or_missing(first_count(data, ("buildSystemHealth", "criticalIssueCount"), ("buildSystemHealth", "criticalIssues")), "Build system health has critical issues.")
     assert_zero_or_missing(first_count(data, ("assemblyFreshness", "staleAssemblyCount"), ("compileHealth", "staleAssemblyCount")), "Assembly freshness reports stale assemblies.")
+    if prop(data, "compileHealth", "healthy") is False:
+        raise AssertionError(f"Compilation health is not healthy: {prop(data, 'compileHealth')}")
+    if prop(data, "assemblyFreshness", "staleLikely") is True or prop(data, "assemblyFreshness", "assemblyCSharpStaleLikely") is True:
+        raise AssertionError(f"Assembly freshness reports stale output: {prop(data, 'assemblyFreshness')}")
 
 
 def response_payload(data):
@@ -296,6 +308,7 @@ class SmokeSuite:
                 "skipCompile": self.args.skip_compile,
                 "includePlayMode": self.args.include_play_mode,
                 "includeUiRecipe": self.args.include_ui_recipe,
+                "includePrefabStageUi": self.args.include_prefab_stage_ui,
                 "includeAssetRecipe": self.args.include_asset_recipe,
                 "assetFolder": self.args.asset_folder,
                 "defaultTimeoutSeconds": self.args.default_timeout_seconds,
@@ -361,6 +374,10 @@ class SmokeSuite:
             "UniBridge_BatchActions",
             "UniBridge_RuntimeStateProbe",
             "UniBridge_ExecutionStatus",
+            "UniBridge_ManageAsset",
+            "UniBridge_ManageGameObject",
+            "UniBridge_ManagePrefab",
+            "UniBridge_ManageUI",
         ]
 
         self.run_step("tools_list", "List MCP tools and verify the core UniBridge surface.", lambda: self.step_tools_list(required))
@@ -386,6 +403,12 @@ class SmokeSuite:
 
         if self.args.include_ui_recipe:
             self.run_step("workflow_ui_recipe", "Execute RunUISmokeTest recipe and cleanup its temporary Canvas.", self.step_ui_recipe)
+        if self.args.include_prefab_stage_ui:
+            self.run_step(
+                "prefab_stage_ui_creation",
+                "Create UI through MCP inside an isolated Prefab Stage and verify strict parent resolution.",
+                self.step_prefab_stage_ui_creation,
+            )
         if self.args.include_asset_recipe:
             self.run_step("workflow_asset_recipe", "Execute RunAssetSmokeTest recipe on a small texture set.", self.step_asset_recipe)
         if self.args.include_play_mode:
@@ -403,7 +426,12 @@ class SmokeSuite:
 
     def tool(self, name, args=None, timeout=None):
         with self.make_client() as client:
-            return client.call_tool(name, args or {}, timeout=timeout)
+            result = client.call_tool(name, args or {}, timeout=timeout)
+        envelope = result.get("data") if isinstance(result, dict) else None
+        if isinstance(envelope, dict) and any(key in envelope for key in ("success", "message", "data")):
+            result["envelope"] = envelope
+            result["data"] = response_payload(envelope)
+        return result
 
     def step_tools_list(self, required):
         with self.make_client() as client:
@@ -430,7 +458,9 @@ class SmokeSuite:
 
     def step_discover_ping(self):
         data = self.tool("UniBridge_Discover", {"Action": "Ping"})["data"] or {}
-        return {"packageVersion": prop(data, "packageVersion"), "projectPath": prop(data, "projectPath"), "message": prop(data, "message")}
+        if data.get("connected") is not True or not prop(data, "package", "version"):
+            raise AssertionError(f"UniBridge ping did not return a connected package identity: {data}")
+        return {"packageVersion": prop(data, "package", "version"), "projectPath": prop(data, "unity", "projectPath"), "connected": prop(data, "connected")}
 
     def step_clear_console(self):
         data = self.tool("UniBridge_ReadConsole", {"Action": "ClearConsole"})["data"] or {}
@@ -438,7 +468,10 @@ class SmokeSuite:
 
     def step_wait_ready(self):
         data = self.tool("UniBridge_ManageEditor", {"Action": "WaitForReady", "TimeoutMs": 60000, "PollIntervalMs": 500, "RequireNotPlaying": True})["data"] or {}
-        return {"message": prop(data, "message"), "ready": prop(data, "ready"), "state": prop(data, "state")}
+        ready = prop(data, "readiness", "isReady", default=prop(data, "ready"))
+        if ready is not True:
+            raise AssertionError(f"Unity did not report ready state: {prop(data, 'readiness', default=data)}")
+        return {"ready": ready, "readiness": prop(data, "readiness")}
 
     def step_validate_package_script(self):
         data = self.tool(
@@ -624,11 +657,14 @@ class SmokeSuite:
             timeout=self.args.reload_timeout_seconds,
         )["data"] or {}
         assert_compilation_healthy(data)
-        return {"message": prop(data, "message"), "ready": prop(data, "ready"), "compileHealth": prop(data, "compileHealth"), "buildSystemHealth": prop(data, "buildSystemHealth")}
+        ready = prop(data, "readiness", "isReady", default=prop(data, "ready"))
+        if ready is not True:
+            raise AssertionError(f"Unity was not ready after reload: {prop(data, 'readiness', default=data)}")
+        return {"ready": ready, "readiness": prop(data, "readiness"), "compileHealth": prop(data, "compileHealth"), "buildSystemHealth": prop(data, "buildSystemHealth")}
 
     def step_compilation_diagnostics(self):
         data = self.tool("UniBridge_ManageEditor", {"Action": "GetCompilationDiagnostics"})["data"] or {}
-        assert_compilation_healthy(data)
+        assert_compilation_healthy(data, require_evidence=True)
         return {"message": prop(data, "message"), "compileHealth": prop(data, "compileHealth"), "buildSystemHealth": prop(data, "buildSystemHealth")}
 
     def step_ui_recipe(self):
@@ -638,6 +674,277 @@ class SmokeSuite:
             timeout=self.args.reload_timeout_seconds,
         )["data"] or {}
         return {"message": prop(data, "message"), "recipe": prop(data, "recipe"), "batchStatus": prop(data, "batchResult", "status")}
+
+    def step_prefab_stage_ui_creation(self):
+        stamp = datetime.now().strftime("%H%M%S%f")[:10]
+        root_name = f"UB_PrefabStageUI_{stamp}"
+        prefab_path = f"Assets/UniBridgeSmoke/{root_name}.prefab"
+        canvas_name = f"UB_DialogueCanvas_{stamp}"
+        stage_open = False
+
+        def response(name, arguments, timeout=None):
+            result = self.tool(name, arguments, timeout=timeout)
+            return result.get("envelope") or result.get("data") or {}
+
+        def payload(result):
+            return result.get("data") if isinstance(result, dict) and "data" in result else result
+
+        def require_success(result, operation):
+            if not result.get("success"):
+                raise AssertionError(f"{operation} failed: {result}")
+            return payload(result)
+
+        try:
+            before_scene = require_success(
+                response("UniBridge_ManageScene", {"Action": "GetHierarchy", "Depth": 0}),
+                "Read ordinary scene hierarchy before Prefab Stage smoke",
+            )
+            before_roots = [item.get("name") for item in before_scene if isinstance(item, dict)]
+
+            require_success(
+                response("UniBridge_ManagePrefab", {"action": "create", "prefab_path": prefab_path}),
+                "Create temporary prefab",
+            )
+            require_success(
+                response("UniBridge_ManagePrefab", {"action": "open_stage", "prefab_path": prefab_path}),
+                "Open temporary Prefab Stage",
+            )
+            stage_open = True
+
+            modal_result = response(
+                "UniBridge_ManageUI",
+                {
+                    "Action": "CreateElement",
+                    "ElementType": "Empty",
+                    "Name": "Modal Layer",
+                    "Parent": root_name,
+                    "CreateParentCanvas": False,
+                    "EnsureEventSystem": False,
+                },
+            )
+            modal = require_success(modal_result, "Create Prefab Stage parent").get("element") or {}
+            if modal.get("scenePath") != prefab_path or modal.get("isPrefabStageObject") is not True:
+                raise AssertionError(f"CreateElement escaped the Prefab Stage: {modal}")
+            parent_object_id = modal.get("objectIdString")
+            if not parent_object_id:
+                raise AssertionError(f"CreateElement did not return objectIdString: {modal}")
+
+            canvas_result = response(
+                "UniBridge_ManageUI",
+                {
+                    "Action": "CreateCanvas",
+                    "Name": canvas_name,
+                    "Parent": f"{root_name}/Modal Layer",
+                    "RenderMode": "ScreenSpaceOverlay",
+                    "SortingOrder": 420,
+                    "OverrideSorting": True,
+                    "EnsureEventSystem": True,
+                },
+            )
+            canvas_payload = require_success(canvas_result, "Create Canvas in Prefab Stage")
+            canvas = canvas_payload.get("canvas") or {}
+            parent = canvas_payload.get("parent") or {}
+            prefab_stage = canvas_payload.get("prefabStage") or {}
+            if canvas.get("scenePath") != prefab_path or canvas.get("isPrefabStageObject") is not True:
+                raise AssertionError(f"Canvas escaped the Prefab Stage: {canvas_payload}")
+            if parent.get("name") != "Modal Layer":
+                raise AssertionError(f"Canvas parent is not Modal Layer: {parent}")
+            if prefab_stage.get("isDirty") is not True:
+                raise AssertionError(f"Prefab Stage was not marked dirty by CreateCanvas: {prefab_stage}")
+            if canvas_payload.get("sortingOrder") != 420:
+                raise AssertionError(f"Canvas sorting order was not applied: {canvas_payload}")
+            if canvas_payload.get("eventSystem") is not None or not canvas_payload.get("eventSystemSkippedReason"):
+                raise AssertionError(f"CreateCanvas created or failed to explain EventSystem handling in Prefab Stage: {canvas_payload}")
+
+            template_payload = require_success(
+                response(
+                    "UniBridge_ManageUI",
+                    {
+                        "Action": "CreateTemplate",
+                        "TemplateType": "Panel",
+                        "Name": "Dialogue Panel",
+                        "Parent": f"{root_name}/Modal Layer/{canvas_name}",
+                        "CreateParentCanvas": False,
+                        "EnsureEventSystem": False,
+                    },
+                ),
+                "CreateTemplate in Prefab Stage",
+            )
+            template_root = template_payload.get("root") or {}
+            if template_root.get("scenePath") != prefab_path:
+                raise AssertionError(f"CreateTemplate escaped the Prefab Stage: {template_root}")
+
+            scroll_payload = require_success(
+                response(
+                    "UniBridge_ManageUI",
+                    {
+                        "Action": "CreateScrollView",
+                        "Name": "Dialogue Scroll",
+                        "Parent": f"{root_name}/Modal Layer/{canvas_name}",
+                        "CreateParentCanvas": False,
+                        "EnsureEventSystem": False,
+                    },
+                ),
+                "CreateScrollView in Prefab Stage",
+            )
+            scroll_root = scroll_payload.get("scrollView") or {}
+            if scroll_root.get("scenePath") != prefab_path:
+                raise AssertionError(f"CreateScrollView escaped the Prefab Stage: {scroll_root}")
+
+            id_child_payload = require_success(
+                response(
+                    "UniBridge_ManageUI",
+                    {
+                        "Action": "CreateElement",
+                        "ElementType": "Text",
+                        "Name": "ID Child",
+                        "Text": "Resolved by object id",
+                        "ParentObjectIdString": str(parent_object_id),
+                        "CreateParentCanvas": False,
+                        "EnsureEventSystem": False,
+                    },
+                ),
+                "CreateElement by ParentObjectIdString",
+            )
+            id_child = id_child_payload.get("element") or {}
+            if id_child.get("scenePath") != prefab_path or not (id_child.get("path") or "").endswith("/Modal Layer/ID Child"):
+                raise AssertionError(f"ParentObjectIdString resolved to the wrong object: {id_child}")
+
+            for branch_name in ("Branch A", "Branch B"):
+                require_success(
+                    response(
+                        "UniBridge_ManageUI",
+                        {
+                            "Action": "CreateElement",
+                            "ElementType": "Empty",
+                            "Name": branch_name,
+                            "Parent": root_name,
+                            "CreateParentCanvas": False,
+                            "EnsureEventSystem": False,
+                        },
+                    ),
+                    f"Create {branch_name}",
+                )
+                require_success(
+                    response(
+                        "UniBridge_ManageUI",
+                        {
+                            "Action": "CreateElement",
+                            "ElementType": "Empty",
+                            "Name": "DuplicateParent",
+                            "Parent": f"{root_name}/{branch_name}",
+                            "CreateParentCanvas": False,
+                            "EnsureEventSystem": False,
+                        },
+                    ),
+                    f"Create duplicate parent under {branch_name}",
+                )
+
+            missing = response(
+                "UniBridge_ManageUI",
+                {
+                    "Action": "CreateElement",
+                    "ElementType": "Empty",
+                    "Name": "SHOULD_NOT_EXIST_MISSING",
+                    "Parent": f"{root_name}/Missing Parent",
+                    "CreateParentCanvas": False,
+                },
+            )
+            missing_payload = payload(missing)
+            if missing.get("success") is not False or missing_payload.get("noObjectsCreated") is not True:
+                raise AssertionError(f"Missing parent did not fail safely: {missing}")
+
+            ambiguous = response(
+                "UniBridge_ManageUI",
+                {
+                    "Action": "CreateElement",
+                    "ElementType": "Empty",
+                    "Name": "SHOULD_NOT_EXIST_AMBIGUOUS",
+                    "Parent": "DuplicateParent",
+                    "CreateParentCanvas": False,
+                },
+            )
+            ambiguous_payload = payload(ambiguous)
+            if ambiguous.get("success") is not False or len(ambiguous_payload.get("candidates") or []) != 2:
+                raise AssertionError(f"Ambiguous parent did not fail safely: {ambiguous}")
+
+            require_success(response("UniBridge_ManagePrefab", {"action": "save_stage"}), "Save Prefab Stage")
+            structure = require_success(
+                response(
+                    "UniBridge_AssetIntelligence",
+                    {
+                        "Action": "Structure",
+                        "Path": prefab_path,
+                        "StructureMode": "List",
+                        "MaxStructureDepth": 8,
+                        "MaxStructureItems": 300,
+                        "IncludeSerializedProperties": False,
+                    },
+                    timeout=self.args.reload_timeout_seconds,
+                ),
+                "Read saved prefab structure",
+            )
+            structure_text = json.dumps(structure, ensure_ascii=False)
+            expected_names = [canvas_name, "Dialogue Panel", "Dialogue Scroll", "ID Child"]
+            missing_names = [name for name in expected_names if name not in structure_text]
+            if missing_names:
+                raise AssertionError(f"Saved prefab structure is missing: {missing_names}")
+            if "SHOULD_NOT_EXIST" in structure_text:
+                raise AssertionError("A rejected UI create operation leaked into the saved prefab.")
+
+            require_success(response("UniBridge_ManagePrefab", {"action": "close_stage"}), "Close Prefab Stage")
+            stage_open = False
+
+            after_scene = require_success(
+                response("UniBridge_ManageScene", {"Action": "GetHierarchy", "Depth": 0}),
+                "Read ordinary scene hierarchy after Prefab Stage smoke",
+            )
+            after_roots = [item.get("name") for item in after_scene if isinstance(item, dict)]
+            if before_roots != after_roots:
+                raise AssertionError(f"Ordinary scene roots changed during Prefab Stage smoke: before={before_roots}, after={after_roots}")
+
+            leak_result = require_success(
+                response(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Find",
+                        "SearchMethod": "ByName",
+                        "SearchTerm": canvas_name,
+                        "FindAll": True,
+                        "IncludeInactive": True,
+                    },
+                ),
+                "Search ordinary scenes for leaked Canvas",
+            )
+            if leak_result:
+                raise AssertionError(f"Prefab Stage Canvas leaked into an ordinary scene: {leak_result}")
+
+            return {
+                "prefabPath": prefab_path,
+                "canvasPath": canvas.get("path"),
+                "canvasScenePath": canvas.get("scenePath"),
+                "canvasParent": parent.get("name"),
+                "stageDirtyAfterCreate": prefab_stage.get("isDirty"),
+                "objectIdParent": parent_object_id,
+                "eventSystemSkippedReason": canvas_payload.get("eventSystemSkippedReason"),
+                "missingParentRejected": True,
+                "ambiguousParentRejected": True,
+                "ordinarySceneRootsUnchanged": True,
+            }
+        finally:
+            if stage_open:
+                try:
+                    response("UniBridge_ManagePrefab", {"action": "close_stage"})
+                except Exception:
+                    pass
+            try:
+                response(
+                    "UniBridge_ManageAsset",
+                    {"Action": "Delete", "Path": prefab_path, "GeneratePreview": False},
+                    timeout=self.args.reload_timeout_seconds,
+                )
+            except Exception:
+                pass
 
     def step_asset_recipe(self):
         data = self.tool(
@@ -665,8 +972,8 @@ class SmokeSuite:
 
     def step_console_summary(self):
         data = self.tool("UniBridge_ReadConsole", {"Action": "DiagnosticSummary", "MaxIssues": 20, "MaxSamples": 3})["data"] or {}
-        assert_console_healthy(data)
-        return {"message": prop(data, "message"), "totals": prop(data, "totals"), "criticalIssues": prop(data, "criticalIssues")}
+        assert_console_healthy(data, require_evidence=True)
+        return {"totals": prop(data, "totals"), "criticalIssues": prop(data, "summary", "criticalIssues")}
 
 
 def parse_args(argv):
@@ -680,6 +987,7 @@ def parse_args(argv):
     parser.add_argument("--skip-compile", action="store_true")
     parser.add_argument("--include-play-mode", action="store_true")
     parser.add_argument("--include-ui-recipe", action="store_true")
+    parser.add_argument("--include-prefab-stage-ui", action="store_true")
     parser.add_argument("--include-asset-recipe", action="store_true")
     parser.add_argument("--asset-folder", default="Assets/Sprites")
     parser.add_argument("--max-steps", type=int, default=0)

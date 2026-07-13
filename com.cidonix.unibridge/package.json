@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.39",
+  "version": "0.2.40",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- RuntimeStateProbe Assertions now has the correct MCP schema: array with object items.\n- Typed tool parameter deserialization accepts a single object for JArray-backed properties and safely normalizes it to a one-item array.\n- MCP smoke regression now verifies both the canonical Assertions schema and tolerant single-object execution.\n\n### Previous Changes\n\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status instead of fake deleted/created changes.\n- BatchActions post-action WorkSession review is lightweight by default.\n- ManageGameObject SetComponentProperty handles Unity object references more reliably."
+    "changelog": "### Fixed\n\n- ManageUI creation actions now resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- Missing or ambiguous UI parents fail without silently creating root objects in an ordinary scene.\n- ParentObjectIdString provides duplicate-safe parent targeting for CreateCanvas, CreateElement, CreateTemplate, and CreateScrollView.\n- EventSystem creation is safely skipped while editing prefab contents and the response explains why.\n- MCP smoke regression includes an isolated Prefab Stage UI creation workflow and reads real nested health diagnostics.\n- Expected client-canceled tool calls no longer produce duplicate red Unity Console errors.\n\n### Previous Changes\n\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization.\n- WorkSession semantic review detects stale/noisy scene baselines and returns a compact skipped status.\n- BatchActions post-action WorkSession review is lightweight by default."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -173,8 +173,11 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Target GameObject name, hierarchy path, or object id. If omitted, the current selection is used where possible.", Required = false)]
         public string Target { get; set; }
 
-        [McpDescription("Optional parent GameObject name, hierarchy path, or object id for CreateElement or CreateScrollView.", Required = false)]
+        [McpDescription("Optional parent GameObject name, full hierarchy path, or stringified object/EntityId for CreateCanvas, CreateElement, CreateTemplate, or CreateScrollView. When Prefab Stage is open, resolution is restricted to that stage and failure/ambiguity is reported without scene fallback.", Required = false)]
         public string Parent { get; set; }
+
+        [McpDescription("Optional stringified Unity object/EntityId for the UI creation parent. Takes precedence over Parent and Target and is useful when hierarchy names are duplicated.", Required = false)]
+        public string ParentObjectIdString { get; set; }
 
         [McpDescription("Name for a created Canvas or UI element.", Required = false)]
         public string Name { get; set; }
@@ -200,7 +203,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Create an EventSystem when creating UI if the scene does not already have one. Default true.", Required = false, Default = true)]
         public bool? EnsureEventSystem { get; set; }
 
-        [McpDescription("For CreateElement, create a Canvas automatically when no parent/target is available. Default true.", Required = false, Default = true)]
+        [McpDescription("For CreateElement, CreateTemplate, or CreateScrollView, create a Canvas automatically when no parent/target is available. In Prefab Stage the Canvas is created under the prefab root. Default true.", Required = false, Default = true)]
         public bool? CreateParentCanvas { get; set; }
 
         [McpDescription("Horizontal layout preset for SetRectTransformLayout or CreateElement: Left, Center, Right, Stretch.", Required = false, Default = RectLayoutHorizontal.Center)]

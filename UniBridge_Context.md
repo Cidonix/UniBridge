@@ -5,6 +5,63 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-07-13: UniBridge 0.2.40 Prefab Stage-safe ManageUI creation
+
+Причина: у `Domovyk` агент відкрив
+`Assets/_Domovyk/Prefabs/UI/GameUIRoot.prefab` у Prefab Mode і викликав
+`UniBridge_ManageUI Action=CreateCanvas Parent=GameUIRoot/Modal Layer`.
+Старий resolver не знаходив stage object, мовчки створював root Canvas у
+звичайній `Assets/_Domovyk/Scenes/3.unity`, лишав Prefab Stage clean і
+повертав misleading success.
+
+Виправлення:
+
+- `CreateCanvas`, `CreateElement`, `CreateTemplate` і `CreateScrollView`
+  використовують єдиний strict parent resolver;
+- якщо Prefab Stage відкритий, explicit `Parent` / `Target` шукається лише в
+  його `prefabContentsRoot`, включно з inactive objects;
+- додано `ParentObjectIdString`, який має пріоритет над path/name і дозволяє
+  безпечно працювати з duplicate names;
+- missing або ambiguous parent повертає error до створення об'єкта з
+  `noObjectsCreated=true` і `fallbackSuppressed=true`;
+- кожен створений root/child спочатку переноситься в scene батька через
+  `SceneManager.MoveGameObjectToScene`, а потім parent-иться. Це стосується
+  Canvas, template children, labels/buttons, ScrollView/Viewport/Content та
+  scroll items;
+- `EnsureEventSystem=true` у Prefab Stage не змінює звичайну сцену й не додає
+  EventSystem у prefab asset. Відповідь містить `eventSystemSkippedReason`;
+- `BatchActions` UI validation застосовує ті самі stage scope, ambiguity і
+  object-id правила;
+- MCP smoke regression отримав `IncludePrefabStageUi`: він створює тимчасовий
+  prefab, відкриває stage, перевіряє всі чотири create actions, path та
+  object-id resolution, missing/ambiguous rejection, save +
+  `AssetIntelligence Structure`, незмінність ordinary scene і cleanup.
+- smoke runner тепер централізовано розпаковує вкладений UniBridge response
+  envelope, тому compilation/console checks читають реальні health payloads,
+  а відсутні diagnostic counts більше не можуть непомітно пройти як success;
+- очікуване client cancellation для `RuntimeStateProbe` більше не дублюється
+  як дві червоні Unity Console errors у registry та bridge. Воно лишається
+  контрольованим canceled MCP result і scheduler outcome.
+
+Фінальна live MCP перевірка в Unity `6000.5.3f1`:
+
+- повний MCP regression: `19 passed, 0 failed`;
+- report:
+  `Library/UniBridge/mcp-smoke-regression-0.2.40-final.json`;
+- пройдено `RefreshAssets -> RequestScriptCompilationNoWait ->
+  WaitForReadyAfterReload -> GetCompilationDiagnostics`;
+- `compileHealth.healthy=true`, build-system critical issues `0`,
+  stale assembly evidence `0`;
+- створений Canvas мав `scenePath` тимчасового `.prefab`, parent
+  `Modal Layer`, `isPrefabStageObject=true`, `sortingOrder=420`, stage
+  `isDirty=true` одразу після create;
+- `CreateTemplate`, `CreateScrollView` і `ParentObjectIdString` лишилися в
+  тому самому prefab asset;
+- missing/ambiguous parent обидва відхилені без створення об'єктів;
+- root hierarchy звичайної сцени до/після однакова, leaked Canvas matches `0`;
+- фінальний DiagnosticSummary: total entries `0`, errors/warnings/exceptions/
+  asserts `0/0/0/0`.
+
 ## 2026-07-13: UniBridge 0.2.39 RuntimeStateProbe Assertions schema hotfix
 
 Мета: виправити невідповідність між C# контрактом

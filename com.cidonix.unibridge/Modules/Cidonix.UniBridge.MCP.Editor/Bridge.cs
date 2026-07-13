@@ -511,6 +511,10 @@ namespace Cidonix.UniBridge.MCP.Editor
                 });
                 await WriteWithLockAsync(transport, message, ct);
             }
+            catch (OperationCanceledException)
+            {
+                // The duplicate transport disconnected while the notification was in flight.
+            }
             catch (Exception ex)
             {
                 McpLog.LogDelayed($"Failed to send duplicate notification: {ex.Message}");
@@ -1442,6 +1446,24 @@ namespace Cidonix.UniBridge.MCP.Editor
 
                 // Standard success response format
                 return JsonConvert.SerializeObject(new { status = "success", result });
+            }
+            catch (OperationCanceledException ex)
+            {
+                if (sessionTracker != null)
+                {
+                    Interlocked.Increment(ref sessionTracker.ToolCallCount);
+                    sessionTracker.LastToolName = command.type;
+                }
+
+                McpLog.Log($"Command '{command?.type ?? "Unknown"}' was canceled: {ex.Message}");
+                return JsonConvert.SerializeObject(new
+                {
+                    status = "error",
+                    error = ex.Message,
+                    canceled = true,
+                    command = command?.type ?? "Unknown",
+                    projectContext = ProjectContextGuard.BuildProjectContext()
+                });
             }
             catch (Exception ex)
             {

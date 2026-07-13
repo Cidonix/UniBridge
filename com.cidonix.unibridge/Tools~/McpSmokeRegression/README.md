@@ -37,6 +37,10 @@ powershell -ExecutionPolicy Bypass `
 - `ContextSnapshot` and `SceneObjectView` return compact AI-readable context.
 - `WorkflowRecipes Execute RunCoreSmokeTest` can create, inspect, and clean up a
   temporary scene object.
+- Optional Prefab Stage UI coverage verifies strict path/object-id parent
+  resolution, stage-scoped Canvas/template/scroll creation, safe missing and
+  ambiguous parent failures, saved prefab structure, and no ordinary-scene
+  leakage.
 
 ## Optional Coverage
 
@@ -54,6 +58,12 @@ powershell -ExecutionPolicy Bypass `
   -IncludeUiRecipe `
   -IncludeAssetRecipe `
   -AssetFolder Assets/Sprites
+
+# Include isolated Prefab Stage UI creation and parent-resolution checks.
+powershell -ExecutionPolicy Bypass `
+  -File .\com.cidonix.unibridge\Tools~\McpSmokeRegression\Run-McpSmokeRegression.ps1 `
+  -ProjectPath H:\Repos\UnityRepos\UniBridge_Test_Project `
+  -IncludePrefabStageUi
 ```
 
 Use `-SkipRefresh` or `-SkipCompile` only when you need a short connectivity

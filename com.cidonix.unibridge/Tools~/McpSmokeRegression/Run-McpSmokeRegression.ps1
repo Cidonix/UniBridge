@@ -8,6 +8,7 @@ param(
     [switch]$SkipCompile,
     [switch]$IncludePlayMode,
     [switch]$IncludeUiRecipe,
+    [switch]$IncludePrefabStageUi,
     [switch]$IncludeAssetRecipe,
     [string]$AssetFolder = "Assets/Sprites",
     [int]$MaxSteps = 0,
@@ -44,6 +45,7 @@ if ($SkipRefresh) { $args += "--skip-refresh" }
 if ($SkipCompile) { $args += "--skip-compile" }
 if ($IncludePlayMode) { $args += "--include-play-mode" }
 if ($IncludeUiRecipe) { $args += "--include-ui-recipe" }
+if ($IncludePrefabStageUi) { $args += "--include-prefab-stage-ui" }
 if ($IncludeAssetRecipe) { $args += "--include-asset-recipe" }
 if ($MaxSteps -gt 0) { $args += @("--max-steps", [string]$MaxSteps) }
 if (-not [string]::IsNullOrWhiteSpace($TraceTransportPath)) {

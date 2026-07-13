@@ -287,12 +287,23 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
                 return result;
             }
+            catch (TargetInvocationException ex) when ((ex.InnerException ?? ex) is OperationCanceledException)
+            {
+                var cancellation = (OperationCanceledException)(ex.InnerException ?? ex);
+                McpLog.Log($"[McpToolRegistry] Tool '{toolName}' was canceled: {cancellation.Message}", new() { Data = new { tool = toolName, outcome = "canceled" } });
+                throw cancellation;
+            }
             catch (TargetInvocationException ex)
             {
                 // Unwrap TargetInvocationException to get the actual exception
                 var actualException = ex.InnerException ?? ex;
                 McpLog.Error($"[McpToolRegistry] Error executing tool '{toolName}': {actualException.Message}", new() { Data = new { tool = toolName, exception = actualException.ToString() } });
                 throw actualException;
+            }
+            catch (OperationCanceledException ex)
+            {
+                McpLog.Log($"[McpToolRegistry] Tool '{toolName}' was canceled: {ex.Message}", new() { Data = new { tool = toolName, outcome = "canceled" } });
+                throw;
             }
             catch (Exception ex)
             {

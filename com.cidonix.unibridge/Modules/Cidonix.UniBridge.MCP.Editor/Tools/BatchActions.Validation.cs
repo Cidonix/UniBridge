@@ -584,14 +584,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             ValidateVector(parameters, report, "Spacing", new[] { "spacing", "gap" }, minLength: 1, maxLength: 2);
             ValidateVector(parameters, report, "CellSize", new[] { "cellSize", "cell_size" }, minLength: 2, maxLength: 2);
 
-            if (normalizedAction is "createcanvas" or "create_canvas" or "ensureeventsystem" or "ensure_event_system")
+            if (normalizedAction is "ensureeventsystem" or "ensure_event_system")
             {
                 report.Info("UI action can create scene objects and supports DryRun.");
                 return;
             }
 
-            if (normalizedAction is "createelement" or "create_element" or "createtemplate" or "create_template" or "template" or "createpanel" or "create_panel" or "createmodal" or "create_modal" or "createtoolbar" or "create_toolbar" or "createlist" or "create_list" or "createcardgrid" or "create_card_grid" or "cardgrid" or "card_grid" or "createhud" or "create_hud" or "createscrollview" or "create_scroll_view" or "scrollview" or "scroll_view" or "createscrollrect" or "create_scroll_rect")
+            if (normalizedAction is "createcanvas" or "create_canvas" or "createelement" or "create_element" or "createtemplate" or "create_template" or "template" or "createpanel" or "create_panel" or "createmodal" or "create_modal" or "createtoolbar" or "create_toolbar" or "createlist" or "create_list" or "createcardgrid" or "create_card_grid" or "cardgrid" or "card_grid" or "createhud" or "create_hud" or "createscrollview" or "create_scroll_view" or "scrollview" or "scroll_view" or "createscrollrect" or "create_scroll_rect")
             {
+                var isCreateCanvas = normalizedAction is "createcanvas" or "create_canvas";
                 var elementType = GetString(parameters, "ElementType", "elementType", "element_type", "type", "Type");
                 if (!string.IsNullOrWhiteSpace(elementType)
                     && (elementType.IndexOf("tmp", StringComparison.OrdinalIgnoreCase) >= 0
@@ -600,20 +601,34 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     report.Info("TextMesh Pro element creation requires TMPro.TextMeshProUGUI to be available in the Unity project.");
                 }
 
-                var parent = GetString(parameters, "Parent", "parent") ?? GetString(parameters, "Target", "target");
+                var parent = GetString(parameters, "ParentObjectIdString", "parentObjectIdString", "parent_object_id_string")
+                             ?? GetString(parameters, "Parent", "parent")
+                             ?? GetString(parameters, "Target", "target");
                 if (!string.IsNullOrWhiteSpace(parent))
                 {
                     var matches = FindGameObjects(parent, GetString(parameters, "SearchMethod", "search_method"));
+                    var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+                    if (prefabStage != null)
+                    {
+                        matches = matches.Where(prefabStage.IsPartOfPrefabContents).ToList();
+                    }
+
                     if (matches.Count == 0)
                     {
-                        report.Error($"UI parent target '{parent}' was not found.");
+                        report.Error(prefabStage != null
+                            ? $"UI parent target '{parent}' was not found in current Prefab Stage '{prefabStage.assetPath}'. Execution will not fall back to a normal scene."
+                            : $"UI parent target '{parent}' was not found.");
                     }
-                    else if (!matches.Any(go => go.GetComponent<RectTransform>() != null))
+                    else if (matches.Count > 1)
+                    {
+                        report.Error($"UI parent target '{parent}' is ambiguous ({matches.Count} matches). Use a full hierarchy path or ParentObjectIdString.");
+                    }
+                    else if (!isCreateCanvas && matches[0].GetComponent<RectTransform>() == null)
                     {
                         report.Warning($"UI parent target '{parent}' was found but does not have a RectTransform. Unity will still allow parenting, but Canvas UI layout may not behave as expected.");
                     }
                 }
-                else if (!GetBool(parameters, true, "CreateParentCanvas", "createParentCanvas", "create_parent_canvas"))
+                else if (!isCreateCanvas && !GetBool(parameters, true, "CreateParentCanvas", "createParentCanvas", "create_parent_canvas"))
                 {
                     report.Error($"{action} requires Parent/Target when CreateParentCanvas is false.");
                 }

@@ -276,7 +276,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         static GameObject CreateTemplateObject(GameObject parent, string name, bool addImage, Color color)
         {
             var obj = new GameObject(name, typeof(RectTransform));
-            obj.transform.SetParent(parent.transform, false);
+            SetCreatedObjectParent(obj, parent.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(obj);
 
             if (addImage)
@@ -423,7 +423,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             float? preferredWidth = null)
         {
             var label = new GameObject(name, typeof(RectTransform));
-            label.transform.SetParent(parent.transform, false);
+            SetCreatedObjectParent(label, parent.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(label);
             label.GetComponent<RectTransform>().sizeDelta = new Vector2(preferredWidth ?? 0f, preferredHeight);
 
@@ -458,7 +458,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             float preferredHeight)
         {
             var button = new GameObject(ToSafeObjectName(name, "Button"), typeof(RectTransform));
-            button.transform.SetParent(parent.transform, false);
+            SetCreatedObjectParent(button, parent.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(button);
             button.GetComponent<RectTransform>().sizeDelta = new Vector2(preferredWidth, preferredHeight);
 
@@ -521,19 +521,19 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             int? columns = null)
         {
             var scrollView = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(ScrollRect));
-            scrollView.transform.SetParent(parent.transform, false);
+            SetCreatedObjectParent(scrollView, parent.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(scrollView);
             scrollView.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 320f);
             scrollView.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.035f);
             AddLayoutElement(scrollView, preferredHeight: 320f, flexibleWidth: 1f, flexibleHeight: 1f);
 
             var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D));
-            viewport.transform.SetParent(scrollView.transform, false);
+            SetCreatedObjectParent(viewport, scrollView.transform);
             ConfigureStretchRect(viewport.GetComponent<RectTransform>());
             viewport.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
 
             var content = new GameObject("Content", typeof(RectTransform));
-            content.transform.SetParent(viewport.transform, false);
+            SetCreatedObjectParent(content, viewport.transform);
             var contentRect = content.GetComponent<RectTransform>();
             ConfigureScrollContentRect(contentRect, direction, new Vector2(520f, 320f));
 

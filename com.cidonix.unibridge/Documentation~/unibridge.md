@@ -1261,6 +1261,24 @@ It supports:
 - building an AI-readable `RepairPlan` before making changes;
 - auto-fixing audit findings in `Safe`, `Layout`, or `Aggressive` modes.
 
+When a Prefab Stage is open, `CreateCanvas`, `CreateElement`,
+`CreateTemplate`, and `CreateScrollView` resolve explicit parents only inside
+that stage. UniBridge moves every created root and nested UI object into the
+prefab-stage scene before parenting it. An explicit parent that is missing or
+ambiguous returns an error and creates nothing; UniBridge does not silently
+fall back to the active ordinary scene.
+
+Use `ParentObjectIdString` when names are duplicated. It accepts the
+stringified Unity object/EntityId returned by UniBridge inspection tools and
+takes precedence over `Parent` and `Target`. A full hierarchy path remains the
+most readable option for unique parents.
+
+`CreateCanvas` without an explicit parent uses the Prefab Stage root while the
+stage is open. Automatic parent Canvas creation for the other create actions is
+also stage-scoped. `EnsureEventSystem=true` does not add an EventSystem to
+prefab contents or another scene; the response includes
+`eventSystemSkippedReason` because EventSystem is scene infrastructure.
+
 The layout preset action is useful when an agent needs to reproduce Unity's anchor preset behavior without guessing the RectTransform math. `AlsoSetPivot=true` aligns the pivot to the preset. `AlsoSetPosition=false` preserves the current visual placement while changing anchors, while `AlsoSetPosition=true` snaps the object to the new layout.
 
 For most generated UI, prefer layout groups over manual coordinates:

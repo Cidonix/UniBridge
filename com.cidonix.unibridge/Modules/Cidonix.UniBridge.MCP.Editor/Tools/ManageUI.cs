@@ -12,6 +12,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -153,6 +154,13 @@ Layout notes:
             var name = string.IsNullOrWhiteSpace(parameters.Name) ? "UniBridge Canvas" : parameters.Name.Trim();
             var eventSystemPlan = parameters.EnsureEventSystem ?? true;
 
+            if (!TryResolveParentForCreate(parameters, allowImplicitFallback: false, out var requestedParent, out var parentError))
+            {
+                return parentError;
+            }
+
+            var creationParent = requestedParent ?? GetCurrentPrefabStageRoot();
+
             if (dryRun)
             {
                 return Response.Success("Dry run: Canvas would be created.", new
@@ -161,34 +169,23 @@ Layout notes:
                     renderMode = parameters.RenderMode.ToString(),
                     overrideSorting = parameters.OverrideSorting ?? true,
                     sortingOrder = parameters.SortingOrder ?? 100,
-                    ensureEventSystem = eventSystemPlan
+                    ensureEventSystem = eventSystemPlan,
+                    parent = creationParent != null ? BuildGameObjectInfo(creationParent) : null,
+                    prefabStage = BuildCurrentPrefabStageInfo(),
+                    noFallbackToMainScene = creationParent != null
                 });
             }
 
-            var canvasObject = new GameObject(name, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            GameObjectUtility.EnsureUniqueNameForSibling(canvasObject);
-
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = ConvertRenderMode(parameters.RenderMode);
-            canvas.overrideSorting = parameters.OverrideSorting ?? true;
-            canvas.sortingOrder = parameters.SortingOrder ?? 100;
-            if (parameters.RenderMode == CanvasRenderModeOption.ScreenSpaceCamera)
-            {
-                canvas.worldCamera = ResolveCamera(parameters.Camera);
-            }
-
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-            scaler.matchWidthOrHeight = 0.5f;
-
-            Undo.RegisterCreatedObjectUndo(canvasObject, "Create UniBridge UI Canvas");
-
-            GameObject eventSystem = null;
-            if (eventSystemPlan)
-            {
-                eventSystem = EnsureEventSystemObject();
-            }
+            var canvasResult = CreateCanvasObject(
+                name,
+                parameters.RenderMode,
+                parameters.Camera,
+                eventSystemPlan,
+                parameters.OverrideSorting ?? true,
+                parameters.SortingOrder ?? 100,
+                creationParent);
+            var canvasObject = canvasResult.canvasObject;
+            var canvas = canvasResult.canvas;
 
             if (parameters.Select ?? false)
             {
@@ -205,7 +202,10 @@ Layout notes:
                 renderMode = canvas.renderMode.ToString(),
                 overrideSorting = canvas.overrideSorting,
                 sortingOrder = canvas.sortingOrder,
-                eventSystem = eventSystem != null ? BuildGameObjectInfo(eventSystem) : null
+                parent = canvasObject.transform.parent != null ? BuildGameObjectInfo(canvasObject.transform.parent.gameObject) : null,
+                prefabStage = BuildCurrentPrefabStageInfo(),
+                eventSystem = canvasResult.eventSystem != null ? BuildGameObjectInfo(canvasResult.eventSystem) : null,
+                eventSystemSkippedReason = canvasResult.eventSystemSkippedReason
             });
         }
 
@@ -243,7 +243,11 @@ Layout notes:
         static object CreateElement(ManageUIParams parameters)
         {
             var dryRun = parameters.DryRun ?? false;
-            var parent = ResolveParentForCreate(parameters);
+            if (!TryResolveParentForCreate(parameters, allowImplicitFallback: true, out var parent, out var parentError))
+            {
+                return parentError;
+            }
+
             var createCanvas = parameters.CreateParentCanvas ?? true;
 
             if (parent == null && !createCanvas)
@@ -281,6 +285,8 @@ Layout notes:
                 return Response.Error("TextMesh Pro support was requested, but TMPro.TextMeshProUGUI is not available in this project. Install/import TextMesh Pro, or create a legacy Text/Button element instead.");
             }
 
+            GameObject eventSystem = null;
+            string eventSystemSkippedReason = null;
             if (parent == null)
             {
                 var canvasResult = CreateCanvasObject(
@@ -291,10 +297,12 @@ Layout notes:
                     parameters.OverrideSorting ?? true,
                     parameters.SortingOrder ?? 100);
                 parent = canvasResult.canvasObject;
+                eventSystem = canvasResult.eventSystem;
+                eventSystemSkippedReason = canvasResult.eventSystemSkippedReason;
             }
 
             var element = new GameObject(name, typeof(RectTransform));
-            element.transform.SetParent(parent.transform, false);
+            SetCreatedObjectParent(element, parent.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(element);
 
             var rectTransform = element.GetComponent<RectTransform>();
@@ -310,9 +318,9 @@ Layout notes:
             PreserveExplicitLayoutSizeWhenNeeded(rectTransform, parameters);
             Undo.RegisterCreatedObjectUndo(element, "Create UniBridge UI Element");
 
-            if (parameters.EnsureEventSystem ?? true)
+            if ((parameters.EnsureEventSystem ?? true) && eventSystem == null && eventSystemSkippedReason == null)
             {
-                EnsureEventSystemObject();
+                eventSystem = EnsureEventSystemForCreatedUi(element, out eventSystemSkippedReason);
             }
 
             if (parameters.Select ?? false)
@@ -329,14 +337,20 @@ Layout notes:
                 parent = BuildGameObjectInfo(parent),
                 rectTransform = BuildRectTransformInfo(rectTransform),
                 layoutComponents = BuildLayoutComponentsInfo(element),
-                components = element.GetComponents<Component>().Select(component => component.GetType().Name).ToArray()
+                components = element.GetComponents<Component>().Select(component => component.GetType().Name).ToArray(),
+                eventSystem = eventSystem != null ? BuildGameObjectInfo(eventSystem) : null,
+                eventSystemSkippedReason
             });
         }
 
         static object CreateTemplate(ManageUIParams parameters)
         {
             var dryRun = parameters.DryRun ?? false;
-            var parent = ResolveExplicitParentForCreate(parameters);
+            if (!TryResolveParentForCreate(parameters, allowImplicitFallback: false, out var parent, out var parentError))
+            {
+                return parentError;
+            }
+
             var createCanvas = parameters.CreateParentCanvas ?? true;
             var templateName = DefaultTemplateName(parameters);
 
@@ -364,6 +378,8 @@ Layout notes:
             }
 
             GameObject createdCanvas = null;
+            GameObject eventSystem = null;
+            string eventSystemSkippedReason = null;
             if (parent == null)
             {
                 var canvasResult = CreateCanvasObject(
@@ -375,6 +391,8 @@ Layout notes:
                     parameters.SortingOrder ?? 100);
                 parent = canvasResult.canvasObject;
                 createdCanvas = canvasResult.canvasObject;
+                eventSystem = canvasResult.eventSystem;
+                eventSystemSkippedReason = canvasResult.eventSystemSkippedReason;
             }
 
             if (parent.GetComponent<RectTransform>() == null)
@@ -395,9 +413,9 @@ Layout notes:
 
             Undo.RegisterCreatedObjectUndo(root, "Create UniBridge UI Template");
 
-            if (parameters.EnsureEventSystem ?? true)
+            if ((parameters.EnsureEventSystem ?? true) && eventSystem == null && eventSystemSkippedReason == null)
             {
-                EnsureEventSystemObject();
+                eventSystem = EnsureEventSystemForCreatedUi(root, out eventSystemSkippedReason);
             }
 
             RebuildLayout(root.GetComponent<RectTransform>());
@@ -433,6 +451,8 @@ Layout notes:
                 createdObjects = root.GetComponentsInChildren<Transform>(true)
                     .Select(transform => BuildGameObjectInfo(transform.gameObject))
                     .ToArray(),
+                eventSystem = eventSystem != null ? BuildGameObjectInfo(eventSystem) : null,
+                eventSystemSkippedReason,
                 validation
             });
         }
@@ -440,7 +460,11 @@ Layout notes:
         static object CreateScrollView(ManageUIParams parameters)
         {
             var dryRun = parameters.DryRun ?? false;
-            var parent = ResolveParentForCreate(parameters);
+            if (!TryResolveParentForCreate(parameters, allowImplicitFallback: true, out var parent, out var parentError))
+            {
+                return parentError;
+            }
+
             var createCanvas = parameters.CreateParentCanvas ?? true;
             var name = string.IsNullOrWhiteSpace(parameters.Name) ? "Scroll View" : parameters.Name.Trim();
             var viewportName = string.IsNullOrWhiteSpace(parameters.ViewportName) ? "Viewport" : parameters.ViewportName.Trim();
@@ -475,6 +499,8 @@ Layout notes:
                 });
             }
 
+            GameObject eventSystem = null;
+            string eventSystemSkippedReason = null;
             if (parent == null)
             {
                 var canvasResult = CreateCanvasObject(
@@ -485,6 +511,8 @@ Layout notes:
                     parameters.OverrideSorting ?? true,
                     parameters.SortingOrder ?? 100);
                 parent = canvasResult.canvasObject;
+                eventSystem = canvasResult.eventSystem;
+                eventSystemSkippedReason = canvasResult.eventSystemSkippedReason;
             }
 
             if (parent.GetComponent<RectTransform>() == null)
@@ -493,7 +521,7 @@ Layout notes:
             }
 
             var scrollView = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(ScrollRect));
-            scrollView.transform.SetParent(parent.transform, false);
+            SetCreatedObjectParent(scrollView, parent.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(scrollView);
 
             var scrollRectTransform = scrollView.GetComponent<RectTransform>();
@@ -515,7 +543,7 @@ Layout notes:
             background.raycastTarget = true;
 
             var viewport = new GameObject(viewportName, typeof(RectTransform), typeof(Image));
-            viewport.transform.SetParent(scrollView.transform, false);
+            SetCreatedObjectParent(viewport, scrollView.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(viewport);
             var viewportRect = viewport.GetComponent<RectTransform>();
             ConfigureStretchRect(viewportRect);
@@ -528,7 +556,7 @@ Layout notes:
             }
 
             var content = new GameObject(contentName, typeof(RectTransform));
-            content.transform.SetParent(viewport.transform, false);
+            SetCreatedObjectParent(content, viewport.transform);
             GameObjectUtility.EnsureUniqueNameForSibling(content);
             var contentRect = content.GetComponent<RectTransform>();
             ConfigureScrollContentRect(contentRect, parameters.ScrollDirection, scrollRectTransform.rect.size);
@@ -541,9 +569,9 @@ Layout notes:
 
             Undo.RegisterCreatedObjectUndo(scrollView, "Create UniBridge ScrollView");
 
-            if (parameters.EnsureEventSystem ?? true)
+            if ((parameters.EnsureEventSystem ?? true) && eventSystem == null && eventSystemSkippedReason == null)
             {
-                EnsureEventSystemObject();
+                eventSystem = EnsureEventSystemForCreatedUi(scrollView, out eventSystemSkippedReason);
             }
 
             RebuildLayout(contentRect);
@@ -567,7 +595,9 @@ Layout notes:
                 content = BuildGameObjectInfo(content),
                 contentRect = BuildRectTransformInfo(contentRect),
                 contentLayout = BuildLayoutComponentsInfo(content),
-                createdItems = createdItems.Select(BuildGameObjectInfo).ToArray()
+                createdItems = createdItems.Select(BuildGameObjectInfo).ToArray(),
+                eventSystem = eventSystem != null ? BuildGameObjectInfo(eventSystem) : null,
+                eventSystemSkippedReason
             });
         }
 
@@ -1599,7 +1629,7 @@ Layout notes:
             UIScrollDirection scrollDirection)
         {
             var item = new GameObject(name, typeof(RectTransform));
-            item.transform.SetParent(contentRect, false);
+            SetCreatedObjectParent(item, contentRect);
             GameObjectUtility.EnsureUniqueNameForSibling(item);
 
             var rectTransform = item.GetComponent<RectTransform>();
@@ -1655,7 +1685,7 @@ Layout notes:
             image.raycastTarget = true;
 
             var label = new GameObject("Label", typeof(RectTransform));
-            label.transform.SetParent(item.transform, false);
+            SetCreatedObjectParent(label, item.transform);
             var labelRect = label.GetComponent<RectTransform>();
             ConfigureStretchRect(labelRect);
             labelRect.offsetMin = new Vector2(12f, 2f);
@@ -1792,7 +1822,7 @@ Layout notes:
             button.targetGraphic = image;
 
             var label = new GameObject("Label", typeof(RectTransform));
-            label.transform.SetParent(element.transform, false);
+            SetCreatedObjectParent(label, element.transform);
             var labelRect = label.GetComponent<RectTransform>();
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
@@ -2116,7 +2146,7 @@ Layout notes:
         static GameObject CreateRectChild(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot)
         {
             var child = new GameObject(name, typeof(RectTransform));
-            child.transform.SetParent(parent, false);
+            SetCreatedObjectParent(child, parent);
             var rect = child.GetComponent<RectTransform>();
             rect.anchorMin = anchorMin;
             rect.anchorMax = anchorMax;
@@ -2470,7 +2500,7 @@ Layout notes:
             button.targetGraphic = image;
 
             var label = new GameObject("Label", typeof(RectTransform));
-            label.transform.SetParent(element.transform, false);
+            SetCreatedObjectParent(label, element.transform);
             var labelRect = label.GetComponent<RectTransform>();
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
@@ -3008,49 +3038,140 @@ Layout notes:
             }
         }
 
-        static GameObject ResolveParentForCreate(ManageUIParams parameters)
+        static bool TryResolveParentForCreate(
+            ManageUIParams parameters,
+            bool allowImplicitFallback,
+            out GameObject parent,
+            out object errorResponse)
         {
-            var explicitParent = !string.IsNullOrWhiteSpace(parameters.Parent)
-                ? ResolveTargetGameObject(parameters.Parent)
-                : null;
-            if (explicitParent != null)
+            parent = null;
+            errorResponse = null;
+
+            var requestedSource = !string.IsNullOrWhiteSpace(parameters.ParentObjectIdString)
+                ? "ParentObjectIdString"
+                : !string.IsNullOrWhiteSpace(parameters.Parent)
+                    ? "Parent"
+                    : !string.IsNullOrWhiteSpace(parameters.Target)
+                        ? "Target"
+                        : null;
+            var requestedParent = requestedSource switch
             {
-                return explicitParent;
+                "ParentObjectIdString" => parameters.ParentObjectIdString.Trim(),
+                "Parent" => parameters.Parent.Trim(),
+                "Target" => parameters.Target.Trim(),
+                _ => null
+            };
+
+            if (!string.IsNullOrWhiteSpace(requestedParent))
+            {
+                if (requestedSource == "ParentObjectIdString" &&
+                    !long.TryParse(requestedParent, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                {
+                    errorResponse = Response.Error("ParentObjectIdString must contain a valid stringified Unity object/EntityId.", new
+                    {
+                        requestedParent,
+                        requestedSource,
+                        noObjectsCreated = true
+                    });
+                    return false;
+                }
+
+                var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+                var options = new SceneObjectLocator.Options
+                {
+                    IncludeInactive = true,
+                    IncludePrefabStage = true,
+                    EditableSceneObjectsOnly = true,
+                    MatchContainsFallback = false,
+                    Root = prefabStage != null ? prefabStage.prefabContentsRoot : null
+                };
+                var matches = SceneObjectLocator.FindObjects(requestedParent, "by_id_or_name_or_path", options)
+                    .Where(IsEditableSceneObject)
+                    .Where(gameObject => prefabStage == null || prefabStage.IsPartOfPrefabContents(gameObject))
+                    .Distinct()
+                    .ToList();
+
+                if (matches.Count == 0)
+                {
+                    var scope = prefabStage != null
+                        ? $"current Prefab Stage '{prefabStage.assetPath}'"
+                        : "loaded editable scenes";
+                    errorResponse = Response.Error($"UI parent '{requestedParent}' was not found in {scope}. No object was created.", new
+                    {
+                        requestedParent,
+                        requestedSource,
+                        prefabStage = BuildCurrentPrefabStageInfo(),
+                        noObjectsCreated = true,
+                        fallbackSuppressed = true
+                    });
+                    return false;
+                }
+
+                if (matches.Count > 1)
+                {
+                    errorResponse = Response.Error($"UI parent '{requestedParent}' is ambiguous in the current editing scope ({matches.Count} matches). Use a full hierarchy path or ParentObjectIdString.", new
+                    {
+                        requestedParent,
+                        requestedSource,
+                        prefabStage = BuildCurrentPrefabStageInfo(),
+                        candidates = matches.Take(20).Select(BuildGameObjectInfo).ToArray(),
+                        noObjectsCreated = true,
+                        fallbackSuppressed = true
+                    });
+                    return false;
+                }
+
+                parent = matches[0];
+                return true;
             }
 
-            var targetParent = !string.IsNullOrWhiteSpace(parameters.Target)
-                ? ResolveTargetGameObject(parameters.Target)
-                : null;
-            if (targetParent != null)
+            if (!allowImplicitFallback)
             {
-                return targetParent;
+                return true;
             }
 
+            var currentPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
             var selected = Selection.activeGameObject;
-            if (selected != null && selected.GetComponent<RectTransform>() != null)
+            if (selected != null &&
+                selected.GetComponent<RectTransform>() != null &&
+                (currentPrefabStage == null || currentPrefabStage.IsPartOfPrefabContents(selected)))
             {
-                return selected;
+                parent = selected;
+                return true;
             }
 
-            return UnityApiAdapter.FindObjectsByType(typeof(Canvas), FindObjectsInactive.Include)
+            if (currentPrefabStage != null)
+            {
+                parent = currentPrefabStage.prefabContentsRoot
+                    .GetComponentsInChildren<Canvas>(true)
+                    .Select(canvas => canvas.gameObject)
+                    .FirstOrDefault(IsEditableSceneObject);
+                return true;
+            }
+
+            parent = UnityApiAdapter.FindObjectsByType(typeof(Canvas), FindObjectsInactive.Include)
                 .OfType<Canvas>()
                 .FirstOrDefault(canvas => IsEditableSceneObject(canvas.gameObject))
                 ?.gameObject;
+            return true;
         }
 
-        static GameObject ResolveExplicitParentForCreate(ManageUIParams parameters)
+        static GameObject GetCurrentPrefabStageRoot()
         {
-            if (!string.IsNullOrWhiteSpace(parameters.Parent))
-            {
-                return ResolveTargetGameObject(parameters.Parent);
-            }
+            return PrefabStageUtility.GetCurrentPrefabStage()?.prefabContentsRoot;
+        }
 
-            if (!string.IsNullOrWhiteSpace(parameters.Target))
-            {
-                return ResolveTargetGameObject(parameters.Target);
-            }
-
-            return null;
+        static object BuildCurrentPrefabStageInfo()
+        {
+            var stage = PrefabStageUtility.GetCurrentPrefabStage();
+            return stage == null
+                ? null
+                : new
+                {
+                    assetPath = stage.assetPath,
+                    root = stage.prefabContentsRoot != null ? BuildGameObjectInfo(stage.prefabContentsRoot) : null,
+                    isDirty = stage.scene.IsValid() && stage.scene.isDirty
+                };
         }
 
         static GameObject ResolveTargetGameObject(string target)
@@ -3146,15 +3267,21 @@ Layout notes:
             };
         }
 
-        static (GameObject canvasObject, Canvas canvas) CreateCanvasObject(
+        static (GameObject canvasObject, Canvas canvas, GameObject eventSystem, string eventSystemSkippedReason) CreateCanvasObject(
             string name,
             CanvasRenderModeOption renderMode,
             string cameraTarget,
             bool ensureEventSystem,
             bool overrideSorting,
-            int sortingOrder)
+            int sortingOrder,
+            GameObject requestedParent = null)
         {
+            var parent = requestedParent ?? GetCurrentPrefabStageRoot();
             var canvasObject = new GameObject(name, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            if (parent != null)
+            {
+                SetCreatedObjectParent(canvasObject, parent.transform);
+            }
             GameObjectUtility.EnsureUniqueNameForSibling(canvasObject);
             var canvas = canvasObject.GetComponent<Canvas>();
             canvas.renderMode = ConvertRenderMode(renderMode);
@@ -3172,13 +3299,46 @@ Layout notes:
 
             Undo.RegisterCreatedObjectUndo(canvasObject, "Create UniBridge UI Canvas");
 
+            GameObject eventSystem = null;
+            string eventSystemSkippedReason = null;
             if (ensureEventSystem)
             {
-                EnsureEventSystemObject();
+                eventSystem = EnsureEventSystemForCreatedUi(canvasObject, out eventSystemSkippedReason);
             }
 
             MarkSceneDirty(canvasObject);
-            return (canvasObject, canvas);
+            return (canvasObject, canvas, eventSystem, eventSystemSkippedReason);
+        }
+
+        static void SetCreatedObjectParent(GameObject createdObject, Transform parent)
+        {
+            if (createdObject == null || parent == null)
+            {
+                return;
+            }
+
+            var parentScene = parent.gameObject.scene;
+            if (parentScene.IsValid() && createdObject.scene != parentScene)
+            {
+                SceneManager.MoveGameObjectToScene(createdObject, parentScene);
+            }
+
+            createdObject.transform.SetParent(parent, false);
+        }
+
+        static GameObject EnsureEventSystemForCreatedUi(GameObject createdObject, out string skippedReason)
+        {
+            skippedReason = null;
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null &&
+                createdObject != null &&
+                prefabStage.IsPartOfPrefabContents(createdObject))
+            {
+                skippedReason = "EventSystem is scene infrastructure and was not created while editing a Prefab Stage.";
+                return null;
+            }
+
+            return EnsureEventSystemObject();
         }
 
         static GameObject EnsureEventSystemObject()
@@ -3691,14 +3851,24 @@ Layout notes:
                 return null;
             }
 
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            var isPrefabStageObject = prefabStage != null && prefabStage.IsPartOfPrefabContents(gameObject);
             return new
             {
                 name = gameObject.name,
                 path = GetHierarchyPath(gameObject),
                 id = UnityApiAdapter.GetObjectId(gameObject),
+                objectIdString = UnityApiAdapter.GetObjectId(gameObject).ToString(CultureInfo.InvariantCulture),
                 activeSelf = gameObject.activeSelf,
                 activeInHierarchy = gameObject.activeInHierarchy,
-                scene = gameObject.scene.IsValid() ? gameObject.scene.name : null
+                scene = gameObject.scene.IsValid() ? gameObject.scene.name : null,
+                scenePath = isPrefabStageObject
+                    ? prefabStage.assetPath
+                    : gameObject.scene.IsValid() ? gameObject.scene.path : null,
+                isPrefabStageObject,
+                parentId = gameObject.transform.parent != null
+                    ? UnityApiAdapter.GetObjectId(gameObject.transform.parent.gameObject)
+                    : 0
             };
         }
 
