@@ -15,11 +15,14 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.16";
+    public const string Version = "1.1.0-build.17";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
     {
+        Console.InputEncoding = new UTF8Encoding(false);
+        Console.OutputEncoding = new UTF8Encoding(false);
+
         var options = RelayOptions.Parse(args);
 
         if (options.ShowHelp)

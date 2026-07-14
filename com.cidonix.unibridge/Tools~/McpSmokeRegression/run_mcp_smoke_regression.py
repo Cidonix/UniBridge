@@ -14,6 +14,12 @@ from pathlib import Path
 SUITE_NAME = "UniBridge MCP Smoke Regression"
 
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def utc_now():
     return datetime.now(timezone.utc)
 
@@ -383,6 +389,7 @@ class SmokeSuite:
             "UniBridge_ManageGameObject",
             "UniBridge_ManagePrefab",
             "UniBridge_ManageUI",
+            "UniBridge_VersionControl",
         ]
 
         self.run_step("tools_list", "List MCP tools and verify the core UniBridge surface.", lambda: self.step_tools_list(required))
@@ -390,6 +397,7 @@ class SmokeSuite:
         self.run_step("clear_console", "Clear Unity Console before smoke diagnostics.", self.step_clear_console)
         self.run_step("wait_ready", "Wait for Unity editor readiness before reading project state.", self.step_wait_ready)
         self.run_step("validate_package_script", "Validate a UniBridge package script through MCP.", self.step_validate_package_script)
+        self.run_step("version_control_paths", "Verify VersionControl accepts one or many paths and reports invalid path sets clearly.", self.step_version_control_paths)
         self.run_step("script_apply_edits", "Verify structured and anchor ScriptApplyEdits previews are strictly no-write before actual apply.", self.step_script_anchor_edits)
         self.run_step("asset_read_text", "Read package.json via AssetIntelligence Action=ReadText alias.", self.step_asset_read_text)
         self.run_step("context_snapshot_brief", "Read compact ContextSnapshot with compact console summary.", self.step_context_snapshot)
@@ -491,6 +499,106 @@ class SmokeSuite:
         errors = first_count(data, ("errors",), ("diagnostics", "errors"), ("summary", "errors"))
         assert_zero_or_missing(errors, "ValidateScript returned errors.")
         return {"message": prop(data, "message"), "errors": errors, "warnings": first_count(data, ("warnings",), ("diagnostics", "warnings"), ("summary", "warnings"))}
+
+    def step_version_control_paths(self):
+        valid_paths = [
+            "Packages/com.cidonix.unibridge/package.json",
+            "Packages/com.cidonix.unibridge/Modules/Cidonix.UniBridge.MCP.Editor/Tools/VersionControlTool.cs",
+        ]
+        missing_path = "Assets/UniBridgeSmoke/DefinitelyMissingVersionControlAsset.asset"
+
+        with self.make_client() as client:
+            tools = client.list_tools()
+        tool = next((item for item in tools if item.get("name") == "UniBridge_VersionControl"), None)
+        if not tool:
+            raise AssertionError("UniBridge_VersionControl is missing from tools/list.")
+        asset_paths_schema = prop(tool, "inputSchema", "properties", "AssetPaths", default={}) or {}
+        if asset_paths_schema.get("type") != "array" or asset_paths_schema.get("minItems") != 1:
+            raise AssertionError(f"VersionControl AssetPaths schema is not a non-empty array: {asset_paths_schema}")
+
+        def require_success(result, label):
+            envelope = result.get("envelope") or {}
+            if envelope.get("success") is False:
+                raise AssertionError(f"{label} failed: {envelope}")
+            return result.get("data") or {}
+
+        single = require_success(
+            self.tool(
+                "UniBridge_VersionControl",
+                {"Action": "EnsureEditable", "AssetPath": valid_paths[0], "Checkout": False, "ThrowOnBlocked": True},
+            ),
+            "single-path EnsureEditable",
+        )
+        if prop(single, "count") != 1 or len(prop(single, "assets", default=[])) != 1:
+            raise AssertionError(f"Single-path EnsureEditable did not return one per-asset result: {single}")
+
+        multiple = require_success(
+            self.tool(
+                "UniBridge_VersionControl",
+                {"Action": "EnsureEditable", "AssetPaths": valid_paths, "Checkout": False, "ThrowOnBlocked": True},
+            ),
+            "multi-path EnsureEditable",
+        )
+        if prop(multiple, "count") != 2 or len(prop(multiple, "assets", default=[])) != 2:
+            raise AssertionError(f"Multi-path EnsureEditable did not return two per-asset results: {multiple}")
+
+        checkout = require_success(
+            self.tool(
+                "UniBridge_VersionControl",
+                {"Action": "Checkout", "AssetPaths": valid_paths, "ThrowOnBlocked": True},
+            ),
+            "multi-path Checkout",
+        )
+        if prop(checkout, "count") != 2 or len(prop(checkout, "assets", default=[])) != 2:
+            raise AssertionError(f"Multi-path Checkout did not return two per-asset results: {checkout}")
+
+        inspect_from_singular_action = require_success(
+            self.tool("UniBridge_VersionControl", {"Action": "InspectAsset", "AssetPaths": valid_paths}),
+            "InspectAsset with AssetPaths",
+        )
+        if prop(inspect_from_singular_action, "count") != 2:
+            raise AssertionError(f"InspectAsset did not accept AssetPaths: {inspect_from_singular_action}")
+
+        inspect_from_plural_action = require_success(
+            self.tool("UniBridge_VersionControl", {"Action": "InspectAssets", "AssetPath": valid_paths[0]}),
+            "InspectAssets with AssetPath",
+        )
+        if prop(inspect_from_plural_action, "count") != 1:
+            raise AssertionError(f"InspectAssets did not accept AssetPath: {inspect_from_plural_action}")
+
+        mixed = require_success(
+            self.tool("UniBridge_VersionControl", {"Action": "InspectAssets", "AssetPaths": [valid_paths[0], missing_path]}),
+            "partially invalid InspectAssets",
+        )
+        mixed_assets = prop(mixed, "assets", default=[])
+        if prop(mixed, "count") != 2 or prop(mixed, "missingCount") != 1 or len(mixed_assets) != 2:
+            raise AssertionError(f"Partially invalid InspectAssets did not preserve both results: {mixed}")
+        if not any(item.get("assetPath") == missing_path and item.get("exists") is False for item in mixed_assets):
+            raise AssertionError(f"Missing asset was not identified in the per-asset results: {mixed}")
+
+        blocked_result = self.tool(
+            "UniBridge_VersionControl",
+            {"Action": "EnsureEditable", "AssetPaths": [valid_paths[0], missing_path], "Checkout": False, "ThrowOnBlocked": True},
+        )
+        blocked_envelope = blocked_result.get("envelope") or {}
+        blocked_data = blocked_result.get("data") or {}
+        if blocked_envelope.get("success") is not False or prop(blocked_data, "blockedCount") != 1:
+            raise AssertionError(f"Partially invalid EnsureEditable did not return one blocked asset: {blocked_envelope}")
+
+        empty_result = self.tool("UniBridge_VersionControl", {"Action": "EnsureEditable", "AssetPaths": []})
+        empty_envelope = empty_result.get("envelope") or {}
+        if empty_envelope.get("success") is not False or "at least one" not in json.dumps(empty_envelope, ensure_ascii=False).lower():
+            raise AssertionError(f"Empty AssetPaths did not return a clear validation error: {empty_envelope}")
+
+        return {
+            "singleCount": prop(single, "count"),
+            "multipleCount": prop(multiple, "count"),
+            "checkoutCount": prop(checkout, "count"),
+            "mixedMissingCount": prop(mixed, "missingCount"),
+            "blockedCount": prop(blocked_data, "blockedCount"),
+            "emptyArrayRejected": True,
+            "assetPathsSchema": asset_paths_schema,
+        }
 
     def step_script_anchor_edits(self):
         suffix = datetime.now().strftime("%H%M%S%f")[:9]

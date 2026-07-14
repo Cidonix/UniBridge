@@ -1,5 +1,6 @@
 #nullable disable
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
@@ -19,8 +20,8 @@ Use this before changing existing assets in Plastic, Perforce, or Unity Version 
 
 Args:
     Action: GetStatus, InspectAsset, InspectAssets, EnsureEditable, or Checkout.
-    AssetPath: Single Assets/... path.
-    AssetPaths: Multiple Assets/... paths.
+    AssetPath: Single Assets/... path. Supported by every asset action.
+    AssetPaths: Non-empty array of Assets/... paths. Supported by every asset action.
     Checkout: For EnsureEditable, whether to checkout when needed. Defaults true.
 
 Returns:
@@ -45,6 +46,7 @@ Returns:
                     {
                         type = "array",
                         description = "Project asset paths",
+                        minItems = 1,
                         items = new { type = "string" }
                     },
                     Checkout = new { type = "boolean", description = "Checkout when EnsureEditable detects a required checkout", @default = true },
@@ -67,7 +69,7 @@ Returns:
                 return key switch
                 {
                     "getstatus" or "status" => Response.Success("Unity Version Control provider status.", VersionControlUtility.BuildProjectStatus()),
-                    "inspectasset" or "inspect" => InspectAsset(parameters),
+                    "inspectasset" or "inspect" => InspectAssets(parameters),
                     "inspectassets" or "inspectmany" => InspectAssets(parameters),
                     "ensureeditable" or "ensureedit" or "preflight" => EnsureEditable(parameters, forceCheckout: null),
                     "checkout" or "checkoutasset" => EnsureEditable(parameters, forceCheckout: true),
@@ -80,64 +82,112 @@ Returns:
             }
         }
 
-        static object InspectAsset(JObject parameters)
-        {
-            var path = RequirePath(parameters);
-            return Response.Success($"Inspected editability for '{path}'.", VersionControlUtility.InspectAsset(path));
-        }
-
         static object InspectAssets(JObject parameters)
         {
             var paths = GetPaths(parameters);
-            return Response.Success("Inspected editability for assets.", new
+            var assets = VersionControlUtility.InspectAssets(paths);
+            var missingCount = assets.Count(asset => asset is VersionControlUtility.AssetEditability status && !status.exists);
+            return Response.Success(
+                paths.Length == 1
+                    ? $"Inspected editability for '{paths[0]}'."
+                    : $"Inspected editability for {paths.Length} assets.",
+                new
             {
                 count = paths.Length,
-                assets = VersionControlUtility.InspectAssets(paths)
+                existingCount = paths.Length - missingCount,
+                missingCount,
+                assets
             });
         }
 
         static object EnsureEditable(JObject parameters, bool? forceCheckout)
         {
-            var path = RequirePath(parameters);
+            var paths = GetPaths(parameters);
             var checkout = forceCheckout ?? GetBool(parameters, true, "Checkout", "checkout");
             var throwOnBlocked = GetBool(parameters, false, "ThrowOnBlocked", "throw_on_blocked", "throwOnBlocked");
-            var result = VersionControlUtility.EnsureAssetEditable(path, checkout, false);
-            if (throwOnBlocked && !string.IsNullOrWhiteSpace(result.error))
-                return Response.Error(result.error, result);
+            var results = paths.Select(path => EnsureOne(path, checkout)).ToArray();
+            var blocked = results.Where(result => !string.IsNullOrWhiteSpace(result.error)).ToArray();
+            var attemptedCount = results.Count(result => result.attempted);
+            var checkedOutCount = results.Count(result => result.checkedOut);
+            var data = new
+            {
+                count = results.Length,
+                editableCount = results.Length - blocked.Length,
+                blockedCount = blocked.Length,
+                checkoutRequested = checkout,
+                checkoutAttemptedCount = attemptedCount,
+                checkedOutCount,
+                assets = results
+            };
 
-            var message = string.IsNullOrWhiteSpace(result.error)
-                ? result.attempted
-                    ? $"Asset '{result.assetPath}' was checked out or is now editable."
-                    : $"Asset '{result.assetPath}' is editable; checkout was not needed."
-                : result.error;
+            if (throwOnBlocked && blocked.Length > 0)
+            {
+                var blockedPaths = string.Join(", ", blocked.Select(result => $"'{result.assetPath}'"));
+                return Response.Error(
+                    $"{blocked.Length} of {results.Length} assets are not editable: {blockedPaths}.",
+                    data);
+            }
 
-            return Response.Success(message, result);
+            var message = blocked.Length > 0
+                ? $"Checked {results.Length} assets; {blocked.Length} are not editable."
+                : attemptedCount > 0
+                    ? $"All {results.Length} assets are editable after {attemptedCount} checkout attempt(s)."
+                    : $"All {results.Length} assets are editable; checkout was not needed.";
+
+            return Response.Success(message, data);
         }
 
-        static string RequirePath(JObject parameters)
+        static VersionControlUtility.CheckoutResult EnsureOne(string path, bool checkout)
         {
-            var path = GetString(parameters, "AssetPath", "assetPath", "asset_path", "Path", "path");
-            if (string.IsNullOrWhiteSpace(path))
-                throw new InvalidOperationException("AssetPath is required.");
-            return path;
+            var inspected = VersionControlUtility.InspectAsset(path);
+            if (!inspected.exists)
+            {
+                return VersionControlUtility.CheckoutResult.From(
+                    inspected,
+                    attempted: false,
+                    checkedOut: false,
+                    $"Asset '{inspected.assetPath ?? path}' does not exist.");
+            }
+
+            return VersionControlUtility.EnsureAssetEditable(path, checkout, false);
         }
 
         static string[] GetPaths(JObject parameters)
         {
-            var array = parameters["AssetPaths"] as JArray ??
-                        parameters["assetPaths"] as JArray ??
-                        parameters["asset_paths"] as JArray ??
-                        parameters["Paths"] as JArray ??
-                        parameters["paths"] as JArray;
-            if (array == null)
+            JToken pathsToken = null;
+            foreach (var key in new[] { "AssetPaths", "assetPaths", "asset_paths", "Paths", "paths" })
+            {
+                if (parameters.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var candidate))
+                {
+                    pathsToken = candidate;
+                    break;
+                }
+            }
+
+            if (pathsToken == null || pathsToken.Type == JTokenType.Null)
             {
                 var single = GetString(parameters, "AssetPath", "assetPath", "asset_path", "Path", "path");
                 if (!string.IsNullOrWhiteSpace(single))
-                    return new[] { single };
-                throw new InvalidOperationException("AssetPaths or AssetPath is required.");
+                    return new[] { single.Trim() };
+                throw new InvalidOperationException("AssetPath or a non-empty AssetPaths array is required.");
             }
 
-            return array.Select(token => token?.ToString()).Where(path => !string.IsNullOrWhiteSpace(path)).ToArray();
+            if (pathsToken is not JArray array)
+                throw new InvalidOperationException("AssetPaths must be an array of non-empty strings.");
+            if (array.Count == 0)
+                throw new InvalidOperationException("AssetPaths must contain at least one non-empty asset path.");
+
+            var paths = new List<string>(array.Count);
+            for (var index = 0; index < array.Count; index++)
+            {
+                var path = array[index]?.Type == JTokenType.String ? array[index]?.ToString()?.Trim() : null;
+                if (string.IsNullOrWhiteSpace(path))
+                    throw new InvalidOperationException($"AssetPaths[{index}] must be a non-empty string.");
+                if (!paths.Contains(path, StringComparer.OrdinalIgnoreCase))
+                    paths.Add(path);
+            }
+
+            return paths.ToArray();
         }
 
         static string GetString(JObject obj, params string[] keys)

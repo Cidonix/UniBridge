@@ -2,6 +2,30 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.44
+
+### Fixed
+
+- `UniBridge_VersionControl` now accepts either `AssetPath` or a non-empty
+  `AssetPaths` array for `InspectAsset`, `InspectAssets`, `EnsureEditable`, and
+  `Checkout`. Multi-file calls no longer fail with `AssetPath is required`.
+- Version-control operations return a structured `assets` entry for every
+  requested path plus aggregate existing/missing, editable/blocked, and
+  checkout counts.
+- Empty arrays, non-string entries, and missing path arguments return explicit
+  validation errors. Partially invalid path sets retain both valid and missing
+  per-asset results, and `ThrowOnBlocked=true` returns the complete diagnostic
+  payload with a failed response.
+- Version-control path normalization now uses the shared
+  `ProjectPathResolver`, including package, project-relative, file URI, and
+  absolute paths.
+- Bundled relay `1.1.0-build.17` explicitly uses UTF-8 for MCP stdio. This
+  prevents Unicode tool arguments from depending on the host Windows console
+  code page.
+- The MCP smoke suite now covers the `AssetPaths` schema, single and multiple
+  asset calls, `Checkout`, both inspection action aliases, empty arrays, and
+  partially invalid sets. The smoke runner also forces UTF-8 diagnostics.
+
 ## 0.2.43
 
 ### Fixed

@@ -33,6 +33,9 @@ powershell -ExecutionPolicy Bypass `
   `WaitForReadyAfterReload` survive reload boundaries.
 - `GetCompilationDiagnostics` reports no compile/build-system failures.
 - `ValidateScript` can validate a script under `Packages/...`.
+- `VersionControl` advertises `AssetPaths` as a non-empty array and accepts
+  single, multiple, checkout, empty, and partially invalid path workflows with
+  structured per-asset results.
 - `ScriptApplyEdits` previews three `replace_method` operations without
   changing UTF-8 content, SHA, or scheduling refresh; then applies them
   separately and verifies the changed SHA.
@@ -48,6 +51,8 @@ powershell -ExecutionPolicy Bypass `
   resolution, stage-scoped Canvas/template/scroll creation, safe missing and
   ambiguous parent failures, saved prefab structure, and no ordinary-scene
   leakage.
+- The runner and bundled relay use explicit UTF-8 stdio so Unicode smoke values
+  are independent of the host console code page.
 
 ## Optional Coverage
 

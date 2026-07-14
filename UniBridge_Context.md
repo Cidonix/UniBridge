@@ -9295,6 +9295,39 @@ Docs/package:
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
 
+## 2026-07-14 - UniBridge 0.2.44 VersionControl multi-path contract
+
+Мета: прибрати невідповідність MCP-схеми й реалізації
+`UniBridge_VersionControl`, через яку `AssetPaths` рекламувався, але
+`EnsureEditable`/`Checkout` вимагали одиночний `AssetPath`.
+
+Зміни:
+
+- `InspectAsset`, `InspectAssets`, `EnsureEditable` і `Checkout` приймають
+  одиночний `AssetPath` або непорожній масив `AssetPaths`;
+- multi-path operations повертають aggregate counts та окремий структурований
+  результат для кожного asset;
+- порожній масив, невалідний елемент і mixed valid/missing набори мають явну
+  validation/blocked діагностику; `ThrowOnBlocked=true` зберігає весь payload;
+- asset-path existence/normalization переведено на shared
+  `ProjectPathResolver`;
+- MCP regression suite покриває single, multi, checkout, aliases, empty array
+  і partial-invalid cases та перевіряє `AssetPaths` schema як `array<string>`;
+- relay піднято до `1.1.0-build.17` і примусово використовує UTF-8 для stdin /
+  stdout, щоб Unicode MCP payload не залежав від Windows console code page;
+- package version піднято до `0.2.44`, оновлено package/root README,
+  documentation, changelog і release notes.
+
+Перевірка:
+
+- повний MCP release regression у `UniBridge_Test_Project`: `26/26 passed`,
+  report `Library/UniBridge/mcp-smoke-regression-0.2.44-full.json`;
+- точний Domovyk repro з чотирма `AssetPaths`, `Checkout=true` і
+  `ThrowOnBlocked=true` повернув `editableCount=4`, `blockedCount=0`;
+- `UniBridge_Test_Project`, `Domovyk`, `DomovykPrototype` і `Domovyk_`
+  синхронізовані на `0.2.44`; MCP health у кожному: compile `0 errors / 0
+  warnings`, no critical build issues, fresh assemblies, empty Console.
+
 ## 2026-07-14 - UniBridge 0.2.43 structured ScriptApplyEdits Preview safety
 
 Причина: у `Domovyk` виклик `UniBridge_ScriptApplyEdits Preview=true` із трьома

@@ -20,6 +20,7 @@ This repository is used as a public project page for overview, documentation lin
 - Lets agents compare Unity YAML/text asset revisions semantically, including YAML document, fileID, property, GUID, and script-reference deltas.
 - Lets agents preflight proposed C# source changes before applying them, including syntax, API, serialized field, Unity callback, and reload-risk checks.
 - Lets agents export bounded profiler marker hierarchy/top-sample data to identify likely hot runtime nodes, not just frame counters.
+- Lets agents inspect or ensure editability for one or many version-controlled assets before mutation.
 - Gives fresh agents compact playbooks for read-before-modify, safe execution, scope awareness, and verification workflows.
 - Includes visual self-check tools so agents can verify Unity output before reporting success.
 

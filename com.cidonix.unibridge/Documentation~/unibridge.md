@@ -680,6 +680,35 @@ Prefer `UniBridge_AssetIntelligence` for investigation and `UniBridge_ManageAsse
 
 This intentionally stays allowlisted. For Material, ScriptableObject, AnimatorController, importer settings, and prefabs, use their dedicated UniBridge tools.
 
+### Version-Control Preflight
+
+Use `UniBridge_VersionControl` before changing existing assets in projects that
+use Unity Version Control, Plastic, Perforce, or another Unity checkout
+provider. `InspectAsset`, `InspectAssets`, `EnsureEditable`, and `Checkout` all
+accept either form:
+
+```json
+{ "Action": "EnsureEditable", "AssetPath": "Assets/Scripts/Player.cs" }
+```
+
+```json
+{
+  "Action": "EnsureEditable",
+  "AssetPaths": [
+    "Assets/Scripts/Player.cs",
+    "Assets/Scripts/InteractionRouter.cs"
+  ],
+  "Checkout": true,
+  "ThrowOnBlocked": true
+}
+```
+
+The multi-path response includes one `assets` result per requested path plus
+aggregate `editableCount`, `blockedCount`, `checkoutAttemptedCount`, and
+`checkedOutCount`. Inspection adds `existingCount` and `missingCount`.
+`AssetPaths` must contain at least one non-empty string. Missing assets remain
+visible in partially valid results instead of being silently discarded.
+
 ### Control Editor State
 
 Use `UniBridge_ManageEditor` for editor-level operations that should not require menu-item guessing:
@@ -690,7 +719,7 @@ Use `UniBridge_ManageEditor` for editor-level operations that should not require
 - `ClearSelection`, `PingSelection`, and `FrameSelection` help an agent verify exactly what it is looking at before capture or edits;
 - `RefreshAssets` wraps `AssetDatabase.Refresh` and can `WaitForCompletion`.
   If import/refresh triggers a Unity domain reload that closes the bridge,
-  relay `1.1.0-build.15` reconnects and returns structured reload-boundary
+  relay `1.1.0-build.17` reconnects and returns structured reload-boundary
   recovery data instead of a transport-level `Unity connection closed` error;
 - `RequestPlayModeNoWait` queues entering Play Mode without waiting through a possible Unity domain reload;
 - `WaitForPlayMode` and `WaitForEditMode` are reconnect-friendly Play Mode verification waits;

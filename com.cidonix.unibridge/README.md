@@ -43,6 +43,8 @@ through an approval-based connection flow.
   work.
 - Large-scene hierarchy export, JSON/JSONL file output, export comparison, and
   safe objectId-based batch reparent/container workflows.
+- Version-control preflight and checkout for one or many existing assets, with
+  per-asset editability evidence and blocked/missing summaries.
 - Read-only additive scene registration validation for cloned/additive scene
   workflows: scene/meta GUIDs, metadata, Build Settings, scenesManager entries,
   and boundary arrays.
@@ -417,7 +419,7 @@ Windows entrypoint and launches the Python helper that manages JSON-RPC.
 ## Known 0.2.10 Notes
 
 - `RefreshAssets WaitForCompletion=true` can cross a Unity import/domain-reload
-  boundary in real projects. Bundled relay `1.1.0-build.15` recovers that
+  boundary in real projects. Bundled relay `1.1.0-build.17` recovers that
   connection loss, waits for editor readiness, and returns structured
   `reloadBoundary` / `nextSuggestedCalls` data instead of an MCP transport
   failure.

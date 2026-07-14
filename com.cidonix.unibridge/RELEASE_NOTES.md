@@ -1,21 +1,28 @@
-# UniBridge 0.2.43 Release Notes
+# UniBridge 0.2.44 Release Notes
 
 Release date: 2026-07-14
 
-This hotfix closes a structured-edit safety gap in
-`UniBridge_ScriptApplyEdits`. `Preview=true` is now a strict no-write boundary
-for method and class operations, including multi-edit `replace_method` calls.
+This hotfix aligns `UniBridge_VersionControl` with its MCP schema. Every
+asset-aware action now accepts a single `AssetPath` or a non-empty
+`AssetPaths` array, and multi-file preflight/checkout returns one structured
+result per asset plus aggregate counts.
 
-The Preview response reports the proposed diff, current and predicted SHA,
-the number of edits previewed, `editsApplied=0`, `noChangesApplied=true`, and
-`scheduledRefresh=false`. It does not write the script or request an
-AssetDatabase refresh. `PreconditionSha256` is checked before both Preview and
-actual apply.
+Partially invalid sets are preserved in the response instead of being silently
+filtered or collapsed. With `ThrowOnBlocked=true`, the tool fails cleanly while
+retaining the complete valid/missing asset diagnostics. Empty arrays and
+malformed entries return actionable validation errors.
 
-The standard MCP smoke reproduces the reported three-method workflow on a
-temporary C# script. It compares UTF-8 content and SHA before/after Preview,
-verifies the diff and predicted SHA, then applies the same edits separately.
-The existing no-write tests for every `anchor_*` operation remain active.
+Bundled relay `1.1.0-build.17` explicitly configures UTF-8 MCP input/output, so
+Unicode arguments no longer depend on the Windows console code page. All four
+relay targets were rebuilt. The full live MCP regression passed with version
+control, script edits, UI/Prefab Stage Unicode, asset workflows, scheduler
+cleanup, compilation diagnostics, and Play/Edit Mode coverage.
+
+## Previous 0.2.43 Notes
+
+`UniBridge_ScriptApplyEdits Preview=true` is a strict no-write boundary for
+method/class structured edits. It returns proposed diff and SHA evidence,
+applies zero edits, and schedules no AssetDatabase refresh.
 
 ## Previous 0.2.42 Notes
 

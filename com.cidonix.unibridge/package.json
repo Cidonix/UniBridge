@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.43",
+  "version": "0.2.44",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- ScriptApplyEdits Preview is now strictly no-write for structured operations such as replace_method, replace_class, insert_method, and delete_method.\n- Structured Preview returns a proposed diff, current and predicted SHA, zero applied edits, and scheduledRefresh=false.\n- Structured edits now enforce PreconditionSha256 before preview or apply.\n- Explicit refresh=none/manual/disabled suppresses structured-edit refresh scheduling.\n- MCP smoke regression verifies three replace_method previews preserve file bytes and SHA before separately applying them.\n\n### Previous Changes\n\n- ScriptApplyEdits implements strict anchor_insert, anchor_delete, and anchor_replace routes.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization."
+    "changelog": "### Fixed\n\n- VersionControl EnsureEditable, Checkout, InspectAsset, and InspectAssets now accept either AssetPath or a non-empty AssetPaths array.\n- Multi-asset version-control calls return per-asset results plus editable, blocked, checkout, existing, and missing counts.\n- Empty arrays and malformed path entries return explicit validation errors; partially invalid sets preserve every asset result.\n- Version-control path normalization now uses the shared project path resolver.\n- Bundled relay 1.1.0-build.17 forces UTF-8 MCP stdio on every platform.\n- MCP smoke regression covers single, multiple, empty, and partially invalid VersionControl path sets.\n\n### Previous Changes\n\n- ScriptApplyEdits Preview is strictly no-write for structured and anchor operations and returns diff/SHA evidence.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

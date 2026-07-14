@@ -32,21 +32,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             if (string.IsNullOrWhiteSpace(path))
                 return null;
 
-            var normalized = path.Trim().Replace('\\', '/');
-            if (normalized.StartsWith("unity://path/", StringComparison.OrdinalIgnoreCase))
-                normalized = normalized.Substring("unity://path/".Length);
-
-            if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase))
-                return normalized;
-
-            if (normalized.Equals("Assets", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("Packages", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("ProjectSettings", StringComparison.OrdinalIgnoreCase))
-                return normalized;
-
-            return "Assets/" + normalized.TrimStart('/');
+            var resolved = ProjectPathResolver.Resolve(path, assumeAssetRelative: true);
+            return !string.IsNullOrWhiteSpace(resolved.AssetPath)
+                ? resolved.AssetPath
+                : resolved.ProjectRelativePath;
         }
 
         public static bool IsCheckoutRequiredInProject()
@@ -60,7 +49,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             if (string.IsNullOrWhiteSpace(normalized))
                 return AssetEditability.Error(assetPath, "Asset path is required.");
 
-            var exists = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(normalized) != null ||
+            var resolved = ProjectPathResolver.Resolve(normalized, assumeAssetRelative: false);
+            var exists = resolved.Exists ||
+                         AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(normalized) != null ||
                          AssetDatabase.IsValidFolder(normalized);
             var providerAsset = SafeGetAsset(normalized);
             var tracked = providerAsset != null && !providerAsset.IsState(Asset.States.Local);
@@ -80,8 +71,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 openForEdit = openForEdit,
                 checkoutRequired = checkoutRequired,
                 checkoutValid = checkoutValid,
-                canWrite = !checkoutRequired || checkoutValid,
-                status = !IsCheckoutRequiredInProject()
+                canWrite = exists && (!checkoutRequired || checkoutValid),
+                status = !exists
+                    ? "missing"
+                    : !IsCheckoutRequiredInProject()
                     ? "checkout_not_required"
                     : !tracked
                         ? "untracked"
