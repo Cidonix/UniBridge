@@ -2,6 +2,26 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.46
+
+### Fixed
+
+- Mixed `UniBridge_ScriptApplyEdits` calls now execute every normalized text
+  and structured operation sequentially against one in-memory source copy.
+  Preview diffs include the complete ordered edit batch instead of showing
+  only anchor operations and listing method edits as merely planned.
+- Mixed Preview and Apply now share the same edit pipeline. Preview returns
+  `currentSha256`, `predictedSha256`, `editsApplied=0`, and
+  `scheduledRefresh=false`; applying the same batch produces the predicted
+  SHA and writes the file once after final C# validation.
+- The combined pipeline supports structured operations together with anchor,
+  prepend/append, range, and regex text edits while preserving strict missing
+  and ambiguous anchor diagnostics.
+- MCP regression now covers both `anchor_insert + replace_method` orders, a
+  three-operation `anchor_insert + replace_method + insert_method` batch,
+  multiple method edits in one class, stale SHA rejection, Preview no-write,
+  Preview/Apply SHA parity, and a following method that starts at column zero.
+
 ## 0.2.45
 
 ### Fixed

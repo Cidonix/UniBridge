@@ -1,6 +1,6 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-14, Europe/Kiev.
+Останнє оновлення: 2026-07-15, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
@@ -9294,6 +9294,56 @@ Docs/package:
 - після real revert `Review` повернув `post_revert_changed_paths=[]`;
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
+
+## 2026-07-15 - UniBridge 0.2.46 mixed structured-edit parity
+
+Причина: у `0.2.45` окремий `replace_method` Preview уже мав правильну межу й
+diff, але mixed batch виконувався двома різними шляхами. Preview застосовував
+до in-memory text тільки anchor operations і лише перераховував method edits у
+`plannedStructuredEdits`; Apply спочатку окремо записував text edits, а потім
+запускав structured writer. Тому Preview не відповідав майбутньому Apply і
+файл міг записуватись двічі.
+
+Виправлення:
+
+- mixed edits передаються повним ordered списком у єдиний `ManageScript.edit`
+  pipeline з `applyMode=sequential`;
+- усі операції змінюють одну in-memory копію, після чого виконується одна C#
+  validation і, лише для Apply, один atomic write;
+- mixed Preview повертає combined diff, `currentSha256`, `predictedSha256`,
+  `editsApplied=0`, `scheduledRefresh=false`, `routing=mixed/preview` і
+  `executionModel=single_in_memory_pipeline`;
+- mixed Apply повертає `routing=mixed/sequential`, а його фінальний SHA має
+  точно збігатися з Preview prediction;
+- combined engine підтримує method/class operations разом з anchor,
+  prepend/append, range і regex text edits; missing/ambiguous anchors лишаються
+  strict validation errors.
+
+MCP regression посилено перевірками:
+
+- `anchor_insert + replace_method`;
+- `replace_method + anchor_insert`;
+- `anchor_insert + replace_method + insert_method`;
+- кілька structured edits одного класу;
+- SHA precondition і stale rejection;
+- Preview bytes/SHA no-write та Preview/Apply parity;
+- method boundary перед наступним методом без відступу.
+
+Live verification:
+
+- targeted MCP regression у `UniBridge_Test_Project` пройшов `7/7`; report:
+  `Library/UniBridge/mcp-smoke-regression-0.2.46-targeted.json`;
+- повний release smoke пройшов `26/26`; report:
+  `Library/UniBridge/mcp-smoke-regression-0.2.46-full.json`;
+- exact read-only Domovyk Preview для SHA
+  `bc553f4c9bd27a5d897b48d428d297cdd996ac2ebc85ee04173e3497518f1bc8`
+  показав і `waitingForInteractionRelease`, і replacement `Update()` у combined
+  diff, при цьому file SHA лишився незмінним, `editsApplied=0` і
+  `scheduledRefresh=false`;
+- embedded package `0.2.46` синхронізовано в `UniBridge_Test_Project`,
+  `Domovyk`, `DomovykPrototype` і `Domovyk_`;
+- усі чотири editors повернули ready, compilation `0 errors / 0 warnings`,
+  no critical build-system issues, fresh assemblies і empty Console.
 
 ## 2026-07-14 - UniBridge 0.2.45 scoped structured-edit diffs
 

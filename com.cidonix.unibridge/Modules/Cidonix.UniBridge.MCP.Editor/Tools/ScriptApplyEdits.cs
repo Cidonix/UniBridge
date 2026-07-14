@@ -449,143 +449,44 @@ Examples:
         static object ExecuteMixedEdits(string name, string path, List<Dictionary<string, object>> edits,
             Dictionary<string, object> options, string scriptType, string namespaceName)
         {
-            // First read the current script content
-            var readParams = new JObject
+            // Mixed edits are order-dependent. Run the complete normalized list through
+            // one in-memory EditScript pass so Preview and Apply share identical semantics.
+            var opts = new Dictionary<string, object>(options ?? new Dictionary<string, object>())
             {
-                ["action"] = "read",
+                ["applyMode"] = "sequential"
+            };
+            opts.TryAdd("refresh", "debounced");
+
+            var managementParams = new JObject
+            {
+                ["action"] = "edit",
                 ["name"] = name,
                 ["path"] = path,
                 ["namespace"] = namespaceName,
-                ["scriptType"] = scriptType
+                ["scriptType"] = scriptType,
+                ["edits"] = JArray.FromObject(edits),
+                ["options"] = JObject.FromObject(opts)
             };
 
-            var readResult = ManageScript.HandleCommand(readParams);
-            if (!IsSuccessResponse(readResult))
-            {
-                return readResult;
-            }
+            var precondition = GetPreconditionSha256(opts);
+            if (!string.IsNullOrEmpty(precondition))
+                managementParams["precondition_sha256"] = precondition;
 
-            string contents = ExtractContentsFromReadResult(readResult);
-            if (contents == null)
-            {
-                return Response.Error("Failed to read script contents for mixed editing.");
-            }
+            var result = ManageScript.HandleCommand(managementParams);
+            if (!IsSuccessResponse(result))
+                return result;
 
-            // Separate text and structured operations
-            var TEXT = EditNormalizer.TextOps;
-            var STRUCT = EditNormalizer.StructuredOps;
-            var textEdits = edits.Where(e => TEXT.Contains(GetStringValue(e, "op")?.ToLowerInvariant() ?? "")).ToList();
-            var structEdits = edits.Where(e => STRUCT.Contains(GetStringValue(e, "op")?.ToLowerInvariant() ?? "")).ToList();
+            var resultProperties = GetObjectProperties(result);
+            var data = GetObjectProperties(resultProperties.GetValueOrDefault("data"));
+            var preview = GetBoolValue(opts, "preview");
+            data["normalizedEdits"] = edits;
+            data["routing"] = preview ? "mixed/preview" : "mixed/sequential";
+            data["executionModel"] = "single_in_memory_pipeline";
 
-            try
-            {
-                var baseText = contents;
-                var preconditionError = ValidatePrecondition(baseText, options);
-                if (preconditionError != null)
-                    return preconditionError;
-
-                var computedTextEdits = BuildComputedTextEdits(textEdits, baseText);
-                var preview = GetBoolValue(options, "preview");
-                if (preview)
-                {
-                    var previewText = ApplyComputedTextEditsLocally(baseText, computedTextEdits);
-                    return Response.Success("Preview only (no write)", new
-                    {
-                        diff = GenerateUnifiedDiff(baseText, previewText),
-                        normalizedEdits = edits,
-                        computedTextEdits,
-                        plannedStructuredEdits = structEdits,
-                        routing = "mixed/preview",
-                        preconditionSha256 = ComputeSha256(baseText)
-                    });
-                }
-
-                object textResult = null;
-                if (computedTextEdits.Any())
-                {
-                    string sha = ComputeSha256(baseText);
-                    var paramsText = new JObject
-                    {
-                        ["action"] = "apply_text_edits",
-                        ["name"] = name,
-                        ["path"] = path,
-                        ["namespace"] = namespaceName,
-                        ["scriptType"] = scriptType,
-                        ["edits"] = JArray.FromObject(computedTextEdits),
-                        ["precondition_sha256"] = sha,
-                        ["options"] = JObject.FromObject(new Dictionary<string, object>
-                        {
-                            ["refresh"] = GetStringValue(options, "refresh") ?? "debounced",
-                            ["validate"] = GetStringValue(options, "validate") ?? "standard",
-                            ["applyMode"] = computedTextEdits.Count > 1 ? "atomic" : GetStringValue(options, "applyMode") ?? "sequential"
-                        })
-                    };
-
-                    textResult = ManageScript.HandleCommand(paramsText);
-                    if (!IsSuccessResponse(textResult))
-                    {
-                        return Response.Error("Text edit failed in mixed processing", new
-                        {
-                            normalizedEdits = edits,
-                            computedTextEdits,
-                            routing = "mixed/text-first",
-                            result = textResult
-                        });
-                    }
-                }
-
-                // Then execute structured edits
-                if (structEdits.Any())
-                {
-                    var opts = new Dictionary<string, object>(options ?? new Dictionary<string, object>());
-                    opts.TryAdd("refresh", "debounced"); // Use debounced for mixed operations
-
-                    var managementParams = new JObject
-                    {
-                        ["action"] = "edit",
-                        ["name"] = name,
-                        ["path"] = path,
-                        ["namespace"] = namespaceName,
-                        ["scriptType"] = scriptType,
-                        ["edits"] = JArray.FromObject(structEdits),
-                        ["options"] = JObject.FromObject(opts)
-                    };
-
-                    var structResult = ManageScript.HandleCommand(managementParams);
-                    if (!IsSuccessResponse(structResult))
-                    {
-                        return structResult;
-                    }
-
-                    // Enhance result with mixed routing info
-                    if (structResult is object resultObj)
-                    {
-                        var resultDict = GetObjectProperties(resultObj);
-                        var data = resultDict.GetValueOrDefault("data") as Dictionary<string, object> ?? new Dictionary<string, object>();
-                        data["normalizedEdits"] = edits;
-                        data["routing"] = "mixed/text-first";
-                        resultDict["data"] = data;
-                    }
-
-                    return structResult;
-                }
-
-                return Response.Success("Applied text edits (no structured ops)", new
-                {
-                    normalizedEdits = edits,
-                    computedTextEdits,
-                    result = textResult,
-                    routing = "mixed/text-first"
-                });
-            }
-            catch (Exception ex)
-            {
-                return Response.Error($"Text edit conversion failed: {ex.Message}", new
-                {
-                    normalizedEdits = edits,
-                    routing = "mixed/text-first"
-                });
-            }
+            var message = preview
+                ? $"Previewed {edits.Count} mixed edit(s) for '{path}/{name}.cs' (no write)."
+                : $"Applied {edits.Count} mixed edit(s) to '{path}/{name}.cs'.";
+            return Response.Success(message, data);
         }
 
         static List<Dictionary<string, object>> BuildComputedTextEdits(
@@ -793,7 +694,7 @@ Examples:
         /// <summary>
         /// Process anchor_insert operation
         /// </summary>
-        static Match ResolveAnchorMatch(
+        internal static Match ResolveAnchorMatch(
             Dictionary<string, object> edit,
             string contents,
             string operation)

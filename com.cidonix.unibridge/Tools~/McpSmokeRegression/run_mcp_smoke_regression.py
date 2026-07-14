@@ -832,6 +832,93 @@ class SmokeSuite:
                 raise AssertionError("A stale structured Preview modified the script.")
 
             initial_text, initial_sha = after_structured_apply_text, after_structured_apply_sha
+
+            anchor_first_edits = [
+                {
+                    "op": "anchor_insert",
+                    "anchor": "public const string LineFullyShown = \"line\";",
+                    "position": "after",
+                    "text": "\n    public const string AnchorFirstPreview = \"anchor-first\";",
+                },
+                {
+                    "op": "replace_method",
+                    "className": script_name,
+                    "methodName": "Update",
+                    "replacement": "public void Update()\n    {\n        var marker = \"anchor-first-update\";\n    }",
+                },
+            ]
+            anchor_first_preview = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": True,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": anchor_first_edits,
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+            anchor_first_data = require_success(anchor_first_preview, "anchor_insert then replace_method preview")
+            anchor_first_diff = str(prop(anchor_first_data, "diff", default=""))
+            if "AnchorFirstPreview" not in anchor_first_diff or "anchor-first-update" not in anchor_first_diff:
+                raise AssertionError(f"Anchor-first mixed preview omitted an operation: {anchor_first_data}")
+            if prop(anchor_first_data, "currentSha256") != initial_sha:
+                raise AssertionError(f"Anchor-first mixed preview returned the wrong current SHA: {anchor_first_data}")
+            if read_script() != (initial_text, initial_sha):
+                raise AssertionError("Anchor-first mixed Preview modified the script.")
+
+            replace_first_edits = [
+                {
+                    "op": "replace_method",
+                    "className": script_name,
+                    "methodName": "Update",
+                    "replacement": "public void Update()\n    {\n        var marker = \"replace-first-update\";\n    }",
+                },
+                {
+                    "op": "anchor_insert",
+                    "anchor": "public const string LineFullyShown = \"line\";",
+                    "position": "after",
+                    "text": "\n    public const string ReplaceFirstPreview = \"replace-first\";",
+                },
+            ]
+            replace_first_preview = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": True,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": replace_first_edits,
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+            replace_first_data = require_success(replace_first_preview, "replace_method then anchor_insert preview")
+            replace_first_diff = str(prop(replace_first_data, "diff", default=""))
+            if "replace-first-update" not in replace_first_diff or "ReplaceFirstPreview" not in replace_first_diff:
+                raise AssertionError(f"Replace-first mixed preview omitted an operation: {replace_first_data}")
+            if read_script() != (initial_text, initial_sha):
+                raise AssertionError("Replace-first mixed Preview modified the script.")
+
+            mixed_edits = [
+                {
+                    "op": "anchor_insert",
+                    "anchor": "public const string LineFullyShown = \"line\";",
+                    "position": "after",
+                    "text": "\n    public const string MixedAppliedAnchor = \"mixed-applied\";",
+                },
+                {
+                    "op": "replace_method",
+                    "className": script_name,
+                    "methodName": "Show",
+                    "replacement": "public void Show()\n    {\n        var marker = \"mixed-applied-show\";\n    }",
+                },
+                {
+                    "op": "insert_method",
+                    "className": script_name,
+                    "replacement": "public string MixedInsertedMethod() => LineFullyShown;",
+                    "position": "end",
+                },
+            ]
             mixed_preview = self.tool(
                 "UniBridge_ScriptApplyEdits",
                 {
@@ -839,41 +926,53 @@ class SmokeSuite:
                     "Path": folder,
                     "Preview": True,
                     "PreconditionSha256": initial_sha,
-                    "Edits": [
-                        {
-                            "op": "replace_method",
-                            "className": script_name,
-                            "methodName": "Show",
-                            "replacement": "public void Show()\n    {\n        var marker = \"mixed-preview-show\";\n    }",
-                        },
-                        {
-                            "op": "anchor_insert",
-                            "anchor": "public const string LineFullyShown = \"line\";",
-                            "position": "after",
-                            "text": "\n    public const string MixedPreviewAnchor = \"mixed\";",
-                        },
-                        {
-                            "op": "insert_method",
-                            "className": script_name,
-                            "replacement": "public string PlannedOnly() => LineFullyShown;",
-                            "position": "end",
-                        },
-                    ],
+                    "Edits": mixed_edits,
                     "Options": {"validate": "standard", "refresh": "none"},
                 },
             )
-            mixed_data = require_success(mixed_preview, "mixed replace_method anchor_insert insert_method preview")
-            if prop(mixed_data, "routing") != "mixed/preview":
-                raise AssertionError(f"Mixed preview did not use the safe preview route: {mixed_data}")
+            mixed_data = require_success(mixed_preview, "anchor_insert replace_method insert_method preview")
+            if prop(mixed_data, "routing") != "mixed/preview" or prop(mixed_data, "executionModel") != "single_in_memory_pipeline":
+                raise AssertionError(f"Mixed preview did not use the combined in-memory route: {mixed_data}")
             mixed_diff = str(prop(mixed_data, "diff", default=""))
-            if "MixedPreviewAnchor" not in mixed_diff:
-                raise AssertionError(f"Mixed preview diff omitted anchor_insert evidence: {mixed_data}")
-            planned_structured = prop(mixed_data, "plannedStructuredEdits", default=[])
-            planned_ops = {str(edit.get("op", "")) for edit in planned_structured if isinstance(edit, dict)}
-            if planned_ops != {"replace_method", "insert_method"}:
-                raise AssertionError(f"Mixed preview omitted planned structured operations: {mixed_data}")
+            for expected in ("MixedAppliedAnchor", "mixed-applied-show", "MixedInsertedMethod"):
+                if expected not in mixed_diff:
+                    raise AssertionError(f"Mixed preview diff omitted '{expected}': {mixed_data}")
+            mixed_predicted_sha = prop(mixed_data, "predictedSha256")
+            if (
+                prop(mixed_data, "currentSha256") != initial_sha or
+                not mixed_predicted_sha or
+                mixed_predicted_sha == initial_sha or
+                prop(mixed_data, "editsApplied") != 0 or
+                prop(mixed_data, "scheduledRefresh") is not False
+            ):
+                raise AssertionError(f"Mixed preview returned incomplete no-write/SHA evidence: {mixed_data}")
             if read_script() != (initial_text, initial_sha):
-                raise AssertionError("Mixed ScriptApplyEdits Preview modified the script.")
+                raise AssertionError("Three-operation mixed Preview modified the script.")
+
+            mixed_apply = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": False,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": mixed_edits,
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+            mixed_apply_data = require_success(mixed_apply, "mixed Preview/apply parity")
+            mixed_applied_text, mixed_applied_sha = read_script()
+            if mixed_applied_sha != mixed_predicted_sha:
+                raise AssertionError(
+                    f"Mixed Apply SHA {mixed_applied_sha} did not match Preview prediction {mixed_predicted_sha}."
+                )
+            if prop(mixed_apply_data, "editsApplied") != 3 or prop(mixed_apply_data, "routing") != "mixed/sequential":
+                raise AssertionError(f"Mixed Apply returned incorrect execution evidence: {mixed_apply_data}")
+            for expected in ("MixedAppliedAnchor", "mixed-applied-show", "MixedInsertedMethod"):
+                if expected not in mixed_applied_text:
+                    raise AssertionError(f"Mixed Apply omitted '{expected}'.")
+
+            initial_text, initial_sha = mixed_applied_text, mixed_applied_sha
 
             _, sha = preview_then_apply(
                 {
@@ -892,13 +991,23 @@ class SmokeSuite:
                 },
                 "Inserted",
             )
-            _, sha = preview_then_apply(
-                {
-                    "op": "anchor_delete",
-                    "anchor": "\\s*public const string RemoveMe = \"remove\";",
-                },
-                "LineFullyShown",
-            )
+            before_delete_text, before_delete_sha = read_script()
+            delete_edit = {
+                "op": "anchor_delete",
+                "anchor": "\\s*public const string RemoveMe = \"remove\";",
+            }
+            delete_preview = call_edit(delete_edit, True, before_delete_sha)
+            delete_preview_data = require_success(delete_preview, "anchor_delete preview")
+            delete_diff = str(prop(delete_preview_data, "diff", default=""))
+            if "RemoveMe" not in delete_diff or "-" not in delete_diff:
+                raise AssertionError(f"anchor_delete preview omitted removed declaration evidence: {delete_preview_data}")
+            if read_script() != (before_delete_text, before_delete_sha):
+                raise AssertionError("anchor_delete Preview modified the script.")
+            delete_apply = call_edit(delete_edit, False, before_delete_sha)
+            require_success(delete_apply, "anchor_delete apply")
+            after_delete_text, after_delete_sha = read_script()
+            if "RemoveMe" in after_delete_text or after_delete_sha == before_delete_sha:
+                raise AssertionError("anchor_delete Apply did not remove the declaration and change the SHA.")
             final_text, final_sha = read_script()
             if "RemoveMe" in final_text:
                 raise AssertionError("anchor_delete left the matched declaration in the script.")
@@ -947,6 +1056,8 @@ class SmokeSuite:
                 "anchorOperations": ["anchor_insert", "anchor_delete", "anchor_replace"],
                 "mixedOperations": ["replace_method", "anchor_insert", "insert_method"],
                 "mixedPreviewNoWrite": True,
+                "mixedOperationOrdersVerified": ["anchor_then_replace", "replace_then_anchor"],
+                "mixedPreviewApplyParity": True,
                 "staleShaRejected": True,
                 "missingAnchorRejected": True,
                 "ambiguousAnchorRejected": True,

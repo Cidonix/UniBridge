@@ -1348,6 +1348,98 @@ Returns:
                             break;
                         }
 
+                        case "prepend":
+                        {
+                            string text = op.Value<string>("text") ?? ExtractReplacement(op);
+                            if (string.IsNullOrEmpty(text)) return Response.Error("prepend requires non-empty 'text'.");
+                            string norm = NormalizeNewlines(text);
+                            if (applySequentially)
+                            {
+                                working = working.Insert(0, norm);
+                                appliedCount++;
+                            }
+                            else
+                            {
+                                replacements.Add((0, 0, norm));
+                            }
+                            break;
+                        }
+
+                        case "append":
+                        {
+                            string text = op.Value<string>("text") ?? ExtractReplacement(op);
+                            if (string.IsNullOrEmpty(text)) return Response.Error("append requires non-empty 'text'.");
+                            string norm = NormalizeNewlines(text);
+                            if (!working.EndsWith("\n")) norm = "\n" + norm;
+                            int at = working.Length;
+                            if (applySequentially)
+                            {
+                                working = working.Insert(at, norm);
+                                appliedCount++;
+                            }
+                            else
+                            {
+                                replacements.Add((at, 0, norm));
+                            }
+                            break;
+                        }
+
+                        case "replace_range":
+                        {
+                            int startLine = Math.Max(1, op.Value<int?>("startLine") ?? 1);
+                            int startCol = Math.Max(1, op.Value<int?>("startCol") ?? 1);
+                            int endLine = Math.Max(1, op.Value<int?>("endLine") ?? startLine);
+                            int endCol = Math.Max(1, op.Value<int?>("endCol") ?? startCol);
+                            string text = op.Value<string>("text") ?? string.Empty;
+                            if (!TryIndexFromLineCol(working, startLine, startCol, out int start) ||
+                                !TryIndexFromLineCol(working, endLine, endCol, out int end))
+                            {
+                                return Response.Error(
+                                    $"replace_range position is outside the current file: {startLine}:{startCol}-{endLine}:{endCol}.");
+                            }
+                            if (end < start) (start, end) = (end, start);
+                            string norm = NormalizeNewlines(text);
+                            if (applySequentially)
+                            {
+                                working = working.Remove(start, end - start).Insert(start, norm);
+                                appliedCount++;
+                            }
+                            else
+                            {
+                                replacements.Add((start, end - start, norm));
+                            }
+                            break;
+                        }
+
+                        case "regex_replace":
+                        {
+                            string pattern = op.Value<string>("pattern") ?? op.Value<string>("anchor");
+                            string replacement = op.Value<string>("replacement") ?? op.Value<string>("text") ?? string.Empty;
+                            if (string.IsNullOrWhiteSpace(pattern)) return Response.Error("regex_replace requires 'pattern'.");
+                            try
+                            {
+                                var selection = op.ToObject<Dictionary<string, object>>();
+                                selection["anchor"] = pattern;
+                                var match = ScriptApplyEdits.ResolveAnchorMatch(selection, working, "regex_replace");
+                                if (match == null) break;
+                                string norm = NormalizeNewlines(match.Result(replacement));
+                                if (applySequentially)
+                                {
+                                    working = working.Remove(match.Index, match.Length).Insert(match.Index, norm);
+                                    appliedCount++;
+                                }
+                                else
+                                {
+                                    replacements.Add((match.Index, match.Length, norm));
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                return Response.Error($"regex_replace failed: {ex.Message}");
+                            }
+                            break;
+                        }
+
                         case "anchor_insert":
                         {
                             string anchor = op.Value<string>("anchor");
@@ -1358,11 +1450,15 @@ Returns:
 
                             try
                             {
-                                var rx = new Regex(anchor, RegexOptions.Multiline, TimeSpan.FromSeconds(2));
-                                var m = rx.Match(working);
-                                if (!m.Success) return Response.Error($"anchor_insert: anchor not found: {anchor}");
+                                var m = ScriptApplyEdits.ResolveAnchorMatch(
+                                    op.ToObject<Dictionary<string, object>>(), working, "anchor_insert");
+                                if (m == null) break;
                                 int insAt = position == "after" ? m.Index + m.Length : m.Index;
                                 string norm = NormalizeNewlines(text);
+                                if (!norm.StartsWith("\n"))
+                                {
+                                    norm = "\n" + norm;
+                                }
                                 if (!norm.EndsWith("\n"))
                                 {
                                     norm += "\n";
@@ -1401,9 +1497,9 @@ Returns:
                             if (string.IsNullOrWhiteSpace(anchor)) return Response.Error("anchor_delete requires 'anchor' (regex).");
                             try
                             {
-                                var rx = new Regex(anchor, RegexOptions.Multiline, TimeSpan.FromSeconds(2));
-                                var m = rx.Match(working);
-                                if (!m.Success) return Response.Error($"anchor_delete: anchor not found: {anchor}");
+                                var m = ScriptApplyEdits.ResolveAnchorMatch(
+                                    op.ToObject<Dictionary<string, object>>(), working, "anchor_delete");
+                                if (m == null) break;
                                 int delAt = m.Index;
                                 int delLen = m.Length;
                                 if (applySequentially)
@@ -1430,9 +1526,9 @@ Returns:
                             if (string.IsNullOrWhiteSpace(anchor)) return Response.Error("anchor_replace requires 'anchor' (regex).");
                             try
                             {
-                                var rx = new Regex(anchor, RegexOptions.Multiline, TimeSpan.FromSeconds(2));
-                                var m = rx.Match(working);
-                                if (!m.Success) return Response.Error($"anchor_replace: anchor not found: {anchor}");
+                                var m = ScriptApplyEdits.ResolveAnchorMatch(
+                                    op.ToObject<Dictionary<string, object>>(), working, "anchor_replace");
+                                if (m == null) break;
                                 int at = m.Index;
                                 int len = m.Length;
                                 string norm = NormalizeNewlines(replacement);
@@ -1454,7 +1550,7 @@ Returns:
                         }
 
                         default:
-                            return Response.Error($"Unknown edit mode: '{mode}'. Allowed: replace_class, delete_class, replace_method, delete_method, insert_method, anchor_insert, anchor_delete, anchor_replace.");
+                            return Response.Error($"Unknown edit mode: '{mode}'. Allowed: replace_class, delete_class, replace_method, delete_method, insert_method, prepend, append, replace_range, regex_replace, anchor_insert, anchor_delete, anchor_replace.");
                     }
                 }
 

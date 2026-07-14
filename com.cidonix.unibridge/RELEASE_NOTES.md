@@ -1,21 +1,29 @@
-# UniBridge 0.2.45 Release Notes
+# UniBridge 0.2.46 Release Notes
 
-Release date: 2026-07-14
+Release date: 2026-07-15
 
-This hotfix makes `UniBridge_ScriptApplyEdits` structured Preview diffs match
-the edits that would actually be applied. The method-span resolver was already
-correct, but the old renderer compared line N only with line N. Expanding a
-one-line method into multiple lines shifted the rest of the class and made
-unchanged following methods look deleted and recreated.
+This hotfix makes mixed `UniBridge_ScriptApplyEdits` Preview and Apply use one
+ordered in-memory edit pipeline. A batch such as
+`anchor_insert + replace_method + insert_method` now produces one final diff
+containing all three changes, validates one final C# source, and writes at most
+once.
 
-Preview diffs now align line sequences and return compact unified hunks with
-bounded context. The response remains safe for large scripts through a bounded
-alignment fallback. `Preview=true` still writes no bytes, applies zero edits,
-schedules no refresh, and returns current plus predicted SHA evidence.
+`Preview=true` remains a strict no-write boundary and now returns the same
+predicted source/SHA that a subsequent Apply produces. The response includes
+`currentSha256`, `predictedSha256`, `editsApplied=0`,
+`scheduledRefresh=false`, `routing=mixed/preview`, and an explicit
+`single_in_memory_pipeline` execution model.
 
-Regression coverage now includes a normally indented following method, a
-following method that starts at column zero, actual apply on a disposable test
-script, and a mixed `replace_method + anchor_insert + insert_method` Preview.
+Regression coverage verifies both anchor/method operation orders, a
+three-operation mixed batch, Preview/Apply SHA parity, stale preconditions,
+multiple method edits in one class, and method boundaries when the following
+method starts at column zero.
+
+## Previous 0.2.45 Notes
+
+Structured Preview diffs align line sequences and return compact unified hunks
+with bounded context. Expanding a one-line method no longer makes unchanged
+following methods appear deleted and recreated.
 
 ## Previous 0.2.44 Notes
 
