@@ -614,6 +614,9 @@ class SmokeSuite:
             "    // ANCHOR_DUPLICATE\n"
             "\n"
             "    public void Update() { var marker = \"update\"; }\n"
+            "    public void NormalFollowingMethod() { var marker = \"normal-following\"; }\n"
+            "private void ResolveInput() { var marker = \"unindented-following\"; }\n"
+            "    public void SelectBestCandidate() { var marker = \"select-best\"; }\n"
             "    public void Show() { var marker = \"show\"; }\n"
             "    public void RequireReleaseBeforeHold() { var marker = \"release\"; }\n"
             "}\n"
@@ -685,6 +688,61 @@ class SmokeSuite:
             created = True
 
             initial_text, initial_sha = read_script()
+
+            update_only_preview = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": True,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": [
+                        {
+                            "op": "replace_method",
+                            "className": script_name,
+                            "methodName": "Update",
+                            "replacement": "public void Update()\n    {\n        var marker = \"update-only-preview\";\n    }",
+                        }
+                    ],
+                    "Options": {"validate": "standard", "refresh": "immediate"},
+                },
+            )
+            update_only_data = require_success(update_only_preview, "single replace_method preview")
+            update_only_diff = str(prop(update_only_data, "diff", default=""))
+            for unchanged_method in ("NormalFollowingMethod", "ResolveInput", "SelectBestCandidate"):
+                if f"-    public void {unchanged_method}" in update_only_diff or f"+    public void {unchanged_method}" in update_only_diff:
+                    raise AssertionError(f"replace_method diff falsely marked {unchanged_method} as changed: {update_only_diff}")
+                if f"-private void {unchanged_method}" in update_only_diff or f"+private void {unchanged_method}" in update_only_diff:
+                    raise AssertionError(f"replace_method diff falsely marked unindented {unchanged_method} as changed: {update_only_diff}")
+            if prop(update_only_data, "editsApplied") != 0 or prop(update_only_data, "scheduledRefresh") is not False:
+                raise AssertionError(f"Single replace_method preview was not strictly no-write: {update_only_data}")
+            if read_script() != (initial_text, initial_sha):
+                raise AssertionError("Single replace_method Preview changed script bytes or SHA.")
+
+            unindented_boundary_preview = self.tool(
+                "UniBridge_ScriptApplyEdits",
+                {
+                    "Name": script_name,
+                    "Path": folder,
+                    "Preview": True,
+                    "PreconditionSha256": initial_sha,
+                    "Edits": [
+                        {
+                            "op": "replace_method",
+                            "className": script_name,
+                            "methodName": "NormalFollowingMethod",
+                            "replacement": "public void NormalFollowingMethod()\n    {\n        var marker = \"before-unindented-preview\";\n    }",
+                        }
+                    ],
+                    "Options": {"validate": "standard", "refresh": "none"},
+                },
+            )
+            unindented_boundary_data = require_success(unindented_boundary_preview, "unindented method boundary preview")
+            unindented_boundary_diff = str(prop(unindented_boundary_data, "diff", default=""))
+            if "-private void ResolveInput" in unindented_boundary_diff or "+private void ResolveInput" in unindented_boundary_diff:
+                raise AssertionError(f"replace_method crossed into an unindented following method: {unindented_boundary_diff}")
+            if read_script() != (initial_text, initial_sha):
+                raise AssertionError("Unindented-boundary replace_method Preview changed script bytes or SHA.")
 
             structured_edits = [
                 {
@@ -783,9 +841,16 @@ class SmokeSuite:
                     "PreconditionSha256": initial_sha,
                     "Edits": [
                         {
-                            "op": "anchor_replace",
+                            "op": "replace_method",
+                            "className": script_name,
+                            "methodName": "Show",
+                            "replacement": "public void Show()\n    {\n        var marker = \"mixed-preview-show\";\n    }",
+                        },
+                        {
+                            "op": "anchor_insert",
                             "anchor": "public const string LineFullyShown = \"line\";",
-                            "text": "public const string LineFullyShown = \"line-preview\";",
+                            "position": "after",
+                            "text": "\n    public const string MixedPreviewAnchor = \"mixed\";",
                         },
                         {
                             "op": "insert_method",
@@ -797,9 +862,16 @@ class SmokeSuite:
                     "Options": {"validate": "standard", "refresh": "none"},
                 },
             )
-            mixed_data = require_success(mixed_preview, "mixed anchor_replace preview")
+            mixed_data = require_success(mixed_preview, "mixed replace_method anchor_insert insert_method preview")
             if prop(mixed_data, "routing") != "mixed/preview":
                 raise AssertionError(f"Mixed preview did not use the safe preview route: {mixed_data}")
+            mixed_diff = str(prop(mixed_data, "diff", default=""))
+            if "MixedPreviewAnchor" not in mixed_diff:
+                raise AssertionError(f"Mixed preview diff omitted anchor_insert evidence: {mixed_data}")
+            planned_structured = prop(mixed_data, "plannedStructuredEdits", default=[])
+            planned_ops = {str(edit.get("op", "")) for edit in planned_structured if isinstance(edit, dict)}
+            if planned_ops != {"replace_method", "insert_method"}:
+                raise AssertionError(f"Mixed preview omitted planned structured operations: {mixed_data}")
             if read_script() != (initial_text, initial_sha):
                 raise AssertionError("Mixed ScriptApplyEdits Preview modified the script.")
 
@@ -868,9 +940,12 @@ class SmokeSuite:
                 "structuredPreviewNoRefresh": True,
                 "structuredOperations": ["replace_method"],
                 "structuredEditsPreviewed": 3,
+                "singleMethodDiffIsScoped": True,
+                "unindentedFollowingMethodBoundaryPreserved": True,
                 "structuredStaleShaRejected": True,
                 "previewNoWrite": True,
                 "anchorOperations": ["anchor_insert", "anchor_delete", "anchor_replace"],
+                "mixedOperations": ["replace_method", "anchor_insert", "insert_method"],
                 "mixedPreviewNoWrite": True,
                 "staleShaRejected": True,
                 "missingAnchorRejected": True,

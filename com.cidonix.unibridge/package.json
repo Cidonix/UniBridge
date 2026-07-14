@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.44",
+  "version": "0.2.45",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- VersionControl EnsureEditable, Checkout, InspectAsset, and InspectAssets now accept either AssetPath or a non-empty AssetPaths array.\n- Multi-asset version-control calls return per-asset results plus editable, blocked, checkout, existing, and missing counts.\n- Empty arrays and malformed path entries return explicit validation errors; partially invalid sets preserve every asset result.\n- Version-control path normalization now uses the shared project path resolver.\n- Bundled relay 1.1.0-build.17 forces UTF-8 MCP stdio on every platform.\n- MCP smoke regression covers single, multiple, empty, and partially invalid VersionControl path sets.\n\n### Previous Changes\n\n- ScriptApplyEdits Preview is strictly no-write for structured and anchor operations and returns diff/SHA evidence.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene.\n- RuntimeStateProbe Assertions has the correct array-of-objects MCP schema with tolerant single-object normalization."
+    "changelog": "### Fixed\n\n- ScriptApplyEdits structured previews now align inserted and deleted lines before rendering their unified diff.\n- Replacing a one-line method with a multi-line body no longer makes every following method appear removed and re-added.\n- Unified preview output is grouped into compact hunks with bounded context and response size.\n- Large scripts use bounded line alignment instead of allocating an unbounded LCS matrix.\n- MCP regression covers normal and unindented following methods, strict Preview no-write/SHA behavior, actual apply, and mixed replace_method plus anchor_insert plus insert_method calls.\n\n### Previous Changes\n\n- VersionControl supports single and multi-asset inspection, editability, and checkout workflows with per-asset diagnostics.\n- ScriptApplyEdits Preview is strictly no-write for structured and anchor operations and returns diff/SHA evidence.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -9295,6 +9295,49 @@ Docs/package:
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
 
+## 2026-07-14 - UniBridge 0.2.45 scoped structured-edit diffs
+
+Причина: у `Domovyk` Preview заміни
+`DomovykInteractionRouter.Update()` виглядав так, ніби UniBridge видалить або
+перепише всі наступні методи класу, включно з методом `ResolveInput()`, який
+починається без звичайного відступу.
+
+Діагностика показала, що balanced-brace resolver визначав межу `Update()`
+правильно: independently computed Update-only replacement давав той самий
+`predictedSha256`, а наступні методи залишались у predicted text. Помилка була
+у старому line-index diff renderer: після перетворення однорядкового методу на
+багаторядковий він порівнював рядок N тільки з рядком N і трактував весь
+зсунутий suffix як змінений.
+
+Виправлення:
+
+- `ScriptApplyEdits.GenerateUnifiedDiff` використовує sequence-aware line
+  alignment замість index-to-index comparison;
+- для small/medium scripts використовується exact bounded LCS, для великих
+  файлів - bounded look-ahead alignment без необмеженої матриці;
+- відповідь містить compact unified hunks з трьома context lines і лімітом
+  розміру;
+- MCP regression створює disposable script з нормально відступленим і
+  не-відступленим наступними методами та перевіряє, що scoped Preview не
+  позначає їх зміненими;
+- збережено перевірки `Preview=true`: bytes/SHA unchanged,
+  `editsApplied=0`, `scheduledRefresh=false`, current/predicted SHA;
+- regression додатково покриває actual apply і mixed
+  `replace_method + anchor_insert + insert_method` Preview.
+
+Фінальна MCP-перевірка:
+
+- повний release regression у `UniBridge_Test_Project`: `26/26 passed`, report
+  `Library/UniBridge/mcp-smoke-regression-0.2.45-full.json`;
+- exact read-only Domovyk Preview повернув compact 28-line hunk тільки для
+  `Update()`, `editsApplied=0`, `scheduledRefresh=false`; SHA до/після лишився
+  `bc553f4c9bd27a5d897b48d428d297cdd996ac2ebc85ee04173e3497518f1bc8`;
+- `UniBridge_Test_Project`, `Domovyk`, `DomovykPrototype` і `Domovyk_`
+  синхронізовані на `0.2.45`;
+- у всіх перевірених editor sessions compile diagnostics `0 errors / 0
+  warnings`, build-system critical issues `0`, assemblies fresh, Console
+  порожня.
+
 ## 2026-07-14 - UniBridge 0.2.44 VersionControl multi-path contract
 
 Мета: прибрати невідповідність MCP-схеми й реалізації

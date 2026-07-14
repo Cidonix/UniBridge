@@ -2,6 +2,26 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.45
+
+### Fixed
+
+- `UniBridge_ScriptApplyEdits` now aligns inserted and deleted lines before
+  rendering structured Preview diffs. Expanding a one-line method into a
+  multi-line body no longer makes every following method appear removed and
+  re-added merely because its line number shifted.
+- Unified diff output is grouped into compact hunks with three context lines
+  and a bounded response size. Small and medium scripts use exact line-sequence
+  alignment; large scripts use a bounded look-ahead fallback instead of an
+  unbounded LCS allocation.
+- Method-span behavior is regression-tested when the following method uses
+  normal indentation and when it begins at column zero. Both cases preserve
+  the following method and produce a scoped Preview diff.
+- MCP regression verifies strict Preview no-write/no-refresh behavior, current
+  and predicted SHA evidence, real apply on a temporary script, stale SHA
+  rejection, and a mixed `replace_method + anchor_insert + insert_method`
+  Preview.
+
 ## 0.2.44
 
 ### Fixed

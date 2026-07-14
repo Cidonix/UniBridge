@@ -1,22 +1,28 @@
-# UniBridge 0.2.44 Release Notes
+# UniBridge 0.2.45 Release Notes
 
 Release date: 2026-07-14
 
-This hotfix aligns `UniBridge_VersionControl` with its MCP schema. Every
-asset-aware action now accepts a single `AssetPath` or a non-empty
-`AssetPaths` array, and multi-file preflight/checkout returns one structured
-result per asset plus aggregate counts.
+This hotfix makes `UniBridge_ScriptApplyEdits` structured Preview diffs match
+the edits that would actually be applied. The method-span resolver was already
+correct, but the old renderer compared line N only with line N. Expanding a
+one-line method into multiple lines shifted the rest of the class and made
+unchanged following methods look deleted and recreated.
 
-Partially invalid sets are preserved in the response instead of being silently
-filtered or collapsed. With `ThrowOnBlocked=true`, the tool fails cleanly while
-retaining the complete valid/missing asset diagnostics. Empty arrays and
-malformed entries return actionable validation errors.
+Preview diffs now align line sequences and return compact unified hunks with
+bounded context. The response remains safe for large scripts through a bounded
+alignment fallback. `Preview=true` still writes no bytes, applies zero edits,
+schedules no refresh, and returns current plus predicted SHA evidence.
 
-Bundled relay `1.1.0-build.17` explicitly configures UTF-8 MCP input/output, so
-Unicode arguments no longer depend on the Windows console code page. All four
-relay targets were rebuilt. The full live MCP regression passed with version
-control, script edits, UI/Prefab Stage Unicode, asset workflows, scheduler
-cleanup, compilation diagnostics, and Play/Edit Mode coverage.
+Regression coverage now includes a normally indented following method, a
+following method that starts at column zero, actual apply on a disposable test
+script, and a mixed `replace_method + anchor_insert + insert_method` Preview.
+
+## Previous 0.2.44 Notes
+
+`UniBridge_VersionControl` accepts either one `AssetPath` or a non-empty
+`AssetPaths` array for inspection, editability checks, and checkout. Every
+multi-file call returns per-asset evidence and aggregate counts. Bundled relay
+`1.1.0-build.17` uses UTF-8 MCP stdio on every platform.
 
 ## Previous 0.2.43 Notes
 

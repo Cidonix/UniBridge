@@ -1390,8 +1390,13 @@ Examples:
             }
         }
 
+        const int DiffContextLines = 3;
+        const int MaxDiffOutputLines = 800;
+        const long MaxExactDiffCells = 4_000_000;
+        const int LargeDiffLookAhead = 200;
+
         /// <summary>
-        /// Generate unified diff with improved formatting
+        /// Generate a compact unified diff while preserving line alignment after insertions and deletions.
         /// </summary>
         internal static string GenerateUnifiedDiff(string before, string after)
         {
@@ -1403,52 +1408,208 @@ Examples:
             var beforeLines = before.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             var afterLines = after.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
 
-            var diff = new List<string>
+            var edits = (long)(beforeLines.Length + 1) * (afterLines.Length + 1) <= MaxExactDiffCells
+                ? BuildExactLineEdits(beforeLines, afterLines)
+                : BuildAlignedLineEdits(beforeLines, afterLines);
+            var hunks = BuildDiffHunks(edits, DiffContextLines);
+            if (hunks.Count == 0)
+                return "--- before\n+++ after\n(no changes)";
+
+            var diff = new List<string> { "--- before", "+++ after" };
+            var truncated = false;
+            foreach (var hunk in hunks)
             {
-                "--- before",
-                "+++ after"
-            };
-
-            // Simple but effective line-by-line diff
-            int maxLines = Math.Max(beforeLines.Length, afterLines.Length);
-            bool hasChanges = false;
-
-            for (int i = 0; i < maxLines; i++)
-            {
-                string beforeLine = i < beforeLines.Length ? beforeLines[i] : null;
-                string afterLine = i < afterLines.Length ? afterLines[i] : null;
-
-                if (beforeLine == afterLine)
+                var hunkLines = hunk.Select(edit => edit.Prefix + edit.Text).ToArray();
+                var availableLines = MaxDiffOutputLines - diff.Count - 2;
+                if (availableLines <= 0)
                 {
-                    // Unchanged line - show as context
-                    if (beforeLine != null)
-                        diff.Add($" {beforeLine}");
+                    truncated = true;
+                    break;
+                }
+
+                var beforeStart = Math.Max(1, hunk[0].BeforePosition);
+                var afterStart = Math.Max(1, hunk[0].AfterPosition);
+                var beforeCount = hunk.Count(edit => edit.Prefix != '+');
+                var afterCount = hunk.Count(edit => edit.Prefix != '-');
+                diff.Add($"@@ -{beforeStart},{beforeCount} +{afterStart},{afterCount} @@");
+                if (hunkLines.Length > availableLines)
+                {
+                    diff.AddRange(hunkLines.Take(availableLines));
+                    truncated = true;
+                    break;
+                }
+                diff.AddRange(hunkLines);
+            }
+
+            if (truncated)
+                diff.Add($"... (diff truncated to {MaxDiffOutputLines} lines) ...");
+            return string.Join("\n", diff);
+        }
+
+        static List<DiffLine> BuildExactLineEdits(string[] before, string[] after)
+        {
+            var lcs = new int[before.Length + 1, after.Length + 1];
+            for (var i = before.Length - 1; i >= 0; i--)
+            {
+                for (var j = after.Length - 1; j >= 0; j--)
+                {
+                    lcs[i, j] = string.Equals(before[i], after[j], StringComparison.Ordinal)
+                        ? lcs[i + 1, j + 1] + 1
+                        : Math.Max(lcs[i + 1, j], lcs[i, j + 1]);
+                }
+            }
+
+            var edits = new List<DiffLine>(before.Length + after.Length);
+            var beforeIndex = 0;
+            var afterIndex = 0;
+            while (beforeIndex < before.Length && afterIndex < after.Length)
+            {
+                if (string.Equals(before[beforeIndex], after[afterIndex], StringComparison.Ordinal))
+                {
+                    edits.Add(DiffLine.Equal(before[beforeIndex], beforeIndex++, afterIndex++));
+                }
+                else if (lcs[beforeIndex + 1, afterIndex] >= lcs[beforeIndex, afterIndex + 1])
+                {
+                    edits.Add(DiffLine.Delete(before[beforeIndex], beforeIndex++, afterIndex));
                 }
                 else
                 {
-                    hasChanges = true;
-                    // Show removed line
-                    if (beforeLine != null)
-                        diff.Add($"-{beforeLine}");
-                    // Show added line
-                    if (afterLine != null)
-                        diff.Add($"+{afterLine}");
+                    edits.Add(DiffLine.Add(after[afterIndex], beforeIndex, afterIndex++));
                 }
             }
 
-            if (!hasChanges)
+            while (beforeIndex < before.Length)
+                edits.Add(DiffLine.Delete(before[beforeIndex], beforeIndex++, afterIndex));
+            while (afterIndex < after.Length)
+                edits.Add(DiffLine.Add(after[afterIndex], beforeIndex, afterIndex++));
+            return edits;
+        }
+
+        static List<DiffLine> BuildAlignedLineEdits(string[] before, string[] after)
+        {
+            var edits = new List<DiffLine>(before.Length + after.Length);
+            var beforeIndex = 0;
+            var afterIndex = 0;
+            while (beforeIndex < before.Length && afterIndex < after.Length)
             {
-                return "--- before\n+++ after\n(no changes)";
+                if (string.Equals(before[beforeIndex], after[afterIndex], StringComparison.Ordinal))
+                {
+                    edits.Add(DiffLine.Equal(before[beforeIndex], beforeIndex++, afterIndex++));
+                    continue;
+                }
+
+                if (!TryFindNextAlignedLine(before, after, beforeIndex, afterIndex, out var beforeOffset, out var afterOffset))
+                    break;
+
+                for (var i = 0; i < beforeOffset; i++)
+                    edits.Add(DiffLine.Delete(before[beforeIndex], beforeIndex++, afterIndex));
+                for (var i = 0; i < afterOffset; i++)
+                    edits.Add(DiffLine.Add(after[afterIndex], beforeIndex, afterIndex++));
             }
 
-            // Limit diff size to keep responses manageable
-            if (diff.Count > 800)
+            while (beforeIndex < before.Length)
+                edits.Add(DiffLine.Delete(before[beforeIndex], beforeIndex++, afterIndex));
+            while (afterIndex < after.Length)
+                edits.Add(DiffLine.Add(after[afterIndex], beforeIndex, afterIndex++));
+            return edits;
+        }
+
+        static bool TryFindNextAlignedLine(
+            string[] before,
+            string[] after,
+            int beforeIndex,
+            int afterIndex,
+            out int beforeOffset,
+            out int afterOffset)
+        {
+            beforeOffset = 0;
+            afterOffset = 0;
+            var beforeLimit = Math.Min(before.Length - beforeIndex - 1, LargeDiffLookAhead);
+            var afterLimit = Math.Min(after.Length - afterIndex - 1, LargeDiffLookAhead);
+
+            for (var allowBlank = 0; allowBlank <= 1; allowBlank++)
             {
-                diff = diff.Take(800).ToList();
-                diff.Add("... (diff truncated) ...");
+                var bestDistance = int.MaxValue;
+                for (var left = 0; left <= beforeLimit; left++)
+                {
+                    var candidate = before[beforeIndex + left];
+                    if (allowBlank == 0 && string.IsNullOrWhiteSpace(candidate))
+                        continue;
+                    for (var right = 0; right <= afterLimit; right++)
+                    {
+                        if (left == 0 && right == 0)
+                            continue;
+                        var distance = left + right;
+                        if (distance >= bestDistance || !string.Equals(candidate, after[afterIndex + right], StringComparison.Ordinal))
+                            continue;
+                        beforeOffset = left;
+                        afterOffset = right;
+                        bestDistance = distance;
+                    }
+                }
+
+                if (bestDistance != int.MaxValue)
+                    return true;
             }
 
-            return string.Join("\n", diff);
+            return false;
+        }
+
+        static List<List<DiffLine>> BuildDiffHunks(List<DiffLine> edits, int contextLines)
+        {
+            var hunks = new List<List<DiffLine>>();
+            var index = 0;
+            while (index < edits.Count)
+            {
+                while (index < edits.Count && edits[index].Prefix == ' ')
+                    index++;
+                if (index >= edits.Count)
+                    break;
+
+                var start = Math.Max(0, index - contextLines);
+                var lastChange = index;
+                var scan = index + 1;
+                while (scan < edits.Count)
+                {
+                    if (edits[scan].Prefix != ' ')
+                    {
+                        if (scan - lastChange > (contextLines * 2) + 1)
+                            break;
+                        lastChange = scan;
+                    }
+                    scan++;
+                }
+
+                var end = Math.Min(edits.Count, lastChange + contextLines + 1);
+                hunks.Add(edits.GetRange(start, end - start));
+                index = end;
+            }
+            return hunks;
+        }
+
+        sealed class DiffLine
+        {
+            DiffLine(char prefix, string text, int beforePosition, int afterPosition)
+            {
+                Prefix = prefix;
+                Text = text ?? string.Empty;
+                BeforePosition = beforePosition;
+                AfterPosition = afterPosition;
+            }
+
+            public char Prefix { get; }
+            public string Text { get; }
+            public int BeforePosition { get; }
+            public int AfterPosition { get; }
+
+            public static DiffLine Equal(string text, int beforeIndex, int afterIndex) =>
+                new DiffLine(' ', text, beforeIndex + 1, afterIndex + 1);
+
+            public static DiffLine Delete(string text, int beforeIndex, int afterIndex) =>
+                new DiffLine('-', text, beforeIndex + 1, afterIndex + 1);
+
+            public static DiffLine Add(string text, int beforeIndex, int afterIndex) =>
+                new DiffLine('+', text, beforeIndex + 1, afterIndex + 1);
         }
     }
 }
