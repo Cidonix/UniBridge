@@ -1258,8 +1258,10 @@ class SmokeSuite:
     def step_manage_game_object_serialized_component_properties(self):
         stamp = datetime.now().strftime("%H%M%S%f")[:10]
         class_name = f"UBSerializedFields_{stamp}"
+        paused_class_name = f"UBPausedTimeProbe_{stamp}"
         namespace_name = "UniBridgeSmoke"
         full_type_name = f"{namespace_name}.{class_name}"
+        paused_full_type_name = f"{namespace_name}.{paused_class_name}"
         folder = "Assets/UniBridgeSmoke"
         script_path = f"{folder}/{class_name}.cs"
         object_names = []
@@ -1274,6 +1276,21 @@ class SmokeSuite:
             "    {\n"
             "        [SerializeField] private bool leaveOpenAfterRun;\n"
             "        [SerializeField] private float bootstrapTimeoutSeconds = 15f;\n"
+            "    }\n"
+            "\n"
+            f"    public sealed class {paused_class_name} : MonoBehaviour\n"
+            "    {\n"
+            "        public float CurrentTimeScale => Time.timeScale;\n"
+            "\n"
+            "        private void Awake()\n"
+            "        {\n"
+            "            Time.timeScale = 0f;\n"
+            "        }\n"
+            "\n"
+            "        private void OnDestroy()\n"
+            "        {\n"
+            "            Time.timeScale = 1f;\n"
+            "        }\n"
             "    }\n"
             "}\n"
         )
@@ -1467,6 +1484,68 @@ class SmokeSuite:
                 True,
             )
 
+            paused_object_name = f"__UB_RuntimeProbe_TimeScaleZero_{stamp}"
+            object_names.append(paused_object_name)
+            require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Create",
+                        "Name": paused_object_name,
+                        "ComponentsToAdd": [paused_full_type_name],
+                    },
+                ),
+                "Create timeScale-zero runtime probe",
+            )
+            paused_sample = require_success(
+                self.tool(
+                    "UniBridge_RuntimeStateProbe",
+                    {
+                        "Action": "Sample",
+                        "Name": "mcp_smoke_timescale_zero",
+                        "Target": f"/{paused_object_name}",
+                        "SearchMethod": "ByPath",
+                        "Component": paused_full_type_name,
+                        "Members": ["CurrentTimeScale"],
+                        "SampleFrames": 180,
+                        "TimeoutMs": 30000,
+                        "ReturnSamples": False,
+                        "SaveToFile": True,
+                        "IncludeNonPublicFields": True,
+                    },
+                    timeout=self.args.reload_timeout_seconds,
+                ),
+                "Sample 180 editor ticks while Time.timeScale is zero",
+            )
+            paused_sampling = prop(paused_sample, "sampling", default={}) or {}
+            if prop(paused_sample, "sampleRows") != 180 or prop(paused_sample, "timedOut") is not False:
+                raise AssertionError(f"timeScale-zero sampling did not complete 180/180 rows: {paused_sample}")
+            if paused_sampling.get("clock") != "EditorApplication.update":
+                raise AssertionError(f"RuntimeStateProbe did not report the editor update clock: {paused_sampling}")
+            if paused_sampling.get("observedZeroTimeScale") is not True:
+                raise AssertionError(f"RuntimeStateProbe did not observe Time.timeScale == 0: {paused_sampling}")
+
+            scheduler_status = response_payload(
+                self.tool("UniBridge_ExecutionStatus", {"Action": "Snapshot", "RecentLimit": 12})["data"]
+            )
+            scheduler = prop(scheduler_status, "scheduler", default={}) or {}
+            if prop(scheduler, "activeReaders", default=-1) != 0:
+                raise AssertionError(f"RuntimeStateProbe left an active read slot after timeScale-zero sampling: {scheduler}")
+
+            require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Delete",
+                        "Target": f"/{paused_object_name}",
+                        "SearchMethod": "ByPath",
+                        "IncludeInactive": True,
+                    },
+                ),
+                "Delete timeScale-zero runtime probe",
+            )
+            object_names.remove(paused_object_name)
+
             self.step_play_exit()
             self.step_edit_wait()
             play_mode = False
@@ -1477,6 +1556,9 @@ class SmokeSuite:
                 "editModeShortApplied": prop(short_application, "appliedCount"),
                 "playModeFqnApplied": prop(play_application, "appliedCount"),
                 "privateBoolFalseToTrueVerified": True,
+                "timeScaleZeroSampleRows": prop(paused_sample, "sampleRows"),
+                "timeScaleZeroSamplingClock": paused_sampling.get("clock"),
+                "timeScaleZeroReadSlotReleased": True,
                 "unknownFieldRejected": bool(skipped_unknown_field),
                 "invalidValueRejected": bool(skipped_bad_value),
                 "unknownComponentRejected": bool(skipped_unknown_component),

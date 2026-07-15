@@ -1,26 +1,25 @@
-# UniBridge 0.2.47 Release Notes
+# UniBridge 0.2.48 Release Notes
 
 Release date: 2026-07-15
 
-This hotfix makes `UniBridge_ManageGameObject Action=Create` honor top-level
-`ComponentProperties` after adding requested components. Private
-`[SerializeField]` fields are written through Unity serialization and verified
-with immediate post-write readback, so a serialized bool change from `false`
-to `true` can no longer be silently ignored.
+`UniBridge_RuntimeStateProbe Action=Sample|Assert` now samples directly from a
+persistent `EditorApplication.update` callback. Gameplay time can be paused
+with `Time.timeScale == 0` without stopping runtime-state sampling.
 
-Short and fully-qualified component names are supported. Successful responses
-return applied property reports with requested and actual values; unknown
-components, missing fields, invalid values, and readback mismatches return
-actionable failures and skipped-property evidence rather than misleading
-success.
+The probe also reserves a small part of `TimeoutMs` for normal MCP/scheduler
+completion. If editor ticks are too slow, it returns partial sample count,
+sampling clock, completion reason, and a useful wait reason before the
+scheduler boundary instead of surfacing a hard timeout. Every completion and
+cancellation path removes the update callback so the read slot is released.
 
-Regression coverage verifies the same workflow in Edit Mode and Play Mode,
-including independent `RuntimeStateProbe` readback and negative cases.
+Regression coverage pauses gameplay time in Play Mode, captures all `180`
+requested rows with `TimeoutMs=30000`, and verifies no active reader remains.
 
-## Previous 0.2.46 Notes
+## Previous 0.2.47 Notes
 
-Mixed `UniBridge_ScriptApplyEdits` Preview and Apply use one ordered in-memory
-pipeline with strict no-write Preview, predicted SHA evidence, and Apply parity.
+`ManageGameObject Create` applies and verifies top-level private serialized
+`ComponentProperties` in both Edit Mode and Play Mode, with explicit
+applied/skipped evidence.
 
 ## Previous 0.2.45 Notes
 

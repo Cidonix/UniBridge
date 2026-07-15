@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
@@ -130,19 +131,9 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
             var frames = Clamp(parameters.SampleFrames ?? DefaultSampleFrames, 1, 600);
             var timeoutMs = Clamp(parameters.TimeoutMs ?? DefaultTimeoutMs, 1000, 300000);
             var startUtc = DateTime.UtcNow;
-            var startEditorTime = EditorApplication.timeSinceStartup;
-            var deadline = startEditorTime + timeoutMs / 1000.0;
-            var samples = new List<ProbeSample>(frames);
-
-            await ToolExecutionScheduler.YieldIfNotCancelledAsync();
-            while (samples.Count < frames && EditorApplication.timeSinceStartup <= deadline)
-            {
-                ToolExecutionScheduler.ThrowIfCancellationRequested();
-                samples.Add(CaptureSample(samples.Count, targets, parameters, options));
-                await ToolExecutionScheduler.YieldIfNotCancelledAsync();
-            }
-
-            var elapsedMs = Math.Max(0, (EditorApplication.timeSinceStartup - startEditorTime) * 1000.0);
+            var sampling = await CaptureOnEditorUpdates(targets, parameters, options, frames, timeoutMs);
+            var samples = sampling.Samples;
+            var elapsedMs = sampling.ElapsedMs;
             var changeSummary = BuildChangeSummary(samples);
             var payload = new
             {
@@ -152,8 +143,12 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                 endedUtc = DateTime.UtcNow.ToString("o"),
                 requestedFrames = frames,
                 sampleRows = samples.Count,
-                timedOut = samples.Count < frames,
+                timedOut = sampling.TimedOut,
+                partialSampleCount = sampling.TimedOut ? samples.Count : (int?)null,
+                completionReason = sampling.CompletionReason,
+                waitReason = sampling.WaitReason,
                 elapsedMs,
+                sampling = sampling.ToDto(),
                 editor = BuildEditorState(),
                 targetCount = targets.Count,
                 componentFilter = parameters.Component,
@@ -168,14 +163,21 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                 savedPath = SavePayload(payload, parameters.Name);
             }
 
-            return Response.Success($"Captured runtime state sample with {samples.Count} row(s).", new
+            var message = sampling.TimedOut
+                ? $"Runtime state sampling reached its editor-tick budget with {samples.Count} of {frames} row(s); partial samples were returned and the read slot can be released normally."
+                : $"Captured runtime state sample with {samples.Count} row(s).";
+            return Response.Success(message, new
             {
                 schema = "unibridge.runtimeStateProbe.sample.summary.v1",
                 name = payload.name,
                 requestedFrames = frames,
                 sampleRows = samples.Count,
-                timedOut = samples.Count < frames,
+                timedOut = sampling.TimedOut,
+                partialSampleCount = sampling.TimedOut ? samples.Count : (int?)null,
+                completionReason = sampling.CompletionReason,
+                waitReason = sampling.WaitReason,
                 elapsedMs,
+                sampling = sampling.ToDto(),
                 savedPath,
                 editor = payload.editor,
                 targetCount = targets.Count,
@@ -211,19 +213,9 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
             var frames = Clamp(parameters.SampleFrames ?? DefaultSampleFrames, 1, 600);
             var timeoutMs = Clamp(parameters.TimeoutMs ?? DefaultTimeoutMs, 1000, 300000);
             var startUtc = DateTime.UtcNow;
-            var startEditorTime = EditorApplication.timeSinceStartup;
-            var deadline = startEditorTime + timeoutMs / 1000.0;
-            var samples = new List<ProbeSample>(frames);
-
-            await ToolExecutionScheduler.YieldIfNotCancelledAsync();
-            while (samples.Count < frames && EditorApplication.timeSinceStartup <= deadline)
-            {
-                ToolExecutionScheduler.ThrowIfCancellationRequested();
-                samples.Add(CaptureSample(samples.Count, targets, parameters, options));
-                await ToolExecutionScheduler.YieldIfNotCancelledAsync();
-            }
-
-            var elapsedMs = Math.Max(0, (EditorApplication.timeSinceStartup - startEditorTime) * 1000.0);
+            var sampling = await CaptureOnEditorUpdates(targets, parameters, options, frames, timeoutMs);
+            var samples = sampling.Samples;
+            var elapsedMs = sampling.ElapsedMs;
             var assertionResults = EvaluateAssertions(samples, rules);
             var failedRequired = assertionResults.Where(result => !result.Passed && result.Required).ToArray();
             var failedOptional = assertionResults.Where(result => !result.Passed && !result.Required).ToArray();
@@ -237,8 +229,12 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                 endedUtc = DateTime.UtcNow.ToString("o"),
                 requestedFrames = frames,
                 sampleRows = samples.Count,
-                timedOut = samples.Count < frames,
+                timedOut = sampling.TimedOut,
+                partialSampleCount = sampling.TimedOut ? samples.Count : (int?)null,
+                completionReason = sampling.CompletionReason,
+                waitReason = sampling.WaitReason,
                 elapsedMs,
+                sampling = sampling.ToDto(),
                 editor = BuildEditorState(),
                 targetCount = targets.Count,
                 componentFilter = parameters.Component,
@@ -269,8 +265,12 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                 name = payload.name,
                 requestedFrames = frames,
                 sampleRows = samples.Count,
-                timedOut = samples.Count < frames,
+                timedOut = sampling.TimedOut,
+                partialSampleCount = sampling.TimedOut ? samples.Count : (int?)null,
+                completionReason = sampling.CompletionReason,
+                waitReason = sampling.WaitReason,
                 elapsedMs,
+                sampling = sampling.ToDto(),
                 savedPath,
                 editor = payload.editor,
                 targetCount = targets.Count,
@@ -324,6 +324,137 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                     .Select(target => CaptureTarget(target, parameters.Component, options))
                     .ToList()
             };
+        }
+
+        static async Task<ProbeSamplingResult> CaptureOnEditorUpdates(
+            List<GameObject> targets,
+            RuntimeStateProbeParams parameters,
+            ProbeOptions options,
+            int requestedFrames,
+            int timeoutMs)
+        {
+            var startEditorTime = EditorApplication.timeSinceStartup;
+            var schedulerHeadroomMs = Math.Min(2000, Math.Max(250, timeoutMs / 10));
+            var samplingBudgetMs = Math.Max(100, timeoutMs - schedulerHeadroomMs);
+            var deadline = startEditorTime + samplingBudgetMs / 1000.0;
+            var samples = new List<ProbeSample>(requestedFrames);
+            var token = ToolExecutionScheduler.CurrentCancellationToken;
+            var completion = new TaskCompletionSource<ProbeSamplingResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var completed = 0;
+            var editorTicksObserved = 0;
+            var observedZeroTimeScale = false;
+            EditorApplication.CallbackFunction tick = null;
+            CancellationTokenRegistration cancellationRegistration = default;
+
+            ProbeSamplingResult BuildResult(bool timedOut, string completionReason, string waitReason)
+            {
+                var endEditorTime = EditorApplication.timeSinceStartup;
+                return new ProbeSamplingResult
+                {
+                    Samples = samples,
+                    RequestedFrames = requestedFrames,
+                    TimedOut = timedOut,
+                    CompletionReason = completionReason,
+                    WaitReason = waitReason,
+                    EditorTicksObserved = editorTicksObserved,
+                    ObservedZeroTimeScale = observedZeroTimeScale,
+                    SamplingBudgetMs = samplingBudgetMs,
+                    SchedulerHeadroomMs = schedulerHeadroomMs,
+                    ElapsedMs = Math.Max(0, (endEditorTime - startEditorTime) * 1000.0)
+                };
+            }
+
+            void Unsubscribe()
+            {
+                if (tick != null)
+                    EditorApplication.update -= tick;
+            }
+
+            void Complete(bool timedOut, string completionReason, string waitReason)
+            {
+                if (Interlocked.Exchange(ref completed, 1) != 0)
+                    return;
+
+                Unsubscribe();
+                completion.TrySetResult(BuildResult(timedOut, completionReason, waitReason));
+            }
+
+            void Fail(Exception exception)
+            {
+                if (Interlocked.Exchange(ref completed, 1) != 0)
+                    return;
+
+                Unsubscribe();
+                completion.TrySetException(exception);
+            }
+
+            tick = () =>
+            {
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                    editorTicksObserved++;
+                    observedZeroTimeScale |= Application.isPlaying && Math.Abs(SafeFloat(() => Time.timeScale)) <= 0.000001f;
+
+                    var now = EditorApplication.timeSinceStartup;
+                    if (now >= deadline)
+                    {
+                        var waitReason = observedZeroTimeScale
+                            ? "Gameplay time was paused (Time.timeScale == 0). Sampling continued on editor update ticks, but the requested tick count did not fit within the internal sampling budget."
+                            : EditorApplication.isPaused
+                                ? "The Unity Editor was paused and the requested editor update tick count did not fit within the internal sampling budget."
+                                : "The requested editor update tick count did not fit within the internal sampling budget.";
+                        Complete(true, "editor_tick_timeout", waitReason);
+                        return;
+                    }
+
+                    samples.Add(CaptureSample(samples.Count, targets, parameters, options));
+                    if (samples.Count >= requestedFrames)
+                    {
+                        Complete(false, "completed", null);
+                        return;
+                    }
+
+                    if (Application.isPlaying && observedZeroTimeScale)
+                        EditorApplication.QueuePlayerLoopUpdate();
+                }
+                catch (OperationCanceledException)
+                {
+                    if (Interlocked.Exchange(ref completed, 1) == 0)
+                    {
+                        Unsubscribe();
+                        completion.TrySetCanceled(token);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Fail(ex);
+                }
+            };
+
+            cancellationRegistration = token.Register(() =>
+            {
+                if (Interlocked.Exchange(ref completed, 1) != 0)
+                    return;
+
+                Unsubscribe();
+                completion.TrySetCanceled(token);
+            });
+
+            EditorApplication.update += tick;
+            if (Application.isPlaying)
+                EditorApplication.QueuePlayerLoopUpdate();
+
+            try
+            {
+                return await completion.Task;
+            }
+            finally
+            {
+                Unsubscribe();
+                cancellationRegistration.Dispose();
+            }
         }
 
         static TargetProbe CaptureTarget(GameObject target, string componentFilter, ProbeOptions options)
@@ -905,6 +1036,7 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                 renderedFrameCount = SafeInt(() => Time.renderedFrameCount),
                 time = SafeFloat(() => Time.time),
                 deltaTime = SafeFloat(() => Time.deltaTime),
+                timeScale = SafeFloat(() => Time.timeScale),
                 realtimeSinceStartup = SafeFloat(() => Time.realtimeSinceStartup)
             };
         }
@@ -2035,6 +2167,36 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                         .Select(member => member.Trim())
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToArray()
+                };
+            }
+        }
+
+        sealed class ProbeSamplingResult
+        {
+            public List<ProbeSample> Samples = new();
+            public int RequestedFrames;
+            public bool TimedOut;
+            public string CompletionReason;
+            public string WaitReason;
+            public int EditorTicksObserved;
+            public bool ObservedZeroTimeScale;
+            public int SamplingBudgetMs;
+            public int SchedulerHeadroomMs;
+            public double ElapsedMs;
+
+            public object ToDto()
+            {
+                return new
+                {
+                    clock = "EditorApplication.update",
+                    requestedFrames = RequestedFrames,
+                    capturedFrames = Samples.Count,
+                    editorTicksObserved = EditorTicksObserved,
+                    observedZeroTimeScale = ObservedZeroTimeScale,
+                    samplingBudgetMs = SamplingBudgetMs,
+                    schedulerHeadroomMs = SchedulerHeadroomMs,
+                    completionReason = CompletionReason,
+                    waitReason = WaitReason
                 };
             }
         }

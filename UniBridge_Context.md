@@ -5,6 +5,43 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-07-15 - UniBridge 0.2.48 timeScale-independent RuntimeStateProbe
+
+Причина: у `Domovyk` `RuntimeStateProbe SampleFrames=180 TimeoutMs=30000`
+доходив до scheduler timeout, коли inventory modal ставив
+`Time.timeScale=0`. Старий цикл використовував editor time, але між samples
+робив загальний async yield із повторною підпискою та main-thread continuation,
+тому міг витрачати кілька editor ticks на один рядок.
+
+Виправлення:
+
+- `Sample` і `Assert` використовують одну постійну підписку на
+  `EditorApplication.update` та збирають один sample за editor tick;
+- gameplay `Time.timeScale` не керує sampling clock;
+- для `Time.timeScale=0` додатково запитується player-loop update;
+- internal sampling budget залишає headroom перед scheduler timeout;
+- partial result містить `partialSampleCount`, `completionReason`,
+  `waitReason` і `sampling.clock`;
+- callback знімається в усіх completion/cancel/exception paths;
+- MCP regression створює Play Mode probe з `Time.timeScale=0`, вимагає
+  `180/180` rows за `30000ms` і перевіряє `activeReaders=0`.
+
+Live MCP verification на `UniBridge_Test_Project`:
+
+- targeted Play Mode regression: `180/180` samples при
+  `Time.timeScale=0`, clock `EditorApplication.update`, після завершення
+  `activeReaders=0`;
+- full MCP smoke: `27/27`, report
+  `Library/UniBridge/mcp-smoke-regression-0.2.48-full.json`;
+- final health: compilation `0 errors / 0 warnings`, no critical build-system
+  issues, fresh assemblies, empty Console.
+
+Downstream sync виконано для online-проєктів `Domovyk`,
+`DomovykPrototype` і `Domovyk_`. Кожен проєкт після MCP refresh/reload
+підтвердив пакет `0.2.48`, editor ready, compilation `0/0`,
+`compileHealth.healthy=true`, critical build issues `0`, fresh assemblies та
+порожню Console.
+
 ## 2026-07-15 - UniBridge 0.2.47 verified Create ComponentProperties
 
 Причина: live-сценарій у `Domovyk` створював GameObject із компонентом

@@ -2,6 +2,25 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.48
+
+### Fixed
+
+- `UniBridge_RuntimeStateProbe Action=Sample|Assert` now captures once per
+  `EditorApplication.update` through one persistent callback. It no longer
+  chains a delay/main-thread continuation for every requested sample.
+- Sampling is independent of gameplay time and continues when
+  `Time.timeScale == 0`.
+- The tool reserves headroom before its scheduler timeout. If the requested
+  editor ticks still do not fit, it returns partial sample count,
+  `completionReason`, `waitReason`, and sampling-clock diagnostics instead of
+  being cut off by a transport-level timeout.
+- Completion, cancellation, exceptions, and internal timeout all unsubscribe
+  the editor callback, allowing the scheduler read slot to be released.
+- MCP regression creates a Play Mode component that pauses gameplay time,
+  captures `180/180` samples within `30000ms`, and verifies
+  `activeReaders == 0` afterward.
+
 ## 0.2.47
 
 ### Fixed

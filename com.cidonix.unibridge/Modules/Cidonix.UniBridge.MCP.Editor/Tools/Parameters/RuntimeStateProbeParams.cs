@@ -62,10 +62,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Include non-public reflected fields when listing/reading members. Explicit member names can still resolve non-public fields. Default false.", Required = false, Default = false)]
         public bool? IncludeNonPublicFields { get; set; }
 
-        [McpDescription("Number of editor update ticks to sample for Action=Sample. Default 30, clamped to 1..600.", Required = false, Default = 30)]
+        [McpDescription("Number of EditorApplication.update ticks to sample for Action=Sample or Assert. Sampling is independent of gameplay Time.timeScale. Default 30, clamped to 1..600.", Required = false, Default = 30)]
         public int? SampleFrames { get; set; }
 
-        [McpDescription("Timeout for Action=Sample in milliseconds. Default 30000.", Required = false, Default = 30000)]
+        [McpDescription("Timeout for Action=Sample or Assert in milliseconds. UniBridge reserves scheduler headroom and returns partial sample count plus an editor-tick wait reason when the internal budget expires. Default 30000.", Required = false, Default = 30000)]
         public int? TimeoutMs { get; set; }
 
         [McpDescription("Require Play Mode for Action=Sample. Default true because runtime state probes are intended for live gameplay.", Required = false, Default = true)]

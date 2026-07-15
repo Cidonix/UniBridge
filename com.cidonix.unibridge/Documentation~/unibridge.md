@@ -194,6 +194,13 @@ runtime_fields
 `Action=Sample` and `Action=Assert` require Play Mode by default. Pass
 `RequirePlayMode=false` only for intentional editor-time smoke tests.
 
+Sampling uses `EditorApplication.update`, not scaled gameplay time, so it
+continues while `Time.timeScale == 0`. The response reports
+`sampling.clock=EditorApplication.update`. If the internal editor-tick budget
+expires before all requested rows are captured, `timedOut=true` includes
+`partialSampleCount`, `completionReason`, and `waitReason`; the call returns
+before the scheduler timeout so its read slot can be released normally.
+
 Target lookup uses the shared scene resolver, including inactive scene objects,
 Prefab Stage objects, instance IDs, hierarchy paths, component short/full type
 names, MonoScript GUIDs, and serialized editor class identifiers.

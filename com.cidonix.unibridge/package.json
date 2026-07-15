@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.47",
+  "version": "0.2.48",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- ManageGameObject Create now applies top-level ComponentProperties after all requested components are added.\n- Private [SerializeField] values are written through SerializedObject and verified by post-write readback, including bool false-to-true changes.\n- Short and fully-qualified component type names are supported consistently.\n- Property mutation responses include applied/skipped entries, requested and actual values, and readback status.\n- Unknown components, missing fields, invalid values, and readback mismatches fail explicitly instead of returning silent success.\n- MCP regression covers the workflow in both Edit Mode and Play Mode.\n\n### Previous Changes\n\n- Mixed ScriptApplyEdits Preview and Apply use one ordered in-memory pipeline with SHA parity.\n- VersionControl supports single and multi-asset inspection, editability, and checkout workflows with per-asset diagnostics.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI values in Prefab Stage while preserving Unicode."
+    "changelog": "### Fixed\n\n- RuntimeStateProbe Sample and Assert now capture directly from one persistent EditorApplication.update subscription instead of chaining an async yield per sample.\n- Sampling remains active when gameplay time is paused with Time.timeScale equal to zero.\n- RuntimeStateProbe reserves scheduler timeout headroom and returns partial sample count, completion reason, and wait reason if its internal editor-tick budget expires.\n- Cancellation and completion always remove the editor update callback so read-only scheduler slots are released.\n- MCP regression captures 180 of 180 samples in Play Mode while Time.timeScale is zero and verifies activeReaders returns to zero.\n\n### Previous Changes\n\n- ManageGameObject Create applies and verifies private serialized ComponentProperties in Edit and Play Mode.\n- Mixed ScriptApplyEdits Preview and Apply use one ordered in-memory pipeline with SHA parity.\n- VersionControl supports single and multi-asset workflows with per-asset diagnostics."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {
