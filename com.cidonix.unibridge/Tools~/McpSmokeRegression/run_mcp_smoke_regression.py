@@ -415,6 +415,13 @@ class SmokeSuite:
         self.run_step("runtime_probe_single_assertion_object", "Verify a single RuntimeStateProbe assertion object is normalized to a one-item array.", self.step_runtime_probe_single_assertion_object)
         self.run_step("compilation_diagnostics", "Read compilation diagnostics and build-system health.", self.step_compilation_diagnostics)
 
+        if self.args.include_play_mode:
+            self.run_step(
+                "manage_game_object_serialized_component_properties",
+                "Verify Create applies private serialized ComponentProperties in Edit and Play Mode.",
+                self.step_manage_game_object_serialized_component_properties,
+            )
+
         if self.args.include_ui_recipe:
             self.run_step("workflow_ui_recipe", "Execute RunUISmokeTest recipe and cleanup its temporary Canvas.", self.step_ui_recipe)
         if self.args.include_prefab_stage_ui:
@@ -1247,6 +1254,259 @@ class SmokeSuite:
         data = self.tool("UniBridge_ManageEditor", {"Action": "GetCompilationDiagnostics"})["data"] or {}
         assert_compilation_healthy(data, require_evidence=True)
         return {"message": prop(data, "message"), "compileHealth": prop(data, "compileHealth"), "buildSystemHealth": prop(data, "buildSystemHealth")}
+
+    def step_manage_game_object_serialized_component_properties(self):
+        stamp = datetime.now().strftime("%H%M%S%f")[:10]
+        class_name = f"UBSerializedFields_{stamp}"
+        namespace_name = "UniBridgeSmoke"
+        full_type_name = f"{namespace_name}.{class_name}"
+        folder = "Assets/UniBridgeSmoke"
+        script_path = f"{folder}/{class_name}.cs"
+        object_names = []
+        play_mode = False
+        script_created = False
+
+        source = (
+            "using UnityEngine;\n\n"
+            f"namespace {namespace_name}\n"
+            "{\n"
+            f"    public sealed class {class_name} : MonoBehaviour\n"
+            "    {\n"
+            "        [SerializeField] private bool leaveOpenAfterRun;\n"
+            "        [SerializeField] private float bootstrapTimeoutSeconds = 15f;\n"
+            "    }\n"
+            "}\n"
+        )
+
+        def require_success(result, label):
+            envelope = result.get("envelope") or result.get("data") or {}
+            if isinstance(envelope, dict) and envelope.get("success") is False:
+                raise AssertionError(f"{label} failed: {envelope}")
+            return result.get("data") or {}
+
+        def require_failure(result, expected_text, label):
+            envelope = result.get("envelope") or {}
+            if not isinstance(envelope, dict) or envelope.get("success") is not False:
+                raise AssertionError(f"{label} unexpectedly succeeded: {envelope or result}")
+            serialized = json.dumps(envelope, ensure_ascii=False).lower()
+            if expected_text.lower() not in serialized:
+                raise AssertionError(f"{label} did not report '{expected_text}': {envelope}")
+            return envelope
+
+        def wait_after_script_change():
+            self.tool(
+                "UniBridge_ManageEditor",
+                {
+                    "Action": "RefreshAssets",
+                    "WaitForCompletion": True,
+                    "Force": True,
+                    "TimeoutMs": 120000,
+                    "PollIntervalMs": 500,
+                    "RequireNotPlaying": True,
+                },
+                timeout=self.args.reload_timeout_seconds,
+            )
+            self.tool("UniBridge_ManageEditor", {"Action": "RequestScriptCompilationNoWait", "Force": True})
+            ready = self.tool(
+                "UniBridge_ManageEditor",
+                {
+                    "Action": "WaitForReadyAfterReload",
+                    "TimeoutMs": 120000,
+                    "PollIntervalMs": 500,
+                    "RequireNotPlaying": True,
+                },
+                timeout=self.args.reload_timeout_seconds,
+            )["data"] or {}
+            assert_compilation_healthy(ready)
+            diagnostics = self.tool(
+                "UniBridge_ManageEditor",
+                {"Action": "GetCompilationDiagnostics"},
+                timeout=self.args.reload_timeout_seconds,
+            )["data"] or {}
+            assert_compilation_healthy(diagnostics, require_evidence=True)
+
+        def create_and_verify(name, component_name, timeout_value, require_play_mode):
+            object_names.append(name)
+            created = require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Create",
+                        "Name": name,
+                        "ComponentsToAdd": [component_name],
+                        "ComponentProperties": {
+                            component_name: {
+                                "bootstrapTimeoutSeconds": timeout_value,
+                                "leaveOpenAfterRun": True,
+                            }
+                        },
+                    },
+                ),
+                f"Create {name}",
+            )
+            application = prop(created, "componentPropertyApplication", default={}) or {}
+            if (
+                prop(application, "appliedCount") != 2
+                or prop(application, "skippedCount") != 0
+                or prop(application, "allApplied") is not True
+            ):
+                raise AssertionError(f"Create did not report two verified applied properties: {application}")
+            applied = prop(application, "applied", default=[]) or []
+            bool_report = next(
+                (item for item in applied if isinstance(item, dict) and item.get("requestedName") == "leaveOpenAfterRun"),
+                None,
+            )
+            if not bool_report or bool_report.get("actualValue") is not True or bool_report.get("readbackVerified") is not True:
+                raise AssertionError(f"Create did not verify false->true serialized bool readback: {applied}")
+
+            asserted = require_success(
+                self.tool(
+                    "UniBridge_RuntimeStateProbe",
+                    {
+                        "Action": "Assert",
+                        "Target": f"/{name}",
+                        "SearchMethod": "ByPath",
+                        "Component": full_type_name,
+                        "Members": ["leaveOpenAfterRun", "bootstrapTimeoutSeconds"],
+                        "Assertions": [
+                            {"member": "leaveOpenAfterRun", "operator": "==", "value": True},
+                            {
+                                "member": "bootstrapTimeoutSeconds",
+                                "operator": "==",
+                                "value": timeout_value,
+                                "tolerance": 0.001,
+                            },
+                        ],
+                        "SampleFrames": 1,
+                        "RequirePlayMode": require_play_mode,
+                        "IncludeNonPublicFields": True,
+                        "SaveToFile": False,
+                        "ReturnSamples": True,
+                    },
+                    timeout=self.args.reload_timeout_seconds,
+                ),
+                f"Independent readback {name}",
+            )
+            if prop(asserted, "passed") is not True or prop(asserted, "assertionSummary", "failed") != 0:
+                raise AssertionError(f"Independent RuntimeStateProbe readback failed: {asserted}")
+
+            require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Delete",
+                        "Target": f"/{name}",
+                        "SearchMethod": "ByPath",
+                        "IncludeInactive": True,
+                    },
+                ),
+                f"Delete {name}",
+            )
+            object_names.remove(name)
+            return application
+
+        def verify_rejected(name, component_properties, expected_text):
+            object_names.append(name)
+            result = self.tool(
+                "UniBridge_ManageGameObject",
+                {
+                    "Action": "Create",
+                    "Name": name,
+                    "ComponentsToAdd": [full_type_name],
+                    "ComponentProperties": component_properties,
+                },
+            )
+            envelope = require_failure(result, expected_text, name)
+            object_names.remove(name)
+            return prop(envelope, "data", "skipped", default=[])
+
+        try:
+            require_success(
+                self.tool("UniBridge_CreateScript", {"Path": script_path, "Contents": source}),
+                "Create serialized-field probe script",
+            )
+            script_created = True
+            wait_after_script_change()
+
+            fqn_application = create_and_verify(
+                f"__UB_ComponentProperties_Edit_FQN_{stamp}",
+                full_type_name,
+                21.5,
+                False,
+            )
+            short_application = create_and_verify(
+                f"__UB_ComponentProperties_Edit_Short_{stamp}",
+                class_name,
+                22.5,
+                False,
+            )
+
+            skipped_unknown_field = verify_rejected(
+                f"__UB_ComponentProperties_BadField_{stamp}",
+                {full_type_name: {"missingSerializedField": True}},
+                "not found",
+            )
+            skipped_bad_value = verify_rejected(
+                f"__UB_ComponentProperties_BadValue_{stamp}",
+                {full_type_name: {"leaveOpenAfterRun": "not-a-bool"}},
+                "could not be set",
+            )
+            skipped_unknown_component = verify_rejected(
+                f"__UB_ComponentProperties_BadComponent_{stamp}",
+                {"UniBridgeSmoke.DoesNotExist": {"leaveOpenAfterRun": True}},
+                "not found",
+            )
+
+            self.step_play_enter()
+            self.step_play_wait()
+            play_mode = True
+            play_application = create_and_verify(
+                f"__UB_ComponentProperties_Play_FQN_{stamp}",
+                full_type_name,
+                23.5,
+                True,
+            )
+
+            self.step_play_exit()
+            self.step_edit_wait()
+            play_mode = False
+
+            return {
+                "componentType": full_type_name,
+                "editModeFqnApplied": prop(fqn_application, "appliedCount"),
+                "editModeShortApplied": prop(short_application, "appliedCount"),
+                "playModeFqnApplied": prop(play_application, "appliedCount"),
+                "privateBoolFalseToTrueVerified": True,
+                "unknownFieldRejected": bool(skipped_unknown_field),
+                "invalidValueRejected": bool(skipped_bad_value),
+                "unknownComponentRejected": bool(skipped_unknown_component),
+            }
+        finally:
+            if play_mode:
+                try:
+                    self.step_play_exit()
+                    self.step_edit_wait()
+                except Exception:
+                    pass
+            for object_name in list(object_names):
+                try:
+                    self.tool(
+                        "UniBridge_ManageGameObject",
+                        {
+                            "Action": "Delete",
+                            "Target": f"/{object_name}",
+                            "SearchMethod": "ByPath",
+                            "IncludeInactive": True,
+                        },
+                    )
+                except Exception:
+                    pass
+            if script_created:
+                try:
+                    self.tool("UniBridge_DeleteScript", {"Uri": script_path})
+                    wait_after_script_change()
+                except Exception:
+                    pass
 
     def step_ui_recipe(self):
         data = self.tool(

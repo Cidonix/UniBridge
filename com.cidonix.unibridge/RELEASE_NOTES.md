@@ -1,23 +1,26 @@
-# UniBridge 0.2.46 Release Notes
+# UniBridge 0.2.47 Release Notes
 
 Release date: 2026-07-15
 
-This hotfix makes mixed `UniBridge_ScriptApplyEdits` Preview and Apply use one
-ordered in-memory edit pipeline. A batch such as
-`anchor_insert + replace_method + insert_method` now produces one final diff
-containing all three changes, validates one final C# source, and writes at most
-once.
+This hotfix makes `UniBridge_ManageGameObject Action=Create` honor top-level
+`ComponentProperties` after adding requested components. Private
+`[SerializeField]` fields are written through Unity serialization and verified
+with immediate post-write readback, so a serialized bool change from `false`
+to `true` can no longer be silently ignored.
 
-`Preview=true` remains a strict no-write boundary and now returns the same
-predicted source/SHA that a subsequent Apply produces. The response includes
-`currentSha256`, `predictedSha256`, `editsApplied=0`,
-`scheduledRefresh=false`, `routing=mixed/preview`, and an explicit
-`single_in_memory_pipeline` execution model.
+Short and fully-qualified component names are supported. Successful responses
+return applied property reports with requested and actual values; unknown
+components, missing fields, invalid values, and readback mismatches return
+actionable failures and skipped-property evidence rather than misleading
+success.
 
-Regression coverage verifies both anchor/method operation orders, a
-three-operation mixed batch, Preview/Apply SHA parity, stale preconditions,
-multiple method edits in one class, and method boundaries when the following
-method starts at column zero.
+Regression coverage verifies the same workflow in Edit Mode and Play Mode,
+including independent `RuntimeStateProbe` readback and negative cases.
+
+## Previous 0.2.46 Notes
+
+Mixed `UniBridge_ScriptApplyEdits` Preview and Apply use one ordered in-memory
+pipeline with strict no-write Preview, predicted SHA evidence, and Apply parity.
 
 ## Previous 0.2.45 Notes
 

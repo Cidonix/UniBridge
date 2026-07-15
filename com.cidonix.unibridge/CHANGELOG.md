@@ -2,6 +2,26 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.47
+
+### Fixed
+
+- `UniBridge_ManageGameObject Action=Create` now applies top-level
+  `ComponentProperties` after every requested component has been added. A
+  string entry in `ComponentsToAdd` no longer causes the accompanying property
+  map to be silently ignored.
+- Component type lookup accepts short and fully-qualified names consistently.
+  Private `[SerializeField]` values are patched through `SerializedObject`, so
+  changes such as a serialized `bool` from `false` to `true` work in both Edit
+  Mode and Play Mode.
+- Property mutations perform post-write readback and return structured
+  `applied` / `skipped` evidence with requested and actual values. Unknown
+  components, missing fields, invalid values, and readback mismatches now fail
+  explicitly instead of returning misleading success.
+- MCP smoke regression creates a temporary component and verifies short/FQN
+  lookup, private serialized bool and float writes, independent runtime
+  readback, negative diagnostics, and Edit/Play Mode parity.
+
 ## 0.2.46
 
 ### Fixed

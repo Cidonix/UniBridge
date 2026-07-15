@@ -45,13 +45,13 @@ Args:
     Position, Rotation, Scale: Transform values for create or modify.
     ComponentsToAdd: Component type names or objects with TypeName and Properties.
     ComponentName: Component type for GetComponent, RemoveComponent, or SetComponentProperty.
-    ComponentProperties: Component property values to set. Asset references may use Assets/... paths; scene references may use {""find"": ""Player"", ""method"": ""by_name""}.
+    ComponentProperties: Map component names to values. Create/Modify resolve short or fully-qualified type names and write public or private [SerializeField] fields through SerializedObject. Asset references may use Assets/... paths; scene references may use {""find"": ""Player"", ""method"": ""by_name""}.
     IncludeNonPublicSerialized: Include private [SerializeField] data in component summaries.
 
 PascalCase names above are canonical for new agents. Legacy snake_case aliases are still accepted and normalized internally.
 
 Returns:
-    success, message, and action-specific scene data such as object summaries, component summaries, or search results.";
+    success, message, and action-specific scene data such as object summaries, component summaries, or search results. Property mutations include applied/skipped entries and post-write readback evidence.";
         // Shared JsonSerializer to avoid per-call allocation overhead
         static readonly JsonSerializer InputSerializer = JsonSerializer.Create(new JsonSerializerSettings
         {
@@ -300,7 +300,7 @@ Returns:
                     ComponentProperties = new
                     {
                         type = "object",
-                        description = "Map of component names to property dictionaries",
+                        description = "Map of short or fully-qualified component type names to property dictionaries. Create and Modify support private [SerializeField] fields and return verified applied/skipped property reports.",
                         additional_properties = new { type = "object" }
                     },
                     Properties = new
@@ -782,6 +782,8 @@ Returns:
             }
 
             // Add Components
+            var appliedComponentProperties = new List<object>();
+            var skippedComponentProperties = new List<object>();
             if (@params["components_to_add"] is JArray componentsToAddArray)
             {
                 foreach (var compToken in componentsToAddArray)
@@ -801,7 +803,12 @@ Returns:
 
                     if (!string.IsNullOrEmpty(typeName))
                     {
-                        var addResult = AddComponentInternal(newGo, typeName, properties);
+                        var addResult = AddComponentInternal(
+                            newGo,
+                            typeName,
+                            properties,
+                            appliedComponentProperties,
+                            skippedComponentProperties);
                         if (addResult != null) // Check if AddComponentInternal returned an error object
                         {
                             UnityEngine.Object.DestroyImmediate(newGo); // Clean up
@@ -810,9 +817,49 @@ Returns:
                     }
                     else
                     {
-                        Debug.LogWarning(
-                            $"[ManageGameObject] Invalid component format in components_to_add: {compToken}"
+                        UnityEngine.Object.DestroyImmediate(newGo);
+                        return Response.Error(
+                            $"Invalid component entry in ComponentsToAdd: {compToken}. " +
+                            "Use a component type name or { TypeName, Properties }."
                         );
+                    }
+                }
+            }
+
+            // Apply top-level ComponentProperties after all requested components exist.
+            if (@params["component_properties"] is JObject componentPropertiesObj)
+            {
+                foreach (var componentEntry in componentPropertiesObj.Properties())
+                {
+                    if (componentEntry.Value is not JObject propertiesToSet || !propertiesToSet.HasValues)
+                    {
+                        skippedComponentProperties.Add(new
+                        {
+                            componentName = componentEntry.Name,
+                            status = "skipped",
+                            reason = "ComponentProperties entry must be a non-empty object."
+                        });
+                        UnityEngine.Object.DestroyImmediate(newGo);
+                        return Response.Error(
+                            $"ComponentProperties for '{componentEntry.Name}' must be a non-empty object.",
+                            new
+                            {
+                                applied = appliedComponentProperties,
+                                skipped = skippedComponentProperties
+                            }
+                        );
+                    }
+
+                    var setResult = SetComponentPropertiesInternal(
+                        newGo,
+                        componentEntry.Name,
+                        propertiesToSet,
+                        appliedChanges: appliedComponentProperties,
+                        skippedChanges: skippedComponentProperties);
+                    if (setResult != null)
+                    {
+                        UnityEngine.Object.DestroyImmediate(newGo);
+                        return setResult;
                     }
                 }
             }
@@ -914,7 +961,13 @@ Returns:
 
             // Use the new serializer helper
             //return Response.Success(successMessage, GetGameObjectData(finalInstance));
-            return Response.Success(successMessage, GameObjectSerializer.GetGameObjectData(finalInstance));
+            return Response.Success(
+                successMessage,
+                BuildGameObjectDataWithPropertyApplication(
+                    finalInstance,
+                    appliedComponentProperties,
+                    skippedComponentProperties)
+            );
         }
 
         static object ModifyGameObject(
@@ -1081,6 +1134,8 @@ Returns:
 
             // --- Component Modifications ---
             // Note: These might need more specific Undo recording per component
+            var appliedComponentProperties = new List<object>();
+            var skippedComponentProperties = new List<object>();
 
             // Remove Components
             if (@params["components_to_remove"] is JArray componentsToRemoveArray)
@@ -1116,7 +1171,12 @@ Returns:
 
                     if (!string.IsNullOrEmpty(typeName))
                     {
-                        var addResult = AddComponentInternal(targetGo, typeName, properties);
+                        var addResult = AddComponentInternal(
+                            targetGo,
+                            typeName,
+                            properties,
+                            appliedComponentProperties,
+                            skippedComponentProperties);
                         if (addResult != null)
                             return addResult;
                         modified = true;
@@ -1137,7 +1197,9 @@ Returns:
                         var setResult = SetComponentPropertiesInternal(
                             targetGo,
                             compName,
-                            propertiesToSet
+                            propertiesToSet,
+                            appliedChanges: appliedComponentProperties,
+                            skippedChanges: skippedComponentProperties
                         );
                         if (setResult != null)
                         {
@@ -1181,7 +1243,13 @@ Returns:
 
                 return Response.Error(
                     $"One or more component property operations failed on '{targetGo.name}'.",
-                    new { componentErrors = componentErrors, errors = aggregatedErrors }
+                    new
+                    {
+                        componentErrors = componentErrors,
+                        errors = aggregatedErrors,
+                        applied = appliedComponentProperties,
+                        skipped = skippedComponentProperties
+                    }
                 );
             }
 
@@ -1194,7 +1262,10 @@ Returns:
 
                 return Response.Success(
                     $"No modifications applied to GameObject '{targetGo.name}'.",
-                    GameObjectSerializer.GetGameObjectData(targetGo)
+                    BuildGameObjectDataWithPropertyApplication(
+                        targetGo,
+                        appliedComponentProperties,
+                        skippedComponentProperties)
                 );
             }
 
@@ -1202,7 +1273,10 @@ Returns:
             // Use the new serializer helper
             return Response.Success(
                 $"GameObject '{targetGo.name}' modified successfully.",
-                GameObjectSerializer.GetGameObjectData(targetGo)
+                BuildGameObjectDataWithPropertyApplication(
+                    targetGo,
+                    appliedComponentProperties,
+                    skippedComponentProperties)
             );
             // return Response.Success(
             //     $"GameObject '{targetGo.name}' modified successfully.",
@@ -1465,7 +1539,14 @@ Returns:
                 );
             }
 
-            var addResult = AddComponentInternal(targetGo, typeName, properties);
+            var appliedChanges = new List<object>();
+            var skippedChanges = new List<object>();
+            var addResult = AddComponentInternal(
+                targetGo,
+                typeName,
+                properties,
+                appliedChanges,
+                skippedChanges);
             if (addResult != null)
                 return addResult; // Return error
 
@@ -1473,7 +1554,10 @@ Returns:
             // Use the new serializer helper
             return Response.Success(
                 $"Component '{typeName}' added to '{targetGo.name}'.",
-                GameObjectSerializer.GetGameObjectData(targetGo)
+                BuildGameObjectDataWithPropertyApplication(
+                    targetGo,
+                    appliedChanges,
+                    skippedChanges)
             ); // Return updated GO data
         }
 
@@ -1562,7 +1646,13 @@ Returns:
             }
 
             var appliedChanges = new List<object>();
-            var setResult = SetComponentPropertiesInternal(targetGo, compName, propertiesToSet, appliedChanges: appliedChanges);
+            var skippedChanges = new List<object>();
+            var setResult = SetComponentPropertiesInternal(
+                targetGo,
+                compName,
+                propertiesToSet,
+                appliedChanges: appliedChanges,
+                skippedChanges: skippedChanges);
             if (setResult != null)
                 return setResult; // Return error
 
@@ -1578,7 +1668,9 @@ Returns:
                 {
                     target = GameObjectSerializer.GetGameObjectData(targetGo),
                     componentName = compName,
-                    applied = appliedChanges
+                    applied = appliedChanges,
+                    skipped = skippedChanges,
+                    allApplied = skippedChanges.Count == 0
                 }
             );
         }
@@ -1976,7 +2068,9 @@ Returns:
         static object AddComponentInternal(
             GameObject targetGo,
             string typeName,
-            JObject properties
+            JObject properties,
+            List<object> appliedChanges = null,
+            List<object> skippedChanges = null
         )
         {
             Type componentType = FindType(typeName);
@@ -2069,7 +2163,9 @@ Returns:
                         targetGo,
                         typeName,
                         properties,
-                        newComponent
+                        newComponent,
+                        appliedChanges,
+                        skippedChanges
                     ); // Pass the new component instance
                     if (setResult != null)
                     {
@@ -2138,7 +2234,8 @@ Returns:
             string compName,
             JObject propertiesToSet,
             Component targetComponentInstance = null,
-            List<object> appliedChanges = null
+            List<object> appliedChanges = null,
+            List<object> skippedChanges = null
         )
         {
             Component targetComponent = targetComponentInstance;
@@ -2155,8 +2252,19 @@ Returns:
             }
             if (targetComponent == null)
             {
+                skippedChanges?.Add(new
+                {
+                    componentName = compName,
+                    status = "skipped",
+                    reason = $"Component '{compName}' was not found on '{targetGo.name}'."
+                });
                 return Response.Error(
-                    $"Component '{compName}' not found on '{targetGo.name}' to set properties."
+                    $"Component '{compName}' not found on '{targetGo.name}' to set properties.",
+                    new
+                    {
+                        applied = appliedChanges ?? new List<object>(),
+                        skipped = skippedChanges ?? new List<object>()
+                    }
                 );
             }
 
@@ -2166,6 +2274,7 @@ Returns:
             using var serializedObject = new SerializedObject(targetComponent);
             serializedObject.Update();
             var serializedChanged = false;
+            var serializedChanges = new List<SerializedPropertyPatcher.PropertyPatchChange>();
 
             foreach (var prop in propertiesToSet.Properties())
             {
@@ -2180,6 +2289,8 @@ Returns:
                         {
                             Debug.LogWarning($"[ManageGameObject] {tmpFontError}");
                             failures.Add(tmpFontError);
+                            skippedChanges?.Add(BuildSkippedPropertyReport(
+                                compName, targetComponent, propName, tmpFontError, "textMeshProFont"));
                         }
                         else
                         {
@@ -2196,6 +2307,8 @@ Returns:
                         {
                             Debug.LogWarning($"[ManageGameObject] {rendererError}");
                             failures.Add(rendererError);
+                            skippedChanges?.Add(BuildSkippedPropertyReport(
+                                compName, targetComponent, propName, rendererError, "rendererMaterial"));
                         }
                         else
                         {
@@ -2217,24 +2330,14 @@ Returns:
                         if (serializedResult.Success)
                         {
                             serializedChanged = serializedChanged || serializedResult.Changes.Count > 0;
-                            foreach (var change in serializedResult.Changes)
-                            {
-                                appliedChanges?.Add(new
-                                {
-                                    requestedName = change.requestedName,
-                                    propertyPath = change.propertyPath,
-                                    propertyType = change.propertyType,
-                                    before = change.before,
-                                    after = change.after,
-                                    dryRun = change.dryRun,
-                                    route = "serializedProperty"
-                                });
-                            }
+                            serializedChanges.AddRange(serializedResult.Changes);
                         }
                         else
                         {
                             Debug.LogWarning($"[ManageGameObject] {serializedResult.Error}");
                             failures.Add(serializedResult.Error);
+                            skippedChanges?.Add(BuildSkippedPropertyReport(
+                                compName, targetComponent, propName, serializedResult.Error, "serializedProperty"));
                         }
 
                         continue;
@@ -2246,6 +2349,8 @@ Returns:
                         {
                             Debug.LogWarning($"[ManageGameObject] {objectMemberError}");
                             failures.Add(objectMemberError);
+                            skippedChanges?.Add(BuildSkippedPropertyReport(
+                                compName, targetComponent, propName, objectMemberError, "objectMember"));
                         }
                         else
                         {
@@ -2265,6 +2370,39 @@ Returns:
                             : $"Property '{propName}' not found. Available: [{string.Join(", ", availableProperties)}]";
                         Debug.LogWarning($"[ManageGameObject] {msg}");
                         failures.Add(msg);
+                        skippedChanges?.Add(BuildSkippedPropertyReport(
+                            compName, targetComponent, propName, msg, "reflection"));
+                    }
+                    else
+                    {
+                        var readbackAvailable = TryReadComponentMember(
+                            targetComponent,
+                            propName,
+                            out var actualValue);
+                        var verified = readbackAvailable && PropertyValuesEqual(propValue, actualValue);
+                        var report = new
+                        {
+                            componentName = compName,
+                            resolvedComponentType = targetComponent.GetType().FullName,
+                            requestedName = propName,
+                            requestedValue = propValue,
+                            actualValue,
+                            readbackVerified = verified,
+                            status = verified ? "applied" : "skipped",
+                            route = "reflection"
+                        };
+
+                        if (verified)
+                        {
+                            appliedChanges?.Add(report);
+                        }
+                        else
+                        {
+                            failures.Add(
+                                $"Post-write readback failed for '{compName}.{propName}': " +
+                                $"requested {FormatReportValue(propValue)}, actual {FormatReportValue(actualValue)}.");
+                            skippedChanges?.Add(report);
+                        }
                     }
                 }
                 catch (Exception e)
@@ -2272,7 +2410,10 @@ Returns:
                     Debug.LogError(
                         $"[ManageGameObject] Error setting property '{propName}' on '{compName}': {e.Message}"
                     );
-                    failures.Add($"Error setting '{propName}': {e.Message}");
+                    var error = $"Error setting '{propName}': {e.Message}";
+                    failures.Add(error);
+                    skippedChanges?.Add(BuildSkippedPropertyReport(
+                        compName, targetComponent, propName, error, "exception"));
                 }
             }
 
@@ -2281,10 +2422,169 @@ Returns:
                 serializedObject.ApplyModifiedProperties();
             }
 
+            serializedObject.Update();
+            foreach (var change in serializedChanges)
+            {
+                var readbackProperty = SerializedPropertyPatcher.FindProperty(
+                    serializedObject,
+                    change.propertyPath);
+                var actualValue = readbackProperty != null
+                    ? SerializedPropertyPatcher.SerializePropertyValue(readbackProperty)
+                    : null;
+                var verified = readbackProperty != null && PropertyValuesEqual(change.after, actualValue);
+                var report = new
+                {
+                    componentName = compName,
+                    resolvedComponentType = targetComponent.GetType().FullName,
+                    requestedName = change.requestedName,
+                    propertyPath = change.propertyPath,
+                    propertyType = change.propertyType,
+                    before = change.before,
+                    requestedValue = change.after,
+                    actualValue,
+                    readbackVerified = verified,
+                    status = verified ? "applied" : "skipped",
+                    route = "serializedProperty"
+                };
+
+                if (verified)
+                {
+                    appliedChanges?.Add(report);
+                }
+                else
+                {
+                    failures.Add(
+                        $"Post-write readback failed for '{compName}.{change.requestedName}': " +
+                        $"requested {FormatReportValue(change.after)}, actual {FormatReportValue(actualValue)}.");
+                    skippedChanges?.Add(report);
+                }
+            }
+
             EditorUtility.SetDirty(targetComponent);
             return failures.Count == 0
                 ? null
-                : Response.Error($"One or more properties failed on '{compName}'.", new { errors = failures });
+                : Response.Error(
+                    $"One or more properties failed on '{compName}'.",
+                    new
+                    {
+                        errors = failures,
+                        applied = appliedChanges ?? new List<object>(),
+                        skipped = skippedChanges ?? new List<object>()
+                    });
+        }
+
+        static object BuildGameObjectDataWithPropertyApplication(
+            GameObject gameObject,
+            List<object> applied,
+            List<object> skipped)
+        {
+            var data = JObject.FromObject(GameObjectSerializer.GetGameObjectData(gameObject));
+            data["componentPropertyApplication"] = JObject.FromObject(new
+            {
+                requested = (applied?.Count ?? 0) + (skipped?.Count ?? 0),
+                appliedCount = applied?.Count ?? 0,
+                skippedCount = skipped?.Count ?? 0,
+                allApplied = (skipped?.Count ?? 0) == 0,
+                applied = applied ?? new List<object>(),
+                skipped = skipped ?? new List<object>()
+            });
+            return data;
+        }
+
+        static object BuildSkippedPropertyReport(
+            string requestedComponentName,
+            Component component,
+            string propertyName,
+            string reason,
+            string route)
+        {
+            return new
+            {
+                componentName = requestedComponentName,
+                resolvedComponentType = component?.GetType().FullName,
+                requestedName = propertyName,
+                status = "skipped",
+                reason,
+                route
+            };
+        }
+
+        static bool PropertyValuesEqual(object expected, object actual)
+        {
+            if (expected == null || actual == null)
+            {
+                return expected == null && actual == null;
+            }
+
+            var expectedToken = expected as JToken ?? JToken.FromObject(expected);
+            var actualToken = actual as JToken ?? JToken.FromObject(actual);
+            if (IsNumericToken(expectedToken) && IsNumericToken(actualToken))
+            {
+                var expectedNumber = expectedToken.Value<double>();
+                var actualNumber = actualToken.Value<double>();
+                var scale = Math.Max(1d, Math.Max(Math.Abs(expectedNumber), Math.Abs(actualNumber)));
+                return Math.Abs(expectedNumber - actualNumber) <= 0.000001d * scale;
+            }
+
+            try
+            {
+                return JToken.DeepEquals(expectedToken, actualToken);
+            }
+            catch
+            {
+                return Equals(expected, actual);
+            }
+        }
+
+        static bool IsNumericToken(JToken token)
+        {
+            return token != null && (token.Type == JTokenType.Integer || token.Type == JTokenType.Float);
+        }
+
+        static string FormatReportValue(object value)
+        {
+            if (value == null)
+            {
+                return "null";
+            }
+
+            try
+            {
+                return JToken.FromObject(value).ToString(Formatting.None);
+            }
+            catch
+            {
+                return value.ToString();
+            }
+        }
+
+        static bool TryReadComponentMember(object target, string memberName, out object value)
+        {
+            value = null;
+            if (target == null || string.IsNullOrWhiteSpace(memberName) ||
+                memberName.Contains('.') || memberName.Contains('['))
+            {
+                return false;
+            }
+
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic |
+                        BindingFlags.IgnoreCase;
+            var type = target.GetType();
+            var property = type.GetProperty(memberName, flags);
+            if (property != null && property.CanRead)
+            {
+                value = property.GetValue(target);
+                return true;
+            }
+
+            var field = type.GetField(memberName, flags);
+            if (field == null)
+            {
+                return false;
+            }
+
+            value = field.GetValue(target);
+            return true;
         }
 
         static bool TryApplyTextMeshProFont(

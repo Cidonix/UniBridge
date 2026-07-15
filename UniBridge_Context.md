@@ -5,6 +5,46 @@
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
 
+## 2026-07-15 - UniBridge 0.2.47 verified Create ComponentProperties
+
+Причина: live-сценарій у `Domovyk` створював GameObject із компонентом
+`MiaGame.Tests.DomovykInventoryUISmokeDriver` і передавав top-level
+`ComponentProperties`. `Create` повертав success, але цей map не передавався у
+setter: private `[SerializeField] bool leaveOpenAfterRun` залишався `false`.
+
+Виправлення:
+
+- `ManageGameObject.Create` спочатку додає всі компоненти, а потім застосовує
+  top-level `ComponentProperties`;
+- short і fully-qualified type names проходять через спільний resolver;
+- private `[SerializeField]` патчиться через `SerializedObject`;
+- після запису UniBridge перечитує фактичний `SerializedProperty` і порівнює
+  його з requested value;
+- response містить `componentPropertyApplication` з `applied`, `skipped`,
+  requested/actual values і `readbackVerified`;
+- unknown component/field, invalid value або readback mismatch повертає error і
+  не залишає частково створений GameObject;
+- regression smoke створює тимчасовий компонент і перевіряє serialized bool
+  `false -> true`, float, short/FQN lookup, негативні випадки та однакову
+  поведінку в Edit Mode і Play Mode.
+
+Live MCP verification:
+
+- package `0.2.47` синхронізовано в `UniBridge_Test_Project`, `Domovyk`,
+  `DomovykPrototype` і `Domovyk_`;
+- повний regression у Unity `6000.5.4f1` пройшов `27/27`; report:
+  `Library/UniBridge/mcp-smoke-regression-0.2.47-full.json`;
+- новий regression підтвердив Edit/Play parity, short/FQN resolution,
+  `private bool false -> true`, float write/readback і actionable rejection
+  unknown field, invalid value та unknown component;
+- exact `Domovyk` repro після package reload повернув `requested=2`,
+  `appliedCount=2`, `skippedCount=0`, `allApplied=true`; незалежний
+  `RuntimeStateProbe` перечитав `leaveOpenAfterRun=true` і
+  `bootstrapTimeoutSeconds=15`;
+- тимчасові test GameObjects/scripts видалені, усі downstream projects мають
+  compilation `0 errors / 0 warnings`, healthy build-system state, fresh
+  assemblies і порожню Console.
+
 ## 2026-07-13: UniBridge 0.2.40 Prefab Stage-safe ManageUI creation
 
 Причина: у `Domovyk` агент відкрив

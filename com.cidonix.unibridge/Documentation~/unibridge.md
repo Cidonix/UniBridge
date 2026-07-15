@@ -941,6 +941,8 @@ Use `UniBridge_SceneHierarchyExport Action=CompareExports` to compare two export
 Use `UniBridge_ManageScene` for scene file operations and simple hierarchy snapshots. Use `UniBridge_ManageGameObject` when you need to create, modify, or delete scene objects and components.
 `UniBridge_ManageGameObject` now presents PascalCase parameters as the canonical agent-facing API (`Action`, `Target`, `SearchMethod`, `ComponentsToAdd`, `ComponentName`, `ComponentProperties`). Legacy snake_case aliases are normalized internally.
 
+For `Create` and `Modify`, `ComponentProperties` is a map from a short or fully-qualified component type name to a property dictionary. UniBridge adds all requested components first, then applies the map through Unity serialization, including private `[SerializeField]` fields. Property responses contain `componentPropertyApplication.applied` and `.skipped` entries with requested/actual values and readback status. Missing components or fields, invalid values, and post-write mismatches fail explicitly; do not treat object creation alone as proof that every property was applied.
+
 ### Capture Unity Views
 
 Use `UniBridge_CaptureView` when an agent needs to inspect what the project looks like, not only what metadata says.

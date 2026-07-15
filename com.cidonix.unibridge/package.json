@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.46",
+  "version": "0.2.47",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- ScriptApplyEdits structured previews now align inserted and deleted lines before rendering their unified diff.\n- Replacing a one-line method with a multi-line body no longer makes every following method appear removed and re-added.\n- Unified preview output is grouped into compact hunks with bounded context and response size.\n- Large scripts use bounded line alignment instead of allocating an unbounded LCS matrix.\n- MCP regression covers normal and unindented following methods, strict Preview no-write/SHA behavior, actual apply, and mixed replace_method plus anchor_insert plus insert_method calls.\n\n### Previous Changes\n\n- VersionControl supports single and multi-asset inspection, editability, and checkout workflows with per-asset diagnostics.\n- ScriptApplyEdits Preview is strictly no-write for structured and anchor operations and returns diff/SHA evidence.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI text and font settings in Prefab Stage while preserving Unicode.\n- ManageUI creation actions resolve explicit parents inside the current Prefab Stage and create objects in the stage scene."
+    "changelog": "### Fixed\n\n- ManageGameObject Create now applies top-level ComponentProperties after all requested components are added.\n- Private [SerializeField] values are written through SerializedObject and verified by post-write readback, including bool false-to-true changes.\n- Short and fully-qualified component type names are supported consistently.\n- Property mutation responses include applied/skipped entries, requested and actual values, and readback status.\n- Unknown components, missing fields, invalid values, and readback mismatches fail explicitly instead of returning silent success.\n- MCP regression covers the workflow in both Edit Mode and Play Mode.\n\n### Previous Changes\n\n- Mixed ScriptApplyEdits Preview and Apply use one ordered in-memory pipeline with SHA parity.\n- VersionControl supports single and multi-asset inspection, editability, and checkout workflows with per-asset diagnostics.\n- ManageUI SetGraphic applies and verifies TextMeshProUGUI values in Prefab Stage while preserving Unicode."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

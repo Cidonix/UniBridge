@@ -53,7 +53,7 @@ through an approval-based connection flow.
 ## Requirements
 
 This version is compatible with Unity Editor 6000.0 and later. It has been
-smoke-tested locally on Unity 6000.4.10f1 and Unity 6000.5.0f1 on Windows.
+smoke-tested locally on Unity 6000.4.10f1 and Unity 6000.5.4f1 on Windows.
 Linux and macOS relay
 artifacts are bundled and cross-built, but should be verified on target systems
 before production use.
