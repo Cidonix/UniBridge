@@ -67,20 +67,33 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return result;
             }
 
-            if (IsRooted(path))
+            if (HasInvalidPathCharacters(path))
             {
-                ResolveAbsolute(result, path);
-            }
-            else
-            {
-                ResolveProjectRelative(result, path, assumeAssetRelative);
+                result.Error = "path_invalid_characters";
+                return result;
             }
 
-            result.DisplayPath = !string.IsNullOrWhiteSpace(result.AssetPath)
-                ? result.AssetPath
-                : (!string.IsNullOrWhiteSpace(result.ProjectRelativePath) ? result.ProjectRelativePath : result.AbsolutePath);
+            try
+            {
+                if (IsRooted(path))
+                {
+                    ResolveAbsolute(result, path);
+                }
+                else
+                {
+                    ResolveProjectRelative(result, path, assumeAssetRelative);
+                }
 
-            result.Exists = Exists(result);
+                result.DisplayPath = !string.IsNullOrWhiteSpace(result.AssetPath)
+                    ? result.AssetPath
+                    : (!string.IsNullOrWhiteSpace(result.ProjectRelativePath) ? result.ProjectRelativePath : result.AbsolutePath);
+
+                result.Exists = Exists(result);
+            }
+            catch (Exception ex)
+            {
+                result.Error = "path_invalid: " + ex.Message;
+            }
             return result;
         }
 
@@ -349,7 +362,19 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             if (path.StartsWith("//", StringComparison.Ordinal))
                 return true;
 
-            return Path.IsPathRooted(ToNativeSeparators(path));
+            try
+            {
+                return Path.IsPathRooted(ToNativeSeparators(path));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static bool HasInvalidPathCharacters(string path)
+        {
+            return !string.IsNullOrEmpty(path) && path.IndexOfAny(Path.GetInvalidPathChars()) >= 0;
         }
 
         static bool IsUnderRoot(string path, string root)

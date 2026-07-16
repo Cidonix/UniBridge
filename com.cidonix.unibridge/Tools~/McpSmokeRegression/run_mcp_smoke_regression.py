@@ -402,6 +402,11 @@ class SmokeSuite:
         self.run_step("asset_read_text", "Read package.json via AssetIntelligence Action=ReadText alias.", self.step_asset_read_text)
         self.run_step("context_snapshot_brief", "Read compact ContextSnapshot with compact console summary.", self.step_context_snapshot)
         self.run_step("scene_hierarchy_brief", "Read a bounded SceneObjectView hierarchy including inactive objects.", self.step_scene_hierarchy)
+        self.run_step(
+            "batch_scene_hierarchy_paths",
+            "Verify BatchActions keeps scene hierarchy references out of asset impact and rollback path resolution.",
+            self.step_batch_scene_hierarchy_paths,
+        )
         self.run_step("workflow_core_recipe", "Execute RunCoreSmokeTest recipe and cleanup its temporary object.", self.step_core_recipe)
         self.run_step("runtime_probe_timeout_releases_slot", "Verify a timed-out RuntimeStateProbe releases its read-only scheduler slot.", self.step_runtime_probe_timeout_releases_slot)
 
@@ -1112,6 +1117,141 @@ class SmokeSuite:
             },
         )["data"] or {}
         return {"message": prop(data, "message"), "totalReturned": prop(data, "totalReturned"), "truncatedByCount": prop(data, "truncatedByCount")}
+
+    def step_batch_scene_hierarchy_paths(self):
+        stamp = datetime.now().strftime("%H%M%S%f")[:10]
+        root_name = f"<<UB_BATCH_SCENE_{stamp}>>"
+        target_name = "Target"
+        sibling_name = "Sibling"
+        mover_name = "Mover"
+        root_path = f"/{root_name}"
+        target_path = f"{root_path}/{target_name}"
+        sibling_path = f"{root_path}/{sibling_name}"
+        mover_path = f"{root_path}/{mover_name}"
+
+        def require_success(result, label):
+            envelope = result.get("envelope") or result.get("data") or {}
+            if isinstance(envelope, dict) and envelope.get("success") is False:
+                raise AssertionError(f"{label} failed: {envelope}")
+            return result.get("data") or {}
+
+        def create(name, parent=None):
+            args = {"Action": "Create", "Name": name}
+            if parent:
+                args["Parent"] = parent
+            require_success(self.tool("UniBridge_ManageGameObject", args), f"Create {name}")
+
+        def batch(dry_run, include_impact, rollback_assets, steps, label):
+            return require_success(
+                self.tool(
+                    "UniBridge_BatchActions",
+                    {
+                        "Name": label,
+                        "DryRun": dry_run,
+                        "IncludeImpact": include_impact,
+                        "IncludeWorkSessionReview": False,
+                        "RollbackOnFailure": True,
+                        "RollbackAssets": rollback_assets,
+                        "Steps": steps,
+                    },
+                    timeout=self.args.reload_timeout_seconds,
+                ),
+                label,
+            )
+
+        try:
+            create(root_name)
+            create(target_name, root_path)
+            create(sibling_name, root_path)
+            create(mover_name, root_path)
+
+            dry_run_steps = [
+                {
+                    "id": "hierarchy-target",
+                    "tool": "game_object",
+                    "parameters": {
+                        "Action": "Modify",
+                        "Target": target_path,
+                        "SearchMethod": "ByPath",
+                        "Position": [1.25, 2.5, 0.0],
+                        "Targets": [target_path, sibling_path],
+                        "ReferenceProbe": {"find": mover_path, "method": "by_path"},
+                        "ReferenceAsset": "Assets/UniBridgeSmoke",
+                    },
+                },
+                {
+                    "id": "hierarchy-placement",
+                    "tool": "game_object",
+                    "parameters": {
+                        "Action": "Modify",
+                        "Target": mover_path,
+                        "SearchMethod": "ByPath",
+                        "Parent": root_path,
+                        "Sibling": sibling_path,
+                        "Placement": "Before",
+                    },
+                },
+            ]
+            dry_run = batch(True, True, True, dry_run_steps, "Hierarchy path impact dry-run")
+            impact = prop(dry_run, "impact", default={}) or {}
+            scene_references = prop(impact, "sceneObjectReferences", default=[]) or []
+            normalized_references = {str(value).lower() for value in scene_references}
+            for expected in (root_path, target_path, sibling_path, mover_path):
+                if expected.lower() not in normalized_references:
+                    raise AssertionError(f"Scene hierarchy reference was not classified: {expected}; got {scene_references}")
+
+            asset_items = prop(impact, "assets", "items", default=[]) or []
+            asset_paths = {
+                str(item.get("path")).lower()
+                for item in asset_items
+                if isinstance(item, dict) and item.get("path")
+            }
+            if any("<<ub_batch_scene_" in path for path in asset_paths):
+                raise AssertionError(f"Hierarchy references leaked into asset impact: {sorted(asset_paths)}")
+            if "assets/unibridgesmoke" not in asset_paths:
+                raise AssertionError(f"Explicit Assets path was not preserved in impact: {sorted(asset_paths)}")
+
+            step_plans = prop(impact, "steps", default=[]) or []
+            for plan in step_plans:
+                likely_assets = [str(path).lower() for path in (plan.get("likelyAssetPaths") or [])]
+                if any("<<ub_batch_scene_" in path for path in likely_assets):
+                    raise AssertionError(f"Hierarchy path leaked into per-step asset impact: {plan}")
+
+            execution_step = {
+                "id": "execute-hierarchy-target",
+                "tool": "game_object",
+                "parameters": {
+                    "Action": "Modify",
+                    "Target": target_path,
+                    "SearchMethod": "ByPath",
+                    "IncludeInactive": True,
+                    "Active": False,
+                },
+            }
+            executed_with_rollback = batch(False, True, True, [execution_step], "Hierarchy path execute with rollback snapshot")
+            if prop(executed_with_rollback, "summary", "failed", default=0) != 0:
+                raise AssertionError(f"Hierarchy path execution with rollback snapshot failed: {executed_with_rollback}")
+
+            execution_step["parameters"]["Active"] = True
+            executed_without_rollback = batch(False, False, False, [execution_step], "Hierarchy path execute without impact")
+            if prop(executed_without_rollback, "summary", "failed", default=0) != 0:
+                raise AssertionError(f"Hierarchy path execution without impact failed: {executed_without_rollback}")
+
+            return {
+                "rootPath": root_path,
+                "sceneObjectReferenceCount": len(scene_references),
+                "assetPaths": sorted(asset_paths),
+                "rollbackAssetsExecutionPassed": True,
+                "includeImpactFalseExecutionPassed": True,
+            }
+        finally:
+            try:
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {"Action": "Delete", "Target": root_path, "SearchMethod": "ByPath"},
+                )
+            except Exception:
+                pass
 
     def step_core_recipe(self):
         data = self.tool(
@@ -1984,8 +2124,12 @@ class SmokeSuite:
                 ),
                 "Search ordinary scenes for leaked Canvas",
             )
-            if leak_result:
-                raise AssertionError(f"Prefab Stage Canvas leaked into an ordinary scene: {leak_result}")
+            ordinary_scene_leaks = [
+                item for item in leak_result
+                if isinstance(item, dict) and item.get("scenePath") != prefab_path
+            ]
+            if ordinary_scene_leaks:
+                raise AssertionError(f"Prefab Stage Canvas leaked into an ordinary scene: {ordinary_scene_leaks}")
 
             return {
                 "prefabPath": prefab_path,

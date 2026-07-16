@@ -532,9 +532,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 for (var i = 0; i < SceneManager.sceneCount; i++)
                 {
                     var scene = SceneManager.GetSceneAt(i);
-                    if (!string.IsNullOrWhiteSpace(scene.path))
+                    if (TryNormalizeAssetCandidate(scene.path, out var scenePath))
                     {
-                        paths.Add(NormalizeAssetPath(scene.path));
+                        paths.Add(scenePath);
                     }
                 }
 
@@ -556,8 +556,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
                 if (token.Type == JTokenType.String)
                 {
-                    var candidate = NormalizeAssetPath(token.Value<string>());
-                    if (IsAssetLikePath(candidate))
+                    if (TryNormalizeAssetCandidate(token.Value<string>(), out var candidate))
                     {
                         paths.Add(candidate);
                     }
@@ -586,9 +585,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
                 if (token.Type == JTokenType.String)
                 {
-                    var candidate = NormalizeAssetPath(token.Value<string>());
-                    if (!string.IsNullOrWhiteSpace(candidate) &&
-                        candidate.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase))
+                    if (TryNormalizeProjectSettingsCandidate(token.Value<string>(), out var candidate))
                     {
                         paths.Add(candidate);
                     }
@@ -631,7 +628,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                         if (property.Value.Type == JTokenType.String &&
                             IsSceneHintKey(property.Name))
                         {
-                            var value = NormalizeAssetPath(property.Value.Value<string>());
+                            var rawValue = property.Value.Value<string>()?.Trim();
+                            var value = TryNormalizeAssetCandidate(rawValue, out var assetPath)
+                                ? assetPath
+                                : NormalizeSceneHint(rawValue);
                             if (!string.IsNullOrWhiteSpace(value))
                                 paths.Add(value);
                         }
@@ -644,8 +644,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
                 if (token?.Type == JTokenType.String)
                 {
-                    var value = NormalizeAssetPath(token.Value<string>());
-                    if (!string.IsNullOrWhiteSpace(value) &&
+                    if (TryNormalizeAssetCandidate(token.Value<string>(), out var value) &&
                         string.Equals(Path.GetExtension(value), ".unity", StringComparison.OrdinalIgnoreCase))
                     {
                         paths.Add(value);
@@ -662,16 +661,32 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
             static IEnumerable<string> ExtractSceneObjectReferences(JToken token)
             {
+                if (token == null)
+                    yield break;
+
+                if (token is JArray array)
+                {
+                    foreach (var item in array)
+                    {
+                        foreach (var nested in ExtractSceneObjectReferences(item))
+                            yield return nested;
+                    }
+
+                    yield break;
+                }
+
                 if (token is not JObject obj)
                     yield break;
 
+                if (TryReadSceneFindInstruction(obj, out var instructionReference))
+                    yield return instructionReference;
+
                 foreach (var property in obj.Properties())
                 {
-                    if (property.Value.Type == JTokenType.String && IsSceneReferenceKey(property.Name))
+                    if (IsSceneReferenceKey(property.Name))
                     {
-                        var value = property.Value.Value<string>()?.Trim();
-                        if (!string.IsNullOrWhiteSpace(value) && !IsAssetLikePath(NormalizeAssetPath(value)))
-                            yield return value;
+                        foreach (var reference in ExtractSceneReferenceValues(property.Value))
+                            yield return reference;
                     }
 
                     foreach (var nested in ExtractSceneObjectReferences(property.Value))
@@ -750,7 +765,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     return false;
 
                 if (token.Type == JTokenType.String)
-                    return string.Equals(NormalizeAssetPath(token.Value<string>()), assetPath, StringComparison.OrdinalIgnoreCase);
+                    return TryNormalizeAssetCandidate(token.Value<string>(), out var candidate) &&
+                           string.Equals(candidate, assetPath, StringComparison.OrdinalIgnoreCase);
 
                 return token.Children().Any(child => ContainsPath(child, assetPath));
             }
@@ -771,7 +787,56 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             static bool IsSceneReferenceKey(string key)
             {
                 var normalized = NormalizeAction(key);
-                return normalized is "target" or "targets" or "parent" or "source" or "sourcetarget" or "connectedbodytarget" or "starttarget" or "endtarget" or "root";
+                return normalized is "target" or "targets" or "parent" or "parents" or "sibling" or "siblings" or
+                    "source" or "sourcetarget" or "connectedbodytarget" or "starttarget" or "endtarget" or "root" or "roots";
+            }
+
+            static IEnumerable<string> ExtractSceneReferenceValues(JToken token)
+            {
+                if (token == null)
+                    yield break;
+
+                if (token.Type == JTokenType.String)
+                {
+                    var value = token.Value<string>()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(value) && !TryNormalizeAssetCandidate(value, out _))
+                        yield return value;
+                    yield break;
+                }
+
+                if (token is JArray array)
+                {
+                    foreach (var item in array)
+                    foreach (var nested in ExtractSceneReferenceValues(item))
+                        yield return nested;
+                    yield break;
+                }
+
+                if (token is JObject obj && TryReadSceneFindInstruction(obj, out var instructionReference))
+                    yield return instructionReference;
+            }
+
+            static bool TryReadSceneFindInstruction(JObject obj, out string sceneReference)
+            {
+                sceneReference = null;
+                if (obj == null || !obj.TryGetValue("find", StringComparison.OrdinalIgnoreCase, out var findToken) ||
+                    findToken?.Type != JTokenType.String)
+                {
+                    return false;
+                }
+
+                var value = findToken.Value<string>()?.Trim();
+                if (string.IsNullOrWhiteSpace(value) || TryNormalizeAssetCandidate(value, out _))
+                    return false;
+
+                var method = obj.TryGetValue("method", StringComparison.OrdinalIgnoreCase, out var methodToken)
+                    ? NormalizeAction(methodToken?.ToString())
+                    : string.Empty;
+                if (!string.IsNullOrEmpty(method) && method is not "bypath" and not "byname" and not "byid" and not "byidornameorpath")
+                    return false;
+
+                sceneReference = value;
+                return true;
             }
 
             static string NormalizeAction(string value)
@@ -838,7 +903,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                     return null;
                 }
 
-                text = ProjectPathResolver.ToProjectRelativePath(text, assumeAssetRelative: false);
+                if (HasInvalidPathCharacters(DecodePathForClassification(text)))
+                    return null;
+
+                try
+                {
+                    text = ProjectPathResolver.ToProjectRelativePath(text, assumeAssetRelative: false);
+                }
+                catch
+                {
+                    return null;
+                }
+
                 if (string.IsNullOrWhiteSpace(text))
                     return null;
 
@@ -850,11 +926,119 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 return text.TrimEnd('/');
             }
 
+            static bool TryNormalizeAssetCandidate(string value, out string assetPath)
+            {
+                assetPath = null;
+                if (!LooksLikeProjectFileCandidate(value))
+                    return false;
+
+                var normalized = NormalizeAssetPath(value);
+                if (!IsAssetLikePath(normalized))
+                    return false;
+
+                assetPath = normalized;
+                return true;
+            }
+
+            static bool TryNormalizeProjectSettingsCandidate(string value, out string settingsPath)
+            {
+                settingsPath = null;
+                if (!LooksLikeProjectFileCandidate(value))
+                    return false;
+
+                var normalized = NormalizeAssetPath(value);
+                if (string.IsNullOrWhiteSpace(normalized) ||
+                    !normalized.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                settingsPath = normalized;
+                return true;
+            }
+
+            static bool LooksLikeProjectFileCandidate(string value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    return false;
+
+                var text = value.Trim().Trim('"').Replace('\\', '/');
+                if (text.Contains('\n') || text.Contains('\r'))
+                    return false;
+
+                var decoded = DecodePathForClassification(text);
+                if (string.IsNullOrWhiteSpace(decoded) || HasInvalidPathCharacters(decoded))
+                    return false;
+
+                var projectRelative = TrimProjectRelativeLeadingSlash(StripProjectUriPrefix(decoded));
+                if (IsKnownProjectFilePrefix(projectRelative))
+                    return true;
+
+                try
+                {
+                    return Path.IsPathRooted(projectRelative.Replace('/', Path.DirectorySeparatorChar));
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            static string DecodePathForClassification(string value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    return value;
+
+                try
+                {
+                    return System.Net.WebUtility.UrlDecode(value).Replace('\\', '/');
+                }
+                catch
+                {
+                    return value.Replace('\\', '/');
+                }
+            }
+
+            static bool HasInvalidPathCharacters(string value)
+            {
+                return !string.IsNullOrEmpty(value) && value.IndexOfAny(Path.GetInvalidPathChars()) >= 0;
+            }
+
+            static bool IsKnownProjectFilePrefix(string path)
+            {
+                return !string.IsNullOrWhiteSpace(path) &&
+                       (path.Equals("Assets", StringComparison.OrdinalIgnoreCase) ||
+                        path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals("Packages", StringComparison.OrdinalIgnoreCase) ||
+                        path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals("ProjectSettings", StringComparison.OrdinalIgnoreCase) ||
+                        path.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals("Library", StringComparison.OrdinalIgnoreCase) ||
+                        path.StartsWith("Library/", StringComparison.OrdinalIgnoreCase));
+            }
+
+            static string NormalizeSceneHint(string value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    return null;
+
+                var text = value.Trim();
+                if (text.Contains('\n') || text.Contains('\r') || HasInvalidPathCharacters(text))
+                    return null;
+
+                return text;
+            }
+
             static string StripProjectUriPrefix(string path)
             {
                 if (string.IsNullOrWhiteSpace(path))
                 {
                     return path;
+                }
+
+                if (path.StartsWith("project://database/", StringComparison.OrdinalIgnoreCase))
+                {
+                    return path.Substring("project://database/".Length);
                 }
 
                 if (path.StartsWith("project://", StringComparison.OrdinalIgnoreCase))

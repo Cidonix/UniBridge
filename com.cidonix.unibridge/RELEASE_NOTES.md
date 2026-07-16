@@ -1,19 +1,31 @@
-# UniBridge 0.2.48 Release Notes
+# UniBridge 0.2.49 Release Notes
 
-Release date: 2026-07-15
+Release date: 2026-07-16
 
-`UniBridge_RuntimeStateProbe Action=Sample|Assert` now samples directly from a
-persistent `EditorApplication.update` callback. Gameplay time can be paused
-with `Time.timeScale == 0` without stopping runtime-state sampling.
+`UniBridge_BatchActions` now distinguishes Unity scene hierarchy references
+from project filesystem paths before building impact or rollback plans.
+Targets such as `/<<SCENE>>/Garages/Garage_8/Garage2/Zamok`, parent/sibling
+paths, arrays of targets, and nested `{ find, method: "by_path" }` references
+are reported as `sceneObjectReferences` and are never passed to
+`System.IO.Path`.
 
-The probe also reserves a small part of `TimeoutMs` for normal MCP/scheduler
-completion. If editor ticks are too slow, it returns partial sample count,
-sampling clock, completion reason, and a useful wait reason before the
-scheduler boundary instead of surfacing a hard timeout. Every completion and
-cancellation path removes the update callback so the read slot is released.
+Real `Assets/...`, `Packages/...`, project settings, supported URI forms, and
+project-local absolute paths continue to participate in impact and rollback
+planning. The shared path resolver also returns controlled invalid-path
+diagnostics rather than allowing a path exception to become a top-level MCP
+failure.
 
-Regression coverage pauses gameplay time in Play Mode, captures all `180`
-requested rows with `TimeoutMs=30000`, and verifies no active reader remains.
+Regression coverage exercises dry-run and executing batches, hierarchy
+targets containing angle brackets, parent/sibling placement, nested `by_path`
+references, mixed real assets, `RollbackAssets` on/off, and
+`IncludeImpact=false`.
+
+## Previous 0.2.48 Notes
+
+`RuntimeStateProbe Action=Sample|Assert` samples directly from a persistent
+`EditorApplication.update` callback, remains active when
+`Time.timeScale == 0`, returns partial sampling diagnostics before timeout,
+and always releases its scheduler read slot.
 
 ## Previous 0.2.47 Notes
 

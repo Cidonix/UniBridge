@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.48",
+  "version": "0.2.49",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- RuntimeStateProbe Sample and Assert now capture directly from one persistent EditorApplication.update subscription instead of chaining an async yield per sample.\n- Sampling remains active when gameplay time is paused with Time.timeScale equal to zero.\n- RuntimeStateProbe reserves scheduler timeout headroom and returns partial sample count, completion reason, and wait reason if its internal editor-tick budget expires.\n- Cancellation and completion always remove the editor update callback so read-only scheduler slots are released.\n- MCP regression captures 180 of 180 samples in Play Mode while Time.timeScale is zero and verifies activeReaders returns to zero.\n\n### Previous Changes\n\n- ManageGameObject Create applies and verifies private serialized ComponentProperties in Edit and Play Mode.\n- Mixed ScriptApplyEdits Preview and Apply use one ordered in-memory pipeline with SHA parity.\n- VersionControl supports single and multi-asset workflows with per-asset diagnostics."
+    "changelog": "### Fixed\n\n- BatchActions impact and rollback discovery now classify only real Assets, Packages, ProjectSettings, URI, or project-local absolute paths as filesystem paths.\n- Scene hierarchy references in Target, Targets, Parent, Sibling, and nested find instructions remain scene references, including names containing angle brackets.\n- ProjectPathResolver returns structured invalid-path diagnostics instead of leaking System.IO path exceptions.\n- MCP regression covers dry-run impact, nested by_path references, sibling placement, executing batches, RollbackAssets, and IncludeImpact=false.\n\n### Previous Changes\n\n- RuntimeStateProbe sampling remains active when Time.timeScale is zero and releases its scheduler slot reliably.\n- ManageGameObject Create applies and verifies private serialized ComponentProperties in Edit and Play Mode.\n- Mixed ScriptApplyEdits Preview and Apply use one ordered in-memory pipeline with SHA parity."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

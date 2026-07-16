@@ -1,9 +1,42 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-15, Europe/Kiev.
+Останнє оновлення: 2026-07-16, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-07-16 - UniBridge 0.2.49 BatchActions hierarchy path safety
+
+Причина: `BatchActions` рекурсивно трактував усі string-параметри nested
+tools як filesystem paths. Unity hierarchy references на кшталт
+`/<<SCENE>>/...`, `/<<MANAGERS>>/...` і `{find, method: by_path}` доходили до
+`System.IO.Path.IsPathRooted` та могли завершувати preflight помилкою
+`Illegal characters in path`.
+
+Виправлення:
+
+- impact/rollback extraction тепер класифікує значення з урахуванням назви
+  параметра та форми reference;
+- `Target`, `Parent`, `Sibling`, масиви цих полів і nested find-specs
+  реєструються як `sceneObjectReferences`, а не asset paths;
+- до filesystem resolver потрапляють лише справжні project-relative,
+  URI або rooted paths;
+- invalid filesystem inputs повертають контрольовану path validation error;
+- MCP regression покриває angle-bracket hierarchy paths, nested `by_path`,
+  dry-run impact, rollback execution та `IncludeImpact=false`.
+
+Verification на `UniBridge_Test_Project`:
+
+- targeted regression: `11/11`;
+- full MCP smoke: `28/28`, report
+  `Library/UniBridge/mcp-smoke-regression-0.2.49-full.json`;
+- compilation `0 errors / 0 warnings`, healthy compile/build state, critical
+  build issues `0`, stale assemblies `0`, Console `0/0/0/0/0`.
+
+Пакет `0.2.49` синхронізовано в усі online MCP-проєкти: `Domovyk`,
+`Domovyk_`, `DomovykPrototype` і `Grim Shift`. Post-sync MCP health для
+кожного підтвердив editor ready, compilation `0/0`, critical build issues `0`,
+fresh assemblies і порожню Console.
 
 ## 2026-07-15 - UniBridge 0.2.48 timeScale-independent RuntimeStateProbe
 

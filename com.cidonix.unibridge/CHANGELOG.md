@@ -2,6 +2,28 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.49
+
+### Fixed
+
+- `UniBridge_BatchActions` planned impact and rollback discovery no longer
+  passes arbitrary nested strings through filesystem path APIs. Only real
+  `Assets/...`, `Packages/...`, `ProjectSettings/...`, supported URI forms,
+  and project-local absolute paths are classified as files.
+- Scene hierarchy references supplied through `Target`, `Targets`, `Parent`,
+  `Sibling`, related reference fields, or nested
+  `{ find, method: "by_path" }` objects remain scene references. Hierarchy
+  names containing `<` or `>` no longer cause `Illegal characters in path`.
+- Impact output keeps these values under `sceneObjectReferences` and excludes
+  them from `likelyAssetPaths`, while loaded `.unity` scenes and genuine asset
+  paths remain available for impact and rollback planning.
+- `ProjectPathResolver` now converts invalid path input into a structured
+  `path_invalid_characters`/`path_invalid` result instead of leaking a
+  `System.IO` exception to the MCP transport.
+- MCP regression covers hierarchy targets, parent/sibling placement, arrays,
+  nested `by_path` references, real asset paths, `RollbackAssets` on/off, and
+  `IncludeImpact=false`.
+
 ## 0.2.48
 
 ### Fixed

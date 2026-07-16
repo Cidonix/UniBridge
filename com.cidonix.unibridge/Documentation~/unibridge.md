@@ -754,6 +754,14 @@ Set `DryRun` to `false` only after the dry-run report looks correct.
 
 Executing batches are transactional by default. `RollbackOnFailure=true` opens a Unity Undo group and, when `RollbackAssets=true`, captures a bounded snapshot of referenced `Assets/...` and `Packages/...` files before execution. If a required step fails or validation stops the batch after earlier steps already ran, UniBridge reverts the Undo group, restores captured files, deletes newly-created referenced roots, and reports the rollback outcome in `data.rollback`.
 
+Impact and rollback discovery are parameter-aware. Unity hierarchy values in
+`Target`, `Targets`, `Parent`, `Sibling`, and nested
+`{ "find": "...", "method": "by_path" }` references are returned under
+`sceneObjectReferences`; they are not interpreted as disk paths. This remains
+safe for hierarchy names containing characters such as `<` and `>`. Genuine
+`Assets/...`, `Packages/...`, supported URI, and project-local absolute paths
+continue to appear in `likelyAssetPaths` and rollback planning.
+
 If a nested editor action returns a reload-safe boundary such as queued Play Mode entry/exit, `UniBridge_BatchActions` stops successfully at that step and returns `stopReason` plus `postReconnect.nextSuggestedCalls`. Run those follow-up calls after the bridge reconnects, then continue the remaining workflow in a new call.
 
 If a `UniBridge_WorkSession` is active, executing batches (`DryRun=false`) append `data.workSessionReview` by default. This gives agents the current session summary, changed-file counts, risk counts, bounded changed-file samples, warnings, and suggested follow-up calls immediately after the batch. Use `IncludeWorkSessionReview=true` to include the same block in dry-runs, `IncludeWorkSessionReview=false` to suppress it, and `WorkSessionReviewMaxChanged` to tune response size.
