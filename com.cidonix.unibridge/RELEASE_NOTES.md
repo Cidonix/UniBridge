@@ -1,4 +1,23 @@
-# UniBridge 0.2.49 Release Notes
+# UniBridge 0.2.50 Release Notes
+
+Release date: 2026-07-19
+
+UniBridge now includes a focused compatibility adapter for legacy projects
+locked to Unity 2017.4. The adapter has no package dependencies, speaks the
+same named-pipe protocol as the full bridge, publishes the same project-scoped
+discovery metadata, and works with the production relay.
+
+The Unity 2017 profile exposes discovery/server status plus eight foundational
+tools for project context, editor state, post-start console diagnostics, scene
+management, scene hierarchy inspection, basic GameObject operations, and asset
+search/inspection. It is intentionally smaller than the full Unity 6 package.
+
+The adapter compiled and completed a live relay/MCP smoke in Unity
+`2017.4.6f1` against `HollowKnightDevX`: editor/project identity, active scene,
+bounded hierarchy with object IDs, and scene asset search were all verified
+without modifying or dirtying the scene.
+
+## Previous 0.2.49 Notes
 
 Release date: 2026-07-16
 

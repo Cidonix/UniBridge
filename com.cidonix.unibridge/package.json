@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.49",
+  "version": "0.2.50",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- BatchActions impact and rollback discovery now classify only real Assets, Packages, ProjectSettings, URI, or project-local absolute paths as filesystem paths.\n- Scene hierarchy references in Target, Targets, Parent, Sibling, and nested find instructions remain scene references, including names containing angle brackets.\n- ProjectPathResolver returns structured invalid-path diagnostics instead of leaking System.IO path exceptions.\n- MCP regression covers dry-run impact, nested by_path references, sibling placement, executing batches, RollbackAssets, and IncludeImpact=false.\n\n### Previous Changes\n\n- RuntimeStateProbe sampling remains active when Time.timeScale is zero and releases its scheduler slot reliably.\n- ManageGameObject Create applies and verifies private serialized ComponentProperties in Edit and Play Mode.\n- Mixed ScriptApplyEdits Preview and Apply use one ordered in-memory pipeline with SHA parity."
+    "changelog": "### Added\n\n- A dependency-free Unity 2017.4 compatibility adapter is available under Legacy~/Unity2017 for projects that cannot load the Unity 6 UPM package.\n- The adapter uses the production named-pipe protocol and relay, persistent project identity, discovery, and nine MCP endpoints including server status.\n- The compatibility profile exposes project/editor context, post-start console diagnostics, scene and hierarchy inspection, basic GameObject and scene operations, and asset search/inspection.\n\n### Previous Changes\n\n- BatchActions hierarchy references are no longer misclassified as filesystem paths.\n- RuntimeStateProbe sampling remains active when Time.timeScale is zero and releases its scheduler slot reliably.\n- ManageGameObject Create applies and verifies private serialized ComponentProperties in Edit and Play Mode."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -2,6 +2,28 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.50
+
+### Added
+
+- Added a dependency-free Unity 2017.4 compatibility adapter under
+  `Legacy~/Unity2017`. It can be copied into a legacy project's `Assets`
+  folder when that Editor cannot load the Unity 6 UPM package.
+- The adapter implements the production UniBridge named-pipe protocol,
+  per-project identity/discovery, relay compatibility, and a focused legacy
+  MCP surface for discovery, project context, console diagnostics, scenes,
+  hierarchy, GameObjects, and assets.
+- Added explicit legacy installation instructions and compatibility-profile
+  documentation. The Unity 2017 adapter is intentionally not feature-equivalent
+  to the full Unity 6 package.
+
+### Verified
+
+- Compiled in Unity `2017.4.6f1` on Windows against `HollowKnightDevX`.
+- Live relay/MCP smoke returned nine endpoints, the correct project identity,
+  editor-ready state, active scene hierarchy/object IDs, and ranked scene asset
+  results without changing or dirtying the open scene.
+
 ## 0.2.49
 
 ### Fixed

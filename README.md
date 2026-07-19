@@ -30,6 +30,10 @@ This repository is used as a public project page for overview, documentation lin
 - An MCP-compatible AI agent or client.
 - A local machine where the Unity Editor and agent can run together.
 
+A focused Unity 2017.4 compatibility adapter is also included for legacy
+projects that cannot load the full Unity 6 package. It uses the same relay and
+protocol with a deliberately smaller foundational MCP tool set.
+
 ## Important Setup Note
 
 After adding UniBridge to your AI agent or MCP client configuration, restart the AI agent/MCP client itself.

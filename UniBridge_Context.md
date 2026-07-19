@@ -1,9 +1,45 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-16, Europe/Kiev.
+Останнє оновлення: 2026-07-19, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-07-19 - UniBridge 0.2.50 Unity 2017.4 compatibility adapter
+
+Мета: підключити legacy-проєкт `H:/DevX/HollowKnightDevX` під Unity
+`2017.4.6f1` до поточного UniBridge relay/MCP, не намагаючись завантажити
+несумісний Unity 6 UPM package.
+
+Реалізація:
+
+- додано dependency-free adapter у `Legacy~/Unity2017`;
+- adapter встановлюється як звичайні Editor scripts у
+  `Assets/UniBridgeLegacy`;
+- реалізовано власний JSON codec без Newtonsoft/System.Text.Json;
+- збережено production protocol `2.0`, project identity, discovery JSON,
+  named pipe handshake і relay compatibility;
+- MCP surface: `_server_info` плюс 8 foundational tools для discover/context,
+  editor/console, scene/hierarchy, GameObject та asset inspection;
+- legacy profile навмисно не обіцяє feature parity з Unity 6 package.
+
+Live verification у `HollowKnightDevX`:
+
+- Unity Editor: `2017.4.6f1`, Windows, PID `55044`;
+- project ID: `3315d554092e44b2bd70e9fb596db74e`;
+- Editor assembly скомпілювалась без помилок adapter-а; конфлікт із власним
+  global `SceneManager` проєкту усунуто явним alias Unity SceneManager;
+- discovery створено, relay handshake успішний, MCP `tools/list` повернув 9
+  endpoints;
+- `UniBridge_Discover Ping`: online, editor ready, правильні project/version;
+- `ContextSnapshot`: активна `Assets/Scenes/Pre_Menu_Intro.unity`, 5 roots,
+  scene clean;
+- `SceneObjectView`: повернув реальні object IDs та bounded hierarchy;
+- `AssetIntelligence Search t:Scene`: 499 matches, bounded 5 results;
+- smoke був read-only: відкриту сцену не змінено і не позначено dirty;
+- adapter console scope показав лише повідомлення після його ініціалізації;
+  старий runtime/PlayMaker noise самого legacy-проєкту не приписується
+  UniBridge.
 
 ## 2026-07-16 - UniBridge 0.2.49 BatchActions hierarchy path safety
 

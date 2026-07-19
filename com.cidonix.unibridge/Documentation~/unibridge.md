@@ -13,6 +13,28 @@ For version-specific packaging, verification, and known limitation details, see
 - A Unity project with the `com.cidonix.unibridge` package installed.
 - An MCP-compatible client that can launch a local executable.
 
+### Unity 2017.4 Compatibility Profile
+
+Unity 2017.4 cannot load the main package or its modern dependencies. For
+projects that must stay on that Editor version, UniBridge includes a separate
+dependency-free adapter at:
+
+```text
+Legacy~/Unity2017/Assets/UniBridgeLegacy
+```
+
+Copy `UniBridgeLegacy` into the target project's `Assets` folder. After Unity
+compiles it, the adapter creates a persistent project ID, publishes a standard
+UniBridge discovery file, and accepts the normal production relay. Configure
+the relay with that project ID, then restart the MCP client itself.
+
+The compatibility profile is intentionally focused. It provides discovery,
+compact project/editor context, messages emitted after adapter startup, basic
+scene operations, scene hierarchy inspection, basic GameObject operations,
+and asset search/inspection. Modern workflows such as UI authoring, captures,
+script intelligence, batches, WorkSessions, profiling, and full diagnostics
+remain exclusive to the Unity 6 package.
+
 The package includes relay binaries for:
 
 - Windows x64: `unibridge_relay_win.exe`
