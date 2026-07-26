@@ -57,6 +57,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             public object before;
             public object after;
             public bool dryRun;
+            public string verificationMode;
+            public int? expectedCollectionSize;
+            public bool requestedCollectionWasNull;
         }
 
         public static PropertyPatchResult TryApplyProperty(
@@ -180,10 +183,22 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return;
             }
 
-            if (property.isArray && property.propertyType == SerializedPropertyType.Generic && value is JArray array)
+            if (property.isArray && property.propertyType == SerializedPropertyType.Generic)
             {
-                ApplyArray(owner, serializedObject, property, array, dryRun, requestedName, changes);
-                return;
+                if (value is JArray array)
+                {
+                    ApplyArray(owner, serializedObject, property, array, dryRun, requestedName, changes, false);
+                    return;
+                }
+
+                if (value == null || value.Type == JTokenType.Null)
+                {
+                    ApplyArray(owner, serializedObject, property, new JArray(), dryRun, requestedName, changes, true);
+                    return;
+                }
+
+                throw new ArgumentException(
+                    $"Serialized collection '{property.propertyPath}' expects a JSON array or null.");
             }
 
             if (property.propertyType == SerializedPropertyType.Generic && value is JObject obj)
@@ -449,7 +464,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             JArray array,
             bool dryRun,
             string requestedName,
-            List<PropertyPatchChange> changes)
+            List<PropertyPatchChange> changes,
+            bool requestedNull)
         {
             var beforeSize = property.arraySize;
             if (dryRun)
@@ -461,7 +477,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     propertyType = property.propertyType.ToString(),
                     before = beforeSize,
                     after = array.Count,
-                    dryRun = true
+                    dryRun = true,
+                    verificationMode = "CollectionSizeAndChildren",
+                    expectedCollectionSize = array.Count,
+                    requestedCollectionWasNull = requestedNull
                 });
                 return;
             }
@@ -480,7 +499,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 propertyType = property.propertyType.ToString(),
                 before = beforeSize,
                 after = array.Count,
-                dryRun = false
+                dryRun = false,
+                verificationMode = "CollectionSizeAndChildren",
+                expectedCollectionSize = array.Count,
+                requestedCollectionWasNull = requestedNull
             });
         }
 
@@ -1714,14 +1736,100 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             }
 
             var assetPath = AssetDatabase.GetAssetPath(value);
+            TryGetStableObjectIdentity(
+                value,
+                out var guid,
+                out var localFileId,
+                out var globalObjectId,
+                out var scenePath,
+                out var hierarchyPath,
+                out var indexedHierarchyPath);
             return new
             {
                 name = value.name,
                 type = value.GetType().FullName,
                 id = UnityApiAdapter.GetObjectId(value),
                 assetPath = string.IsNullOrWhiteSpace(assetPath) ? null : assetPath,
-                guid = string.IsNullOrWhiteSpace(assetPath) ? null : AssetDatabase.AssetPathToGUID(assetPath)
+                guid,
+                localFileId,
+                globalObjectId,
+                scenePath,
+                hierarchyPath,
+                indexedHierarchyPath
             };
+        }
+
+        static void TryGetStableObjectIdentity(
+            Object value,
+            out string guid,
+            out long? localFileId,
+            out string globalObjectId,
+            out string scenePath,
+            out string hierarchyPath,
+            out string indexedHierarchyPath)
+        {
+            guid = null;
+            localFileId = null;
+            globalObjectId = null;
+            scenePath = null;
+            hierarchyPath = null;
+            indexedHierarchyPath = null;
+
+            try
+            {
+                if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(value, out string resolvedGuid, out long resolvedLocalId))
+                {
+                    guid = string.IsNullOrWhiteSpace(resolvedGuid) ? null : resolvedGuid;
+                    localFileId = resolvedLocalId;
+                }
+            }
+            catch
+            {
+                // Unsaved scene objects may not have an asset-backed identity yet.
+            }
+
+            try
+            {
+                var resolvedGlobalId = GlobalObjectId.GetGlobalObjectIdSlow(value).ToString();
+                globalObjectId = string.IsNullOrWhiteSpace(resolvedGlobalId) ? null : resolvedGlobalId;
+            }
+            catch
+            {
+                // Keep immediate readback available even if Unity cannot produce a GlobalObjectId.
+            }
+
+            var gameObject = value as GameObject;
+            if (gameObject == null && value is Component component)
+            {
+                gameObject = component.gameObject;
+            }
+
+            if (gameObject == null)
+            {
+                return;
+            }
+
+            scenePath = string.IsNullOrWhiteSpace(gameObject.scene.path) ? null : gameObject.scene.path;
+            hierarchyPath = SceneObjectLocator.GetHierarchyPath(gameObject, true);
+            indexedHierarchyPath = GetIndexedHierarchyPath(gameObject);
+        }
+
+        static string GetIndexedHierarchyPath(GameObject gameObject)
+        {
+            if (gameObject == null)
+            {
+                return null;
+            }
+
+            var segments = new Stack<string>();
+            var current = gameObject.transform;
+            while (current != null)
+            {
+                segments.Push($"{current.name}[{current.GetSiblingIndex()}]");
+                current = current.parent;
+            }
+
+            return "/" + string.Join("/", segments);
         }
 
         static object SerializeVector2(Vector2 value) => new { x = value.x, y = value.y };

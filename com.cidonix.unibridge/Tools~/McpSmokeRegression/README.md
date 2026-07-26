@@ -31,11 +31,17 @@ powershell -ExecutionPolicy Bypass `
 - Console clear/read workflows work.
 - `WaitForReady`, `RefreshAssets`, `RequestScriptCompilationNoWait`, and
   `WaitForReadyAfterReload` survive reload boundaries.
+- New smoke clients retry MCP initialization across a bounded expected
+  reload/discovery gap without retrying an already-issued mutating tool.
 - `GetCompilationDiagnostics` reports no compile/build-system failures.
 - `ValidateScript` can validate a script under `Packages/...`.
 - `VersionControl` advertises `AssetPaths` as a non-empty array and accepts
   single, multiple, checkout, empty, and partially invalid path workflows with
   structured per-asset results.
+- `ManageGameObject` verifies serialized arrays and `List<T>` containers by
+  collection size plus recursive child readback, including primitive arrays,
+  Unity object-reference arrays, inactive scene references, resize/clear/null
+  inputs, and a genuine mismatch that must remain an error.
 - `ScriptApplyEdits` previews three `replace_method` operations without
   changing UTF-8 content, SHA, or scheduling refresh; then applies them
   separately and verifies the changed SHA.

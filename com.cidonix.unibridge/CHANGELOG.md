@@ -2,6 +2,32 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.51
+
+### Fixed
+
+- `UniBridge_ManageGameObject SetComponentProperty` and component-property
+  application now verify serialized arrays and `List<T>` values by their
+  actual `SerializedProperty.arraySize`, then recursively verify every nested
+  element and field. A requested count is no longer compared with the
+  structured array readback envelope.
+- Collection reports include expected/actual size, null intent, and verified
+  or failed descendant counts. A container succeeds only when its size and all
+  child readbacks match.
+- Nested `UnityEngine.Object` references are compared by stable
+  `GlobalObjectId`, asset GUID/local file ID, or scene path plus indexed
+  hierarchy path before falling back to a transient object ID.
+- JSON `null` explicitly clears serialized arrays and lists, while real
+  post-write mismatches continue to fail so `BatchActions` can roll back.
+
+### Verified
+
+- Live MCP regression covers an array of five `[Serializable]` entries with an
+  `int` and two scene `GameObject` references, including an inactive object.
+- The same run covers `List<T>`, primitive and object-reference arrays,
+  shrinking, empty and null clears, Edit/Play Mode property writes, and a
+  deliberate mismatch that remains rejected.
+
 ## 0.2.50
 
 ### Added

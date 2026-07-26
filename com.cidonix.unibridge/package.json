@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.50",
+  "version": "0.2.51",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n\n- A dependency-free Unity 2017.4 compatibility adapter is available under Legacy~/Unity2017 for projects that cannot load the Unity 6 UPM package.\n- The adapter uses the production named-pipe protocol and relay, persistent project identity, discovery, and nine MCP endpoints including server status.\n- The compatibility profile exposes project/editor context, post-start console diagnostics, scene and hierarchy inspection, basic GameObject and scene operations, and asset search/inspection.\n\n### Previous Changes\n\n- BatchActions hierarchy references are no longer misclassified as filesystem paths.\n- RuntimeStateProbe sampling remains active when Time.timeScale is zero and releases its scheduler slot reliably.\n- ManageGameObject Create applies and verifies private serialized ComponentProperties in Edit and Play Mode."
+    "changelog": "### Fixed\n\n- Serialized array and List property writes now verify collection size and every nested field instead of comparing the requested count with the structured array readback envelope.\n- Nested Unity object references use stable GlobalObjectId, GUID/local file ID, or scene/indexed hierarchy identity before transient object IDs.\n- Collection readback reports expected and actual sizes plus verified and failed descendant counts; genuine mismatches still fail and trigger transactional rollback.\n\n### Previous Changes\n\n- A dependency-free Unity 2017.4 compatibility adapter is available under Legacy~/Unity2017.\n- BatchActions hierarchy references are no longer misclassified as filesystem paths.\n- RuntimeStateProbe sampling remains active when Time.timeScale is zero and releases its scheduler slot reliably."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

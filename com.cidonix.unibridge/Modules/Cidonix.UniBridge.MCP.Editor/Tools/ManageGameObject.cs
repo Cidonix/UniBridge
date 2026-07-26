@@ -2423,15 +2423,26 @@ Returns:
             }
 
             serializedObject.Update();
-            foreach (var change in serializedChanges)
+            var serializedReadbacks = serializedChanges
+                .Select(change => BuildSerializedChangeReadback(serializedObject, change))
+                .ToList();
+
+            foreach (var readback in serializedReadbacks.Where(item => item.IsCollection))
             {
-                var readbackProperty = SerializedPropertyPatcher.FindProperty(
-                    serializedObject,
-                    change.propertyPath);
-                var actualValue = readbackProperty != null
-                    ? SerializedPropertyPatcher.SerializePropertyValue(readbackProperty)
-                    : null;
-                var verified = readbackProperty != null && PropertyValuesEqual(change.after, actualValue);
+                var descendants = serializedReadbacks
+                    .Where(item => !ReferenceEquals(item, readback) &&
+                                   IsDescendantPropertyPath(readback.Change.propertyPath, item.Change.propertyPath))
+                    .ToArray();
+                readback.VerifiedDescendantCount = descendants.Count(item => item.BaseVerified);
+                readback.FailedDescendantCount = descendants.Length - readback.VerifiedDescendantCount;
+                readback.Verified = readback.BaseVerified && readback.FailedDescendantCount == 0;
+            }
+
+            foreach (var readback in serializedReadbacks)
+            {
+                var change = readback.Change;
+                var actualValue = readback.ActualValue;
+                var verified = readback.Verified;
                 var report = new
                 {
                     componentName = compName,
@@ -2444,7 +2455,18 @@ Returns:
                     actualValue,
                     readbackVerified = verified,
                     status = verified ? "applied" : "skipped",
-                    route = "serializedProperty"
+                    route = "serializedProperty",
+                    verification = readback.IsCollection
+                        ? new
+                        {
+                            mode = change.verificationMode,
+                            expectedCollectionSize = change.expectedCollectionSize,
+                            actualCollectionSize = readback.ActualCollectionSize,
+                            requestedNull = change.requestedCollectionWasNull,
+                            verifiedDescendantCount = readback.VerifiedDescendantCount,
+                            failedDescendantCount = readback.FailedDescendantCount
+                        }
+                        : null
                 };
 
                 if (verified)
@@ -2509,6 +2531,53 @@ Returns:
             };
         }
 
+        sealed class SerializedChangeReadback
+        {
+            public SerializedPropertyPatcher.PropertyPatchChange Change;
+            public object ActualValue;
+            public bool IsCollection;
+            public int? ActualCollectionSize;
+            public bool BaseVerified;
+            public bool Verified;
+            public int VerifiedDescendantCount;
+            public int FailedDescendantCount;
+        }
+
+        static SerializedChangeReadback BuildSerializedChangeReadback(
+            SerializedObject serializedObject,
+            SerializedPropertyPatcher.PropertyPatchChange change)
+        {
+            var property = SerializedPropertyPatcher.FindProperty(serializedObject, change.propertyPath);
+            var actualValue = property != null
+                ? SerializedPropertyPatcher.SerializePropertyValue(property)
+                : null;
+            var isCollection = change.expectedCollectionSize.HasValue;
+            var actualCollectionSize = property != null && isCollection && property.isArray
+                ? property.arraySize
+                : (int?)null;
+            var baseVerified = property != null &&
+                               (isCollection
+                                   ? actualCollectionSize == change.expectedCollectionSize
+                                   : PropertyValuesEqual(change.after, actualValue));
+
+            return new SerializedChangeReadback
+            {
+                Change = change,
+                ActualValue = actualValue,
+                IsCollection = isCollection,
+                ActualCollectionSize = actualCollectionSize,
+                BaseVerified = baseVerified,
+                Verified = baseVerified
+            };
+        }
+
+        static bool IsDescendantPropertyPath(string parentPath, string candidatePath)
+        {
+            return !string.IsNullOrWhiteSpace(parentPath) &&
+                   !string.IsNullOrWhiteSpace(candidatePath) &&
+                   candidatePath.StartsWith(parentPath + ".", StringComparison.Ordinal);
+        }
+
         static bool PropertyValuesEqual(object expected, object actual)
         {
             if (expected == null || actual == null)
@@ -2518,6 +2587,11 @@ Returns:
 
             var expectedToken = expected as JToken ?? JToken.FromObject(expected);
             var actualToken = actual as JToken ?? JToken.FromObject(actual);
+            if (TryCompareStableObjectReferences(expectedToken, actualToken, out var objectReferencesEqual))
+            {
+                return objectReferencesEqual;
+            }
+
             if (IsNumericToken(expectedToken) && IsNumericToken(actualToken))
             {
                 var expectedNumber = expectedToken.Value<double>();
@@ -2534,6 +2608,95 @@ Returns:
             {
                 return Equals(expected, actual);
             }
+        }
+
+        static bool TryCompareStableObjectReferences(JToken expected, JToken actual, out bool equal)
+        {
+            equal = false;
+            if (expected is not JObject expectedObject || actual is not JObject actualObject ||
+                !LooksLikeSerializedObjectReference(expectedObject) ||
+                !LooksLikeSerializedObjectReference(actualObject))
+            {
+                return false;
+            }
+
+            var expectedType = expectedObject.Value<string>("type");
+            var actualType = actualObject.Value<string>("type");
+            if (!string.Equals(expectedType, actualType, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            var expectedGlobalId = expectedObject.Value<string>("globalObjectId");
+            var actualGlobalId = actualObject.Value<string>("globalObjectId");
+            if (!string.IsNullOrWhiteSpace(expectedGlobalId) &&
+                !string.IsNullOrWhiteSpace(actualGlobalId) &&
+                !IsDefaultGlobalObjectId(expectedGlobalId) &&
+                !IsDefaultGlobalObjectId(actualGlobalId))
+            {
+                equal = string.Equals(expectedGlobalId, actualGlobalId, StringComparison.Ordinal);
+                return true;
+            }
+
+            var expectedGuid = expectedObject.Value<string>("guid");
+            var actualGuid = actualObject.Value<string>("guid");
+            var expectedLocalId = expectedObject.Value<long?>("localFileId");
+            var actualLocalId = actualObject.Value<long?>("localFileId");
+            if (!string.IsNullOrWhiteSpace(expectedGuid) &&
+                !string.IsNullOrWhiteSpace(actualGuid) &&
+                expectedLocalId.HasValue &&
+                actualLocalId.HasValue)
+            {
+                equal = string.Equals(expectedGuid, actualGuid, StringComparison.OrdinalIgnoreCase) &&
+                        expectedLocalId.Value == actualLocalId.Value;
+                return true;
+            }
+
+            var expectedScene = expectedObject.Value<string>("scenePath");
+            var actualScene = actualObject.Value<string>("scenePath");
+            var expectedIndexedPath = expectedObject.Value<string>("indexedHierarchyPath");
+            var actualIndexedPath = actualObject.Value<string>("indexedHierarchyPath");
+            if (!string.IsNullOrWhiteSpace(expectedScene) &&
+                !string.IsNullOrWhiteSpace(actualScene) &&
+                !string.IsNullOrWhiteSpace(expectedIndexedPath) &&
+                !string.IsNullOrWhiteSpace(actualIndexedPath))
+            {
+                equal = string.Equals(expectedScene, actualScene, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(expectedIndexedPath, actualIndexedPath, StringComparison.Ordinal);
+                return true;
+            }
+
+            var expectedId = expectedObject.Value<long?>("id");
+            var actualId = actualObject.Value<long?>("id");
+            if (expectedId.HasValue && actualId.HasValue)
+            {
+                equal = expectedId.Value == actualId.Value;
+                return true;
+            }
+
+            return false;
+        }
+
+        static bool LooksLikeSerializedObjectReference(JObject value)
+        {
+            return value.Property("type", StringComparison.OrdinalIgnoreCase) != null &&
+                   (value.Property("id", StringComparison.OrdinalIgnoreCase) != null ||
+                    value.Property("globalObjectId", StringComparison.OrdinalIgnoreCase) != null ||
+                    value.Property("guid", StringComparison.OrdinalIgnoreCase) != null ||
+                    value.Property("indexedHierarchyPath", StringComparison.OrdinalIgnoreCase) != null);
+        }
+
+        static bool IsDefaultGlobalObjectId(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return true;
+            }
+
+            const string zeroGuid = "00000000000000000000000000000000";
+            return value.EndsWith("-0-0-0-0", StringComparison.Ordinal) ||
+                   (value.IndexOf("-" + zeroGuid + "-", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    value.EndsWith("-0-0", StringComparison.Ordinal));
         }
 
         static bool IsNumericToken(JToken token)

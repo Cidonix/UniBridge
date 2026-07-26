@@ -1,9 +1,42 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-19, Europe/Kiev.
+Останнє оновлення: 2026-07-26, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-07-26 - UniBridge 0.2.51 serialized collection readback
+
+Причина: у `Grim Shift` реальний `BatchActions` записував усі п'ять елементів
+`GrimShift.GarageLockObjective.garageStates` та підтверджував дочірні поля, але
+фінальний readback контейнера порівнював requested count `5` зі структурованим
+array envelope. Це давало false-negative і запускало коректний, але зайвий
+transaction rollback.
+
+Виправлення:
+
+- serialized arrays і `List<T>` перевіряються за фактичним
+  `SerializedProperty.arraySize`;
+- після size check рекурсивно враховується readback кожного вкладеного поля;
+- collection report повертає expected/actual size, null intent і кількість
+  verified/failed descendants;
+- scene/asset object references порівнюються за `GlobalObjectId`, GUID/local
+  file ID або scene path + indexed hierarchy path до fallback на transient ID;
+- JSON `null` явно очищає collection;
+- справжній mismatch і далі повертає failure, тому transactional rollback не
+  послаблено.
+
+Live MCP targeted regression на `UniBridge_Test_Project` підтвердив:
+
+- `[Serializable]` array із п'яти елементів, кожен з `int` і двома
+  `GameObject` references;
+- inactive scene reference;
+- аналогічний `List<T>`;
+- primitive та чистий object-reference arrays;
+- shrink, empty clear і null clear;
+- навмисний post-write mismatch коректно відхилено;
+- Edit/Play Mode private serialized fields та `Time.timeScale=0` regression
+  залишилися справними.
 
 ## 2026-07-19 - UniBridge 0.2.50 Unity 2017.4 compatibility adapter
 

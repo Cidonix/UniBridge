@@ -79,7 +79,25 @@ class McpClient:
             args=(self.process.stderr, queue.Queue(), self.stderr_lines),
             daemon=True,
         ).start()
-        self.initialize()
+        deadline = time.monotonic() + self.default_timeout
+        while True:
+            try:
+                self.initialize()
+                break
+            except RuntimeError as exc:
+                message = str(exc).lower()
+                reload_boundary = any(
+                    marker in message
+                    for marker in (
+                        "unity connection lost",
+                        "unity connection closed",
+                        "unity not detected",
+                        "no matching unibridge discovery file",
+                    )
+                )
+                if not reload_boundary or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.5)
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -636,10 +654,18 @@ class SmokeSuite:
         created = False
 
         def require_success(result, label):
-            envelope = result.get("envelope") or result.get("data") or {}
-            if isinstance(envelope, dict) and envelope.get("success") is False:
-                raise AssertionError(f"{label} failed: {envelope}")
-            return result.get("data") or {}
+            envelope = result.get("envelope") or {}
+            payload = result.get("data") or {}
+            for candidate in (envelope, payload):
+                if isinstance(candidate, dict) and candidate.get("success") is False:
+                    raise AssertionError(f"{label} failed: {candidate}")
+            if (
+                isinstance(payload, dict)
+                and payload.get("success") is True
+                and isinstance(payload.get("data"), dict)
+            ):
+                return payload["data"]
+            return payload
 
         def require_failure(result, expected_text, label):
             envelope = result.get("envelope") or {}
@@ -1409,13 +1435,33 @@ class SmokeSuite:
         script_created = False
 
         source = (
+            "using System;\n"
+            "using System.Collections.Generic;\n"
             "using UnityEngine;\n\n"
             f"namespace {namespace_name}\n"
             "{\n"
+            "    [Serializable]\n"
+            "    public sealed class UBCollectionEntry\n"
+            "    {\n"
+            "        public int garageNumber;\n"
+            "        public GameObject closedGarage;\n"
+            "        public GameObject openedGarage;\n"
+            "    }\n"
+            "\n"
             f"    public sealed class {class_name} : MonoBehaviour\n"
             "    {\n"
             "        [SerializeField] private bool leaveOpenAfterRun;\n"
             "        [SerializeField] private float bootstrapTimeoutSeconds = 15f;\n"
+            "        [SerializeField] private UBCollectionEntry[] garageStates = Array.Empty<UBCollectionEntry>();\n"
+            "        [SerializeField] private List<UBCollectionEntry> garageStateList = new List<UBCollectionEntry>();\n"
+            "        [SerializeField] private int[] primitiveValues = Array.Empty<int>();\n"
+            "        [SerializeField] private GameObject[] objectReferences = Array.Empty<GameObject>();\n"
+            "        [SerializeField] private int clampedValue;\n"
+            "\n"
+            "        private void OnValidate()\n"
+            "        {\n"
+            "            clampedValue = Mathf.Clamp(clampedValue, 0, 3);\n"
+            "        }\n"
             "    }\n"
             "\n"
             f"    public sealed class {paused_class_name} : MonoBehaviour\n"
@@ -1562,6 +1608,233 @@ class SmokeSuite:
             object_names.remove(name)
             return application
 
+        def collection_parent_report(application, requested_name):
+            applied = prop(application, "applied", default=[]) or []
+            report = next(
+                (
+                    item
+                    for item in applied
+                    if isinstance(item, dict)
+                    and item.get("requestedName") == requested_name
+                    and item.get("verification")
+                ),
+                None,
+            )
+            if report is None:
+                raise AssertionError(
+                    f"Collection parent report '{requested_name}' was not returned: {application}"
+                )
+            if report.get("readbackVerified") is not True:
+                raise AssertionError(
+                    f"Collection parent report '{requested_name}' was not verified: {report}"
+                )
+            verification = report.get("verification") or {}
+            if verification.get("failedDescendantCount") != 0:
+                raise AssertionError(
+                    f"Collection '{requested_name}' had failed descendant readbacks: {report}"
+                )
+            return report
+
+        def run_collection_matrix():
+            reference_root_name = f"__UB_CollectionRefs_{stamp}"
+            reference_root_path = f"/{reference_root_name}"
+            probe_name = f"__UB_CollectionProbe_{stamp}"
+            object_names.append(reference_root_name)
+            object_names.append(probe_name)
+
+            require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {"Action": "Create", "Name": reference_root_name},
+                ),
+                "Create collection reference root",
+            )
+
+            reference_paths = []
+            for index, garage_number in enumerate((8, 32, 38, 45, 49)):
+                closed_name = f"Garage_{garage_number}_Closed"
+                opened_name = f"Garage_{garage_number}_Opened"
+                closed_path = f"{reference_root_path}/{closed_name}"
+                opened_path = f"{reference_root_path}/{opened_name}"
+                require_success(
+                    self.tool(
+                        "UniBridge_ManageGameObject",
+                        {
+                            "Action": "Create",
+                            "Name": closed_name,
+                            "Parent": reference_root_path,
+                            "SetActive": index != 0,
+                        },
+                    ),
+                    f"Create {closed_name}",
+                )
+                require_success(
+                    self.tool(
+                        "UniBridge_ManageGameObject",
+                        {
+                            "Action": "Create",
+                            "Name": opened_name,
+                            "Parent": reference_root_path,
+                        },
+                    ),
+                    f"Create {opened_name}",
+                )
+                reference_paths.append((garage_number, closed_path, opened_path))
+
+            nested_entries = [
+                {
+                    "garageNumber": garage_number,
+                    "closedGarage": {"find": closed_path, "method": "by_path"},
+                    "openedGarage": {"find": opened_path, "method": "by_path"},
+                }
+                for garage_number, closed_path, opened_path in reference_paths
+            ]
+            object_reference_values = [
+                {"find": reference_paths[0][1], "method": "by_path"},
+                {"find": reference_paths[0][2], "method": "by_path"},
+            ]
+
+            created = require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Create",
+                        "Name": probe_name,
+                        "ComponentsToAdd": [full_type_name],
+                        "ComponentProperties": {
+                            full_type_name: {
+                                "garageStates": nested_entries,
+                                "garageStateList": nested_entries,
+                                "primitiveValues": [1, 2, 3, 5, 8],
+                                "objectReferences": object_reference_values,
+                            }
+                        },
+                    },
+                    timeout=self.args.reload_timeout_seconds,
+                ),
+                "Create serialized collection probe",
+            )
+            application = prop(created, "componentPropertyApplication", default={}) or {}
+            array_report = collection_parent_report(application, "garageStates")
+            list_report = collection_parent_report(application, "garageStateList")
+            primitive_report = collection_parent_report(application, "primitiveValues")
+            object_report = collection_parent_report(application, "objectReferences")
+
+            for report, expected_size in (
+                (array_report, 5),
+                (list_report, 5),
+                (primitive_report, 5),
+                (object_report, 2),
+            ):
+                verification = report.get("verification") or {}
+                if (
+                    verification.get("expectedCollectionSize") != expected_size
+                    or verification.get("actualCollectionSize") != expected_size
+                ):
+                    raise AssertionError(f"Collection size verification mismatch: {report}")
+
+            resized = require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "SetComponentProperty",
+                        "Target": f"/{probe_name}",
+                        "SearchMethod": "ByPath",
+                        "ComponentName": full_type_name,
+                        "Properties": {
+                            "garageStates": nested_entries[:2],
+                            "garageStateList": [],
+                            "primitiveValues": [13, 21],
+                            "objectReferences": None,
+                        },
+                    },
+                    timeout=self.args.reload_timeout_seconds,
+                ),
+                "Resize and clear serialized collections",
+            )
+            resized_application = prop(resized, "componentPropertyApplication", default=None)
+            if not resized_application:
+                resized_application = {
+                    "applied": prop(resized, "applied", default=[]) or [],
+                    "skipped": prop(resized, "skipped", default=[]) or [],
+                    "allApplied": prop(resized, "allApplied"),
+                }
+            resized_array = collection_parent_report(resized_application, "garageStates")
+            cleared_list = collection_parent_report(resized_application, "garageStateList")
+            resized_primitive = collection_parent_report(resized_application, "primitiveValues")
+            cleared_objects = collection_parent_report(resized_application, "objectReferences")
+            if (resized_array.get("verification") or {}).get("actualCollectionSize") != 2:
+                raise AssertionError(f"Serialized array did not shrink to two entries: {resized_array}")
+            if (cleared_list.get("verification") or {}).get("actualCollectionSize") != 0:
+                raise AssertionError(f"Serialized List<T> did not clear: {cleared_list}")
+            if (resized_primitive.get("verification") or {}).get("actualCollectionSize") != 2:
+                raise AssertionError(f"Primitive array did not resize: {resized_primitive}")
+            cleared_verification = cleared_objects.get("verification") or {}
+            if (
+                cleared_verification.get("actualCollectionSize") != 0
+                or cleared_verification.get("requestedNull") is not True
+            ):
+                raise AssertionError(f"Null object-reference array did not clear explicitly: {cleared_objects}")
+
+            mismatch = self.tool(
+                "UniBridge_ManageGameObject",
+                {
+                    "Action": "SetComponentProperty",
+                    "Target": f"/{probe_name}",
+                    "SearchMethod": "ByPath",
+                    "ComponentName": full_type_name,
+                    "Properties": {"clampedValue": 99},
+                },
+                timeout=self.args.reload_timeout_seconds,
+            )
+            mismatch_envelope = mismatch.get("envelope") or {}
+            if mismatch_envelope.get("success") is not False:
+                raise AssertionError(
+                    f"A genuine post-write mismatch was not rejected: {mismatch_envelope or mismatch}"
+                )
+            if "readback failed" not in json.dumps(mismatch_envelope, ensure_ascii=False).lower():
+                raise AssertionError(
+                    f"Genuine mismatch did not return actionable readback diagnostics: {mismatch_envelope}"
+                )
+
+            require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Delete",
+                        "Target": f"/{probe_name}",
+                        "SearchMethod": "ByPath",
+                    },
+                ),
+                "Delete serialized collection probe",
+            )
+            object_names.remove(probe_name)
+            require_success(
+                self.tool(
+                    "UniBridge_ManageGameObject",
+                    {
+                        "Action": "Delete",
+                        "Target": reference_root_path,
+                        "SearchMethod": "ByPath",
+                        "IncludeInactive": True,
+                    },
+                ),
+                "Delete collection reference root",
+            )
+            object_names.remove(reference_root_name)
+
+            return {
+                "serializableArraySize": 5,
+                "serializableListSize": 5,
+                "primitiveArraySize": 5,
+                "objectReferenceArraySize": 2,
+                "inactiveSceneReferenceVerified": True,
+                "arrayShrinkVerified": True,
+                "listClearVerified": True,
+                "nullArrayClearVerified": True,
+                "genuineMismatchRejected": True,
+            }
+
         def verify_rejected(name, component_properties, expected_text):
             object_names.append(name)
             result = self.tool(
@@ -1613,6 +1886,7 @@ class SmokeSuite:
                 {"UniBridgeSmoke.DoesNotExist": {"leaveOpenAfterRun": True}},
                 "not found",
             )
+            collection_matrix = run_collection_matrix()
 
             self.step_play_enter()
             self.step_play_wait()
@@ -1702,6 +1976,7 @@ class SmokeSuite:
                 "unknownFieldRejected": bool(skipped_unknown_field),
                 "invalidValueRejected": bool(skipped_bad_value),
                 "unknownComponentRejected": bool(skipped_unknown_component),
+                "serializedCollections": collection_matrix,
             }
         finally:
             if play_mode:

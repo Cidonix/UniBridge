@@ -1,21 +1,29 @@
-# UniBridge 0.2.50 Release Notes
+# UniBridge 0.2.51 Release Notes
 
-Release date: 2026-07-19
+Release date: 2026-07-26
 
-UniBridge now includes a focused compatibility adapter for legacy projects
-locked to Unity 2017.4. The adapter has no package dependencies, speaks the
-same named-pipe protocol as the full bridge, publishes the same project-scoped
-discovery metadata, and works with the production relay.
+`ManageGameObject` now treats serialized arrays and `List<T>` values as
+collections during post-write readback. It verifies the requested size against
+`SerializedProperty.arraySize` and recursively verifies every nested element
+and field instead of comparing a numeric requested count with an array
+serialization envelope.
 
-The Unity 2017 profile exposes discovery/server status plus eight foundational
-tools for project context, editor state, post-start console diagnostics, scene
-management, scene hierarchy inspection, basic GameObject operations, and asset
-search/inspection. It is intentionally smaller than the full Unity 6 package.
+Nested Unity object references use stable identity evidence when available:
+`GlobalObjectId`, asset GUID/local file ID, or scene path with a
+duplicate-safe indexed hierarchy path. Collection reports expose expected and
+actual size, explicit null intent, and descendant verification counts.
 
-The adapter compiled and completed a live relay/MCP smoke in Unity
-`2017.4.6f1` against `HollowKnightDevX`: editor/project identity, active scene,
-bounded hierarchy with object IDs, and scene asset search were all verified
-without modifying or dirtying the scene.
+Live MCP regression covers an array of five serializable objects containing
+integers and scene object references, an equivalent `List<T>`, primitive and
+object-reference arrays, inactive references, resize/clear/null operations,
+and a deliberate mismatch. Correct writes succeed; genuine mismatches still
+fail and remain eligible for transactional rollback.
+
+## Previous 0.2.50 Notes
+
+UniBridge includes a focused compatibility adapter for projects locked to
+Unity 2017.4. It exposes a deliberately smaller foundational MCP profile and
+uses the production relay and project-scoped discovery protocol.
 
 ## Previous 0.2.49 Notes
 
