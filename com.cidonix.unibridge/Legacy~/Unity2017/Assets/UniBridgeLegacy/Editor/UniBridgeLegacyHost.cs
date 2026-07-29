@@ -14,7 +14,7 @@ namespace Cidonix.UniBridge.Legacy
     [InitializeOnLoad]
     internal static class UniBridgeLegacyHost
     {
-        internal const string AdapterVersion = "0.2.50";
+        internal const string AdapterVersion = "0.2.52";
         internal const string ProtocolVersion = "2.0";
 
         private sealed class PendingCommand
@@ -27,11 +27,12 @@ namespace Cidonix.UniBridge.Legacy
         }
 
         private static readonly object QueueLock = new object();
+        private static readonly object PipeLock = new object();
         private static readonly Queue<PendingCommand> CommandQueue = new Queue<PendingCommand>();
+        private static readonly List<NamedPipeServerStream> ActivePipes = new List<NamedPipeServerStream>();
         private static readonly UTF8Encoding Utf8WithoutBom = new UTF8Encoding(false);
 
         private static Thread serverThread;
-        private static NamedPipeServerStream activePipe;
         private static volatile bool running;
         private static string projectId;
         private static string projectName;
@@ -108,13 +109,21 @@ namespace Cidonix.UniBridge.Legacy
         internal static void Stop()
         {
             running = false;
-            try
+            NamedPipeServerStream[] pipes;
+            lock (PipeLock)
             {
-                if (activePipe != null)
-                    activePipe.Close();
+                pipes = ActivePipes.ToArray();
+                ActivePipes.Clear();
             }
-            catch { }
-            activePipe = null;
+
+            for (int index = 0; index < pipes.Length; index++)
+            {
+                try
+                {
+                    pipes[index].Close();
+                }
+                catch { }
+            }
 
             try
             {
@@ -228,36 +237,26 @@ namespace Cidonix.UniBridge.Legacy
         {
             while (running)
             {
+                NamedPipeServerStream listener = null;
                 try
                 {
-                    using (NamedPipeServerStream pipe = new NamedPipeServerStream(
+                    listener = new NamedPipeServerStream(
                         pipeName,
                         PipeDirection.InOut,
                         4,
                         PipeTransmissionMode.Byte,
-                        PipeOptions.None))
-                    {
-                        activePipe = pipe;
-                        pipe.WaitForConnection();
-                        if (!running)
-                            return;
+                        PipeOptions.None);
+                    RegisterPipe(listener);
+                    listener.WaitForConnection();
+                    if (!running)
+                        return;
 
-                        using (StreamReader reader = new StreamReader(pipe, Utf8WithoutBom))
-                        using (StreamWriter writer = new StreamWriter(pipe, Utf8WithoutBom))
-                        {
-                            writer.AutoFlush = true;
-                            writer.WriteLine(CreateHandshake());
-
-                            while (running && pipe.IsConnected)
-                            {
-                                string line = reader.ReadLine();
-                                if (line == null)
-                                    break;
-                                string response = HandleTransportCommand(line);
-                                writer.WriteLine(response);
-                            }
-                        }
-                    }
+                    NamedPipeServerStream clientPipe = listener;
+                    listener = null;
+                    Thread clientThread = new Thread(new ThreadStart(delegate { HandleClient(clientPipe); }));
+                    clientThread.IsBackground = true;
+                    clientThread.Name = "UniBridge Legacy MCP Client";
+                    clientThread.Start();
                 }
                 catch (IOException)
                 {
@@ -279,9 +278,68 @@ namespace Cidonix.UniBridge.Legacy
                 }
                 finally
                 {
-                    activePipe = null;
+                    if (listener != null)
+                    {
+                        UnregisterPipe(listener);
+                        try { listener.Close(); }
+                        catch { }
+                    }
                 }
             }
+        }
+
+        private static void HandleClient(NamedPipeServerStream pipe)
+        {
+            try
+            {
+                using (pipe)
+                using (StreamReader reader = new StreamReader(pipe, Utf8WithoutBom))
+                using (StreamWriter writer = new StreamWriter(pipe, Utf8WithoutBom))
+                {
+                    writer.AutoFlush = true;
+                    writer.WriteLine(CreateHandshake());
+
+                    while (running && pipe.IsConnected)
+                    {
+                        string line = reader.ReadLine();
+                        if (line == null)
+                            break;
+                        string response = HandleTransportCommand(line);
+                        writer.WriteLine(response);
+                    }
+                }
+            }
+            catch (IOException)
+            {
+                // Normal when a relay disconnects or is restarted.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Normal during bridge shutdown.
+            }
+            catch (Exception exception)
+            {
+                if (running)
+                    UnityEngine.Debug.LogWarning("[UniBridge Legacy] Client connection recovered from: " + exception.Message);
+            }
+            finally
+            {
+                UnregisterPipe(pipe);
+                try { pipe.Close(); }
+                catch { }
+            }
+        }
+
+        private static void RegisterPipe(NamedPipeServerStream pipe)
+        {
+            lock (PipeLock)
+                ActivePipes.Add(pipe);
+        }
+
+        private static void UnregisterPipe(NamedPipeServerStream pipe)
+        {
+            lock (PipeLock)
+                ActivePipes.Remove(pipe);
         }
 
         private static string CreateHandshake()

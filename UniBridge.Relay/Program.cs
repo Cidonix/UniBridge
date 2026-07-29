@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.17";
+    public const string Version = "1.1.0-build.18";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -61,7 +61,6 @@ static class Program
 
         try
         {
-            await server.TryConnectUnityAsync(cts.Token).ConfigureAwait(false);
             await server.RunAsync(cts.Token).ConfigureAwait(false);
             return 0;
         }
@@ -266,8 +265,11 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
 
     readonly UnityConnection unity = new(options, logger);
     readonly SemaphoreSlim stdoutLock = new(1, 1);
+    readonly SemaphoreSlim toolsChangedNotificationLock = new(1, 1);
     string? clientName;
     string? clientVersion;
+    volatile bool clientInitialized;
+    int notifiedConnectionGeneration;
 
     public async Task TryConnectUnityAsync(CancellationToken ct)
     {
@@ -275,7 +277,8 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         {
             await unity.ConnectAsync(ct).ConfigureAwait(false);
             await unity.SendClientInfoAsync(options.ClientName, "1.0.0", options.ClientName, ct).ConfigureAwait(false);
-            await SendToolsChangedNotificationAsync(ct).ConfigureAwait(false);
+            if (clientInitialized)
+                await SendToolsChangedNotificationAsync(ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -337,6 +340,9 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
                     await HandleInitializeAsync(id, message["params"] as JsonObject, ct).ConfigureAwait(false);
                     break;
                 case "notifications/initialized":
+                    clientInitialized = true;
+                    _ = Task.Run(() => TryConnectUnityAsync(ct), CancellationToken.None);
+                    break;
                 case "notifications/cancelled":
                     break;
                 case "tools/list":
@@ -1086,16 +1092,30 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
             clientVersion ?? "1.0.0",
             options.ClientName,
             ct).ConfigureAwait(false);
-        await SendToolsChangedNotificationAsync(ct).ConfigureAwait(false);
+        if (clientInitialized)
+            await SendToolsChangedNotificationAsync(ct).ConfigureAwait(false);
     }
 
     async Task SendToolsChangedNotificationAsync(CancellationToken ct)
     {
-        await WriteMessageAsync(new JsonObject
+        await toolsChangedNotificationLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            ["method"] = "notifications/tools/list_changed",
-            ["jsonrpc"] = "2.0"
-        }, ct).ConfigureAwait(false);
+            var connectionGeneration = unity.ConnectionGeneration;
+            if (connectionGeneration <= 0 || connectionGeneration == notifiedConnectionGeneration)
+                return;
+
+            await WriteMessageAsync(new JsonObject
+            {
+                ["method"] = "notifications/tools/list_changed",
+                ["jsonrpc"] = "2.0"
+            }, ct).ConfigureAwait(false);
+            notifiedConnectionGeneration = connectionGeneration;
+        }
+        finally
+        {
+            toolsChangedNotificationLock.Release();
+        }
     }
 
     async Task<JsonObject> CreateServerInfoAsync(JsonObject args, CancellationToken ct)
@@ -1425,6 +1445,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         stdoutLock.Dispose();
+        toolsChangedNotificationLock.Dispose();
         await unity.DisposeAsync().ConfigureAwait(false);
     }
 }
@@ -1462,6 +1483,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
     public string? ProjectPath { get; private set; }
     public string? ProjectRoot { get; private set; }
     public int? EditorPid { get; private set; }
+    public int ConnectionGeneration { get; private set; }
 
     public async Task ConnectAsync(CancellationToken ct)
     {
@@ -1513,6 +1535,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
             }
 
             logger.Info($"Unity MCP handshake received: protocol={protocol} version={version} tools={Tools.Count}");
+            ConnectionGeneration++;
             readerTask = Task.Run(() => ReadLoopAsync(ct), ct);
         }
         catch

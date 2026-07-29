@@ -2,10 +2,36 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.52
+
+### Fixed
+
+- Relay `1.1.0-build.18` no longer connects to Unity before the MCP client
+  completes initialization. This guarantees that
+  `notifications/tools/list_changed` cannot arrive before the initialize
+  response.
+- Tool-list change notifications are deduplicated per Unity connection
+  generation. A real reconnect still emits one notification, while concurrent
+  warmup and `tools/list` calls cannot emit duplicates.
+- The legacy Unity adapter now accepts concurrent named-pipe clients. A
+  persistent project-scoped Codex relay no longer prevents a second relay or
+  diagnostic probe from connecting.
+
+### Verified
+
+- Relay regression against the live Unity 2018.4 Yaga adapter returned zero
+  pre-initialize messages and the complete eight-tool legacy surface plus
+  `_server_info`.
+- A second simultaneous relay can receive the same handshake/tool surface
+  without disconnecting or monopolizing the first client.
+
 ## 0.2.51
 
 ### Fixed
 
+- Synchronized the Unity 2017 legacy adapter's reported version with the
+  package version so discovery, status dialogs, and relay diagnostics identify
+  the installed compatibility profile as `0.2.51`.
 - `UniBridge_ManageGameObject SetComponentProperty` and component-property
   application now verify serialized arrays and `List<T>` values by their
   actual `SerializedProperty.arraySize`, then recursively verify every nested

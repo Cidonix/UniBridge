@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.51",
+  "version": "0.2.52",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- Serialized array and List property writes now verify collection size and every nested field instead of comparing the requested count with the structured array readback envelope.\n- Nested Unity object references use stable GlobalObjectId, GUID/local file ID, or scene/indexed hierarchy identity before transient object IDs.\n- Collection readback reports expected and actual sizes plus verified and failed descendant counts; genuine mismatches still fail and trigger transactional rollback.\n\n### Previous Changes\n\n- A dependency-free Unity 2017.4 compatibility adapter is available under Legacy~/Unity2017.\n- BatchActions hierarchy references are no longer misclassified as filesystem paths.\n- RuntimeStateProbe sampling remains active when Time.timeScale is zero and releases its scheduler slot reliably."
+    "changelog": "### Fixed\n\n- Relay MCP startup now waits for the client initialized notification before connecting to Unity, so no tools/list_changed notification can precede the initialize response.\n- Tool-list notifications are emitted once per Unity connection generation, including reconnects, without startup duplicates.\n- The legacy Unity adapter accepts concurrent relay clients so the configured agent connection and diagnostics no longer monopolize one named pipe.\n\n### Previous Changes\n\n- Serialized arrays and List values use recursive collection readback with stable Unity object identity.\n- A dependency-free Unity 2017.4 compatibility adapter is available under Legacy~/Unity2017.\n- BatchActions hierarchy references are no longer misclassified as filesystem paths."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

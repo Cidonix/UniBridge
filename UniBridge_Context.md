@@ -1,9 +1,64 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-26, Europe/Kiev.
+Останнє оновлення: 2026-07-29, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-07-29 - UniBridge 0.2.52 legacy relay discovery hardening
+
+Під час підключення Yaga під Unity `2018.4.8f1` виявлено дві пов'язані
+проблеми, яких не було видно під час одиночного legacy smoke:
+
+- relay міг відкрити Unity pipe та надіслати `tools/list_changed` до MCP
+  initialize response;
+- legacy host обслуговував клієнтів послідовно, тому stale або постійний Codex
+  relay міг зайняти pipe та не пустити діагностичний клієнт.
+
+У `0.2.52`:
+
+- relay `1.1.0-build.18` підключається до Unity лише після
+  `notifications/initialized`;
+- tool-list notification дедуплікується за generation реального Unity
+  connection;
+- legacy host приймає до чотирьох одночасних named-pipe clients та ізолює
+  кожного в окремому background thread; створення thread використовує явний
+  `ThreadStart`, сумісний зі старим C# compiler Unity 2017/2018;
+- Yaga adapter синхронізовано до `0.2.52`.
+
+Source-level MCP regression проти живого Yaga bridge повернув нуль повідомлень
+до initialize response і дев'ять MCP endpoints: `_server_info` та вісім
+legacy UniBridge tools.
+
+Фінальна native Codex verification також пройшла:
+
+- `tool_search` знайшов project-scoped namespace
+  `unibridge_yaga_728f1b15`;
+- relay `build.18` підключився до правильного Yaga PID/pipe і повернув усі
+  вісім legacy tools;
+- `Discover`, `ContextSnapshot`, `ManageEditor`, `ReadConsole`,
+  `ManageScene`, `SceneObjectView`, `ManageGameObject` та
+  `AssetIntelligence` успішно виконали read-only smoke;
+- hierarchy повернула всі `34/34` objects без truncation, включно з inactive
+  `aa_logo`;
+- asset search знайшов `Assets/scenes/start.unity`, а object resolver
+  однозначно знайшов active `editor_camera` та inactive `aa_logo`;
+- паралельний другий relay отримав дев'ять MCP endpoints, після його
+  завершення primary Codex relay залишився онлайн.
+
+Console містить `10` pre-existing FMOD reconstruction errors та `45` legacy
+API warnings; жодної помилки UniBridge після виправлення `ThreadStart` немає.
+Сцену не змінено й не забруднено.
+
+## 2026-07-29 - Unity 2017 legacy adapter version sync
+
+- Основний пакет уже мав версію `0.2.51`, але щойно доданий legacy adapter
+  продовжував повідомляти `0.2.50` через окрему константу
+  `UniBridgeLegacyHost.AdapterVersion`.
+- Константу синхронізовано з версією пакета. Це metadata-only виправлення:
+  протокол і набір legacy MCP tools не змінювалися.
+- Копію адаптера в `H:\DevX\Yaga` також оновлено до `0.2.51`; live MCP
+  verification очікує завершення перекомпіляції Unity 2018.
 
 ## 2026-07-26 - UniBridge 0.2.51 serialized collection readback
 

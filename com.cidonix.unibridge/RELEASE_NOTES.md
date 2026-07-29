@@ -1,4 +1,21 @@
-# UniBridge 0.2.51 Release Notes
+# UniBridge 0.2.52 Release Notes
+
+Release date: 2026-07-29
+
+Relay `1.1.0-build.18` makes project-scoped tool discovery deterministic for
+legacy Unity adapters. It completes the MCP initialize response before opening
+the Unity connection, emits at most one tool-list change notification for each
+real Unity connection generation, and continues to notify correctly after a
+reconnect.
+
+The dependency-free legacy adapter now accepts concurrent named-pipe clients.
+The configured Codex relay can stay attached while a second relay or diagnostic
+probe connects, instead of one stale client monopolizing the Unity bridge.
+
+Live regression against Yaga under Unity 2018.4 returned no pre-initialize MCP
+messages and exposed `_server_info` plus all eight intended legacy tools.
+
+## Previous 0.2.51 Notes
 
 Release date: 2026-07-26
 
