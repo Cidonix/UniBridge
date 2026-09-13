@@ -30,9 +30,11 @@ This repository is used as a public project page for overview, documentation lin
 - An MCP-compatible AI agent or client.
 - A local machine where the Unity Editor and agent can run together.
 
-A focused Unity 2017.4 compatibility adapter is also included for legacy
-projects that cannot load the full Unity 6 package. It uses the same relay and
-protocol with a deliberately smaller foundational MCP tool set.
+A focused dependency-free compatibility adapter is also included for Unity
+5.3.2+ (5.3.x), Unity 5.6.x, Unity 2017.4.x, and Unity 2018.4.x projects that cannot load the full
+Unity 6 package. It uses the same relay and protocol, supports guarded scene and
+component writes with Undo/Redo, and can capture Scene View, Game View, and live
+Camera output to PNG.
 
 ## Important Setup Note
 

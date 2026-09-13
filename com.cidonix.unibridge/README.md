@@ -58,12 +58,14 @@ Linux and macOS relay
 artifacts are bundled and cross-built, but should be verified on target systems
 before production use.
 
-Projects locked to Unity 2017.4 cannot load the main UPM package. A focused,
-dependency-free compatibility adapter is provided under
+Projects locked to Unity 5.3.2+ (5.3.x), Unity 5.6.x, Unity 2017.4.x, or Unity 2018.4.x cannot load
+the main UPM package. A focused, dependency-free compatibility adapter is provided under
 `Legacy~/Unity2017/Assets/UniBridgeLegacy`. Copy that `UniBridgeLegacy` folder
 into the legacy project's `Assets` folder, wait for compilation, and follow
 `Legacy~/Unity2017/README.md`. This profile uses the same relay and MCP protocol
-but exposes a deliberately smaller foundational tool set.
+with guarded scene/component writes, Undo/Redo, Console and hierarchy readback,
+and Scene View/Game View/live Camera PNG capture. The remaining modern Unity 6
+tools are intentionally outside this compatibility profile.
 
 UniBridge requires an MCP-compatible client that can launch a local executable,
 such as Codex, Claude Code, Gemini, Cursor, or another compatible client.

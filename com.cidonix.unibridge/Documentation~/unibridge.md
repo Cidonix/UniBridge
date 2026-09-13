@@ -13,11 +13,11 @@ For version-specific packaging, verification, and known limitation details, see
 - A Unity project with the `com.cidonix.unibridge` package installed.
 - An MCP-compatible client that can launch a local executable.
 
-### Unity 2017.4 Compatibility Profile
+### Unity 5.3.x / 5.6.x / 2017.4.x / 2018.4.x Compatibility Profile
 
-Unity 2017.4 cannot load the main package or its modern dependencies. For
-projects that must stay on that Editor version, UniBridge includes a separate
-dependency-free adapter at:
+These legacy Editors cannot load the main package or its modern dependencies.
+For projects that must stay on Unity 5.3.2+ (5.3.x), 5.6.x, 2017.4.x, or 2018.4.x, UniBridge
+includes a separate dependency-free adapter at its historical location:
 
 ```text
 Legacy~/Unity2017/Assets/UniBridgeLegacy
@@ -25,15 +25,25 @@ Legacy~/Unity2017/Assets/UniBridgeLegacy
 
 Copy `UniBridgeLegacy` into the target project's `Assets` folder. After Unity
 compiles it, the adapter creates a persistent project ID, publishes a standard
-UniBridge discovery file, and accepts the normal production relay. Configure
-the relay with that project ID, then restart the MCP client itself.
+UniBridge discovery file, and accepts the normal production relay. A relay can
+connect to a running Editor immediately. Restart or reload the MCP client only
+when a brand-new server entry was added to that client's configuration.
 
 The compatibility profile is intentionally focused. It provides discovery,
 compact project/editor context, messages emitted after adapter startup, basic
-scene operations, scene hierarchy inspection, basic GameObject operations,
-and asset search/inspection. Modern workflows such as UI authoring, captures,
-script intelligence, batches, WorkSessions, profiling, and full diagnostics
-remain exclusive to the Unity 6 package.
+scene lifecycle and hierarchy inspection, guarded GameObject/component writes
+with dry-run/readback/Undo, asset search/inspection, and PNG capture of Scene
+View, exact Game View, or a typed live Camera. Exact Game View capture is queued
+and polled so legacy Unity can render another frame without blocking its main
+thread. Full Editor chrome capture, UI authoring, script intelligence, batches,
+WorkSessions, profiling, and full diagnostics remain exclusive to the Unity 6
+package or an external OS-level capture tool.
+
+On Windows this profile uses a direct Win32 pipe instead of Unity 5.6's
+old-Mono `System.IO.Pipes` implementation. The bundled relay
+`1.1.0-build.19` ignores legacy duplex request echoes and waits for a real
+`status=success|error` response. The bridge closes and re-registers across
+script/domain reloads without requiring the MCP client to restart.
 
 The package includes relay binaries for:
 

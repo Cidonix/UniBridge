@@ -1,9 +1,214 @@
 # UniBridge Context
 
-Останнє оновлення: 2026-07-29, Europe/Kiev.
+Останнє оновлення: 2026-09-14, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.
 Мета: зберегти, що було знайдено у пакеті Unity AI Assistant / Unity MCP, які локальні правки важливі, і на чому зупинилась розмова.
+
+## 2026-09-14 - Git publication of the completed legacy adapter changes
+
+- User explicitly requested a commit and push of the latest changes. The full
+  pending UniBridge set is included: reusable Unity 5.3/5.6 profiles, guarded
+  writes and captures, native legacy transport, relay build.19 and all four
+  bundled platform binaries, compile checks, package 0.2.55, and documentation.
+- Publication target is the existing `main` branch on
+  `https://github.com/Cidonix/UniBridge.git` (`origin/main`). The branch and
+  upstream were aligned before staging; no history rewrite is needed.
+- Pre-commit `git diff --check` passed. The relay Release build passed with
+  zero warnings/errors. The five-Editor compile matrix and live Unity 5.3.2f1
+  checks recorded below remain the validation evidence for the exact sources.
+- The commit concerns this repository. Installed Unity project copies and the
+  machine-local Codex MCP configuration live outside this Git worktree.
+
+## 2026-09-14 - Unity 5.3.2f1 compatibility (implementation and live validation)
+
+- Added the reusable `Unity53Legacy` profile in adapter `0.2.55`; the minimum
+  supported Unity version is `5.3.2`. The historical `Legacy~/Unity2017` package
+  location and relay `1.1.0-build.19` stay compatible with existing installs.
+- Unity 5.3 lacks `SerializedPropertyType.ExposedReference` and
+  `SerializedProperty.exposedReferenceValue`. Both read and write branches are
+  compiled only under `UNITY_5_6_OR_NEWER`; ordinary typed object references
+  remain available in Unity 5.3.
+- The compiler matrix now includes Unity 5.3 and passes target-specific Unity
+  version defines, keeping newer ExposedReference branches covered. Initial
+  compilation passed 5.3.2f1, 5.6.5f1, 5.6.7f1, 2017.4.6f1, and 2018.4.8f1.
+- The user's open target resolves to `H:\UniDec\OriDE_Eduard_Slim`, Unity PID
+  `76384`, public Editor `5.3.2f1 (e87ab445ead0)`. The supplied nested path
+  `H:\UniDec\OriDE\_Eduard\_Slim` does not exist. Initial scene is
+  `loadBootstrap.unity`, in Edit Mode.
+- This transfer copy has a seeded Library cache that must remain intact;
+  earlier clean-import attempts exhausted legacy D3D11 texture resources.
+
+Final live acceptance on 2026-09-14:
+
+- Generated project ID `a64ca64885864e8490d5a9b00c72b640`, pipe
+  `unity-mcp-aa2b590c-76384`; relay returned all nine tools and verified the
+  exact target root/version/profile. `LoadingBootstrap` serialized inspection
+  resolved the original `oriDEGameScript.dll` MonoScript GUID/localFileId and
+  its live `TransparencyAnimator` reference.
+- Read all `16/16` objects without truncation, one live Camera, and `303`
+  scene asset matches. The initial and final loaded scene have 3 roots.
+- Temporary additive-scene test passed create DryRun, actual GameObject and
+  BoxCollider creation, serialized `m_IsTrigger` DryRun and verified write,
+  Undo (`false`), Redo (`true`), and explicit discard of only the test scene.
+  `loadBootstrap.unity` stayed clean and its SHA-256 remained
+  `CD30546CB0B18762942FC0B5C53C149723E3F6A300CD321E3E9611835A5527A4`.
+- Scene View and Camera captures completed at `640x360`; exact async Game
+  View completed at `1532x862`. All three PNGs were opened and inspected.
+  The bootstrap is black in Edit Mode, matching the visible Game View;
+  gameplay rendering was not exercised and Play Mode was not entered.
+- A real script refresh/reload took `1.143 s`; discovery changed from
+  `2026-09-13T21:49:02.7685273Z` to `2026-09-13T21:55:38.2798132Z` with the same
+  Unity PID. The existing relay recovered and Ping passed. Four additional
+  parallel relay sessions each passed identity/Ping and exited normally.
+- Final post-reload Console buffer: `2` logs, `0` warnings/errors/exceptions,
+  `159` pre-existing `Failed to insert item ... SCRIPT...` menu asserts.
+  These were already present before adapter installation and are not hidden.
+  No UniBridge transport error was observed. `Editor.log` confirms successful
+  actual Unity compilation as well as the standalone five-Editor matrix.
+- Installed sources match the reusable adapter byte-for-byte. Added enabled
+  Codex MCP server `unibridge_ori_d_e_eduard_slim_a64ca648`, using the existing
+  versioned `unibridge_relay_win_1.1.0-build.19.exe`; TOML parsing passed.
+  No other project's relay/config entry was replaced. Native tool registration
+  in an already-running Codex session still needs a client MCP reload/restart;
+  direct project-scoped MCP worked in this task immediately.
+- One read request initially waited behind the user-opened Show Status modal.
+  Dismissing its OK dialog unblocked the Editor update loop. This was not a
+  transport crash; the delayed response completed and later calls succeeded.
+- At implementation acceptance, no commit or push had been requested yet;
+  the later publication request is recorded above. No scene save, asset save,
+  or cache reset was performed.
+
+## 2026-08-30 - UniBridge 0.2.54 reusable Unity 5.6, write/capture, and crash hardening
+
+Мета цієї зміни: перетворити історичний adapter у `Legacy~/Unity2017` на
+переносний профіль для будь-якого проєкту Unity `5.6.x`, зберігши сумісність із
+`2017.4.x` та `2018.4.x`. Acceptance target —
+`H:\UniDec\OriDE_Unity_5_6_7f1`, exact Editor `5.6.7f1`, project ID
+`5f296bc0049e40c583dd79701ead8ec5`. Основний Unity 6 package і relay protocol
+не замінювались.
+
+Legacy host тепер:
+
+- повідомляє adapter `0.2.54`, family `UnityLegacy`, minimum `5.6.0` та точний
+  profile `Unity56Legacy`, `Unity2017Legacy` або `Unity2018Legacy`;
+- не використовує відсутні в Unity 5.6 .NET 2.0 Subset API (`Guid.TryParse`,
+  `SpecialFolder.UserProfile`, multi-part `Path.Combine`);
+- підтримує project-scoped discovery/identity і перевірку очікуваного root;
+- читає editor/console/scene/hierarchy/assets та повертає live Unity identity;
+- підтримує scene lifecycle, GameObject/component create/modify/delete,
+  `DryRun`, Edit Mode/import guards, strict component disambiguation,
+  SerializedProperty readback і Unity Undo/Redo;
+- приймає object references лише через live object ID або asset GUID + local
+  file ID; arbitrary path/name string не використовується як Unity object
+  reference.
+
+Додано `UniBridge_CaptureView`:
+
+- `CaptureSceneView` і `CaptureGameCamera` синхронно рендерять PNG у
+  `Library/UniBridge/Captures`;
+- Camera задається `ComponentObjectId`/`ObjectId`; без selector дозволено лише
+  однозначну MainCamera/component-query розв'язку;
+- `CaptureGameView` фокусує наявний Game View, ставить exact screenshot у чергу
+  та повертає `CaptureId`; `GetCaptureStatus` завершує readback після стабілізації
+  PNG, повертаючи dimensions, bytes і SHA-256, не блокуючи Unity 5.6 main thread;
+- Scene/Camera capture не обіцяє Editor chrome, IMGUI gizmos або Screen Space
+  Overlay UI. Повний Inspector/Console chrome лишається OS-level capture.
+
+Під час першого project-local probe `0.2.53` Editor PID `115608` завершився
+`2026-08-30 01:12:57`. Evidence:
+
+- Windows Application Error `1000`: Unity `5.6.7.3267`, `ntdll.dll`, exception
+  `0xc0000374` (`heap has been corrupted`);
+- WER report `6ac1e7d9-3102-4f26-a5d5-7742dd7b738e` і dump
+  `C:\Users\Cidonix\AppData\Local\CrashDumps\Unity.exe.115608.dmp`, SHA-256
+  `9546CA9F4C722147837CA68601FBCAE0ACA79BFA07DEA3C2FC679ADFEBC63F05`;
+- WinDbg `!analyze -v`: `HEAP_CORRUPTION_c0000374`, crash під час
+  `RtlFreeHeap -> GlobalFree` із JIT-generated return address;
+- dump одночасно містить managed listener у retry/sleep, named-pipe reader у
+  `NtReadFile` та faulting managed/JIT thread;
+- кінець `Editor.log` повторює `[UniBridge Legacy] Pipe listener recovered`
+  на старому `UniBridgeLegacyHost.cs:336` безпосередньо перед завершенням.
+
+Minidump не має Unity/Mono JIT symbols, тому точну інструкцію первинного
+overwrite назвати неможливо. Водночас transport evidence сильний: старий код
+передавав один `NamedPipeServerStream` двом owning Reader/Writer wrappers і ще
+раз закривав сам pipe, тобто старий Mono native handle закривався до трьох
+разів. Також кожна команда створювала незакритий `ManualResetEvent`, а listener
+мав межу чотири clients і логував recovery з background thread.
+
+Проміжний варіант `0.2.54` із non-closing Reader/Writer wrappers прибрав явне
+потрійне закриття, але не усунув дефект самого old-Mono `System.IO.Pipes`.
+Після кількох relay connect/disconnect PID `13956` відтворив той самий
+`0xc0000374`; dump
+`C:\Users\Cidonix\AppData\Local\CrashDumps\Unity.exe.13956.dmp`, SHA-256
+`F0860E0BA4321F0D5D532B4351E6F9D5AEF6A62057BD81F8E1C924F65D45D464`,
+знову показав `RtlFreeHeap -> GlobalFree` на managed/JIT background thread.
+Точний `CaptureGameView`, який збігся з моментом аварії, після заміни pipe
+transport виконався успішно; отже screenshot був моментом прояву, а не джерелом
+heap corruption.
+
+Фінальний Windows transport повністю обходить Mono pipe ownership і працює
+через прямі Win32 `CreateNamedPipe`/`ConnectNamedPipe`/`PeekNamedPipe`/
+`ReadFile`/`WriteFile`/`CloseHandle`. Listener очікує клієнта коротким polling,
+не блокує Mono domain reload, закривається через `AppDomain.DomainUnload` і
+автоматично стартує на першому ready Editor update після reload. Native
+per-command wait handles замінено на managed `Monitor`, queued commands cancel
+на shutdown/timeout, transport warnings переходять на Editor main thread, а
+listener підтримує 32 одночасні clients.
+
+Unity 5.6 також повертав relay його власний outbound command frame. Старий relay
+помилково завершував pending call цим echo, а справжню Unity response трактував
+як event. Relay `1.1.0-build.19` тепер завершує pending request лише frame із
+`status=success|error` і ігнорує echoed `{type, params, requestId}`.
+
+Додано `Tools~/Test-LegacyAdapterCompile.ps1`. Фінальна C# 4 / .NET 2.0
+матриця пройшла на встановлених Editors:
+
+- Unity `5.6.5f1` — PASS;
+- Unity `5.6.7f1` — PASS;
+- Unity `2017.4.6f1` — PASS;
+- Unity `2018.4.8f1` — PASS.
+
+Фінальна live acceptance пройшла на exact Unity `5.6.7f1`, project ID
+`5f296bc0049e40c583dd79701ead8ec5`, adapter `0.2.54`, relay
+`1.1.0-build.19`:
+
+- MCP discovery повернув `_server_info` плюс дев'ять legacy Unity tools і
+  правильний profile `Unity56Legacy`;
+- Context/Editor/Console/scene/hierarchy/asset reads працюють; compilation
+  завершена без C# errors. Final adapter Console має `3` logs, `1` warning і
+  `1` unrelated existing exception у
+  `UniDecOriVisualIsolationRuntime.cs:82`; UniBridge transport errors немає;
+- у тимчасовій additive scene пройшли `DryRun`, GameObject create,
+  typed `UnityEngine.BoxCollider` add через `ComponentObjectId`, serialized
+  `m_IsTrigger false -> true`, `Undo -> false`, `Redo -> true`. Сцену закрито з
+  explicit discard, а Editor повернуто до clean untitled default scene;
+- `CaptureSceneView` `640x360`, `CaptureGameCamera` `640x360` і exact
+  `CaptureGameView` `853x480` створили валідні PNG, перевірені візуально та за
+  SHA-256;
+- реальний script compile/domain reload завершився за `0.481 s`, bridge сам
+  перевидав discovery о `23:06:48Z`, і наступний MCP Ping був успішний;
+- 32 паралельні relay/MCP connections дали `32/32` успішних Ping до одного
+  project ID. Final Unity PID `19144` лишився alive/responding; нового dump або
+  transport warning немає.
+
+Play Mode і scene/asset save не запускались. Жоден Plastic check-in не
+запитувався; unrelated pending target workspace не відкочувався й не
+очищався.
+
+Для наступних Codex-чатів relay `1.1.0-build.19` встановлено окремим versioned
+файлом
+`C:\Users\Cidonix\.unibridge\relay\unibridge_relay_win_1.1.0-build.19.exe`
+(SHA-256 `C9F8F501295107E53ED0B3ECA424FD59C59EBB5A4C62CD08CED73E37CEE93533`).
+Старий `unibridge_relay_win.exe` не перезаписувався, бо його використовують
+інші активні project-scoped relays. У `C:\Users\Cidonix\.codex\config.toml`
+додано окремий enabled server
+`unibridge_ori_de_unity_5_6_7f1_5f296bc0`; TOML повторно розібрано через
+Python `tomllib`. Уже відкритий Codex task не отримує новий MCP namespace
+динамічно: після одноразового reload/restart Codex конфіг завантажиться, а
+подальші restart/domain reload самого Unity підхоплюються discovery без
+перезапуску Codex.
 
 ## 2026-07-29 - UniBridge 0.2.52 legacy relay discovery hardening
 

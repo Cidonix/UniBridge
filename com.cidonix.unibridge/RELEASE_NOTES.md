@@ -1,4 +1,67 @@
-# UniBridge 0.2.52 Release Notes
+# UniBridge 0.2.55 Release Notes
+
+Release date: 2026-09-14
+
+The dependency-free legacy adapter now supports Unity `5.3.2f1` through the
+`Unity53Legacy` profile. Install the same `Legacy~/Unity2017/Assets/UniBridgeLegacy`
+folder into any supported project. The existing `1.1.0-build.19` relay requires
+no binary update.
+
+Both ExposedReference branches are guarded for Unity 5.6 and newer. All ordinary
+typed object references, serialized reads/writes, Undo/Redo, hierarchy and
+asset inspection, Console buffering, and the three PNG capture paths remain
+available in Unity 5.3.
+
+The five-Editor compile matrix passes Unity 5.3.2f1, 5.6.5f1, 5.6.7f1,
+2017.4.6f1, and 2018.4.8f1. Live public Unity 5.3.2f1 acceptance passed project
+identity, hierarchy and DLL-backed component inspection, asset search, all
+three captures, and temporary additive-scene writes with readback/Undo/Redo.
+The original `loadBootstrap` scene stayed clean and byte-identical; Play Mode
+and scene/asset saves were not used. Existing legacy menu-registration asserts
+remain visible in the Console and are not suppressed by the adapter.
+The existing relay recovered after a real script/domain reload, and four
+additional concurrent MCP sessions passed without transport errors.
+
+## Previous 0.2.54 Notes
+
+Release date: 2026-08-30
+
+UniBridge now includes a reusable dependency-free profile for Unity 5.6.x,
+Unity 2017.4.x, and Unity 2018.4.x. It keeps the same project-scoped discovery
+and production relay protocol while adding guarded scene/component writes,
+typed object identity, dry-run/readback evidence, Undo/Redo, and PNG visual
+capture.
+
+`UniBridge_CaptureView` can render the current Scene View or a live Camera
+immediately. Exact Game View capture is queued and polled by `CaptureId`, which
+lets Unity 5.6 render another Editor frame instead of blocking its main thread.
+Completed captures stay in `Library/UniBridge/Captures` and report their path,
+dimensions, byte length, and SHA-256.
+
+This release also replaces the unstable old-Mono Windows named-pipe boundary.
+Two retained Unity 5.6.7f1 crash dumps record `0xc0000374` heap corruption
+during `GlobalFree`; the second reproduction occurred while a relay client pipe
+was being released. Version `0.2.54` uses the Win32 named-pipe API directly on
+Windows, so Mono no longer owns or finalizes that native handle. Managed monitor
+completion replaces per-command native wait handles, transport logs run on the
+Unity main thread, and listener capacity is 32 clients. The native listener is
+closed during domain unload and re-registers on the first ready Editor update.
+The minidumps cannot name JIT-generated managed methods, so they establish a
+strong transport link rather than a symbol-complete identification of the
+original overwrite.
+
+The bundled relay is `1.1.0-build.19`. It completes pending Unity commands only
+from `status=success|error` frames and ignores the duplex request echo produced
+by Unity 5.6's old pipe stack while waiting for the real response.
+
+The bundled compatibility regression compiles the exact sources as C# 4 /
+.NET 2.0 against installed Unity 5.6.5f1, 5.6.7f1, 2017.4.6f1, and 2018.4.8f1.
+Live Unity 5.6.7f1 acceptance also passed project-scoped reads, temporary-scene
+writes with typed component identity and Undo/Redo, all three PNG capture paths,
+automatic recovery after a real script/domain reload, and 32 concurrent MCP
+connections without a new transport crash.
+
+## Previous 0.2.52 Notes
 
 Release date: 2026-07-29
 

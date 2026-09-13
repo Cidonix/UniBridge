@@ -2,6 +2,83 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.55
+
+### Added
+
+- Added the reusable `Unity53Legacy` adapter profile, validated on public Unity
+  `5.3.2f1`. The same nine legacy tools provide Editor/Console/hierarchy/asset
+  reads, guarded scene/component writes, Undo/Redo, and PNG captures.
+- Extended the installed-Editor compile matrix to Unity 5.3, with per-version
+  compiler defines so compatibility branches are exercised correctly.
+
+### Fixed
+
+- Guarded `SerializedPropertyType.ExposedReference` and
+  `SerializedProperty.exposedReferenceValue` behind `UNITY_5_6_OR_NEWER`.
+  Unity 5.3 retains its ordinary GUID-backed and live object references.
+- Updated capture descriptions and documented modal Editor dialogs that pause
+  the main-thread command loop without disconnecting the bridge.
+
+## 0.2.54
+
+### Added
+
+- Expanded the dependency-free adapter at `Legacy~/Unity2017` into a shared
+  Unity 5.6.x, 2017.4.x, and 2018.4.x profile. Discovery reports the exact
+  `Unity56Legacy`, `Unity2017Legacy`, or `Unity2018Legacy` runtime profile while
+  preserving the historical package path.
+- Added guarded legacy scene lifecycle and serialized component writes with
+  live object/component identity, dry-run validation, Edit Mode and import
+  guards, before/after readback, Unity Undo groups, and explicit Undo/Redo MCP
+  actions.
+- Added `UniBridge_CaptureView` with immediate Scene View and typed live Camera
+  PNG renders, queued exact Game View screenshots, capture status/listing, and
+  live Camera enumeration. Captures stay below `Library/UniBridge/Captures` and
+  return dimensions, byte length, and SHA-256 evidence.
+- Added `Tools~/Test-LegacyAdapterCompile.ps1` to compile the exact adapter as
+  C# 4 / .NET 2.0 against all installed supported legacy Editors.
+
+### Fixed
+
+- Replaced APIs absent from Unity 5.6's .NET 2.0 subset, including multi-part
+  `Path.Combine`, `Guid.TryParse`, and `SpecialFolder.UserProfile` usage.
+- Replaced old-Mono `System.IO.Pipes` ownership with a direct Win32 named-pipe
+  transport for legacy Windows Editors after reproducing native heap corruption
+  on client disconnect. Mono no longer creates, echoes, disposes, or finalizes
+  the Windows pipe handle.
+- Relay `1.1.0-build.19` resolves pending Unity calls only from
+  `status=success|error` response frames. Unity 5.6 duplex command echoes are
+  ignored while the real response remains pending.
+- Replaced per-command `ManualResetEvent` allocation with managed monitor
+  completion, cancels queued commands during shutdown, and prevents timed-out
+  queued commands from executing later.
+- Transport warnings are queued from worker threads and emitted from the Unity
+  main thread. Listener capacity increases from four to 32 simultaneous relay
+  clients with bounded retry logging.
+- Native listeners use bounded polling, close during `AppDomain.DomainUnload`,
+  and re-register from the first ready Editor update after script/domain reload.
+- Exact Game View capture resolves the Unity-version screenshot API at runtime,
+  avoiding the compile-time obsolete error introduced after Unity 5.6.
+
+### Verified
+
+- C# 4 / .NET 2.0 compilation passes against installed Unity `5.6.5f1`,
+  `5.6.7f1`, `2017.4.6f1`, and `2018.4.8f1` Editors.
+- Windows Error Reporting and retained PID `115608` and `13956` dumps identify
+  both reproduced Unity `5.6.7f1` failures as `0xc0000374` native heap
+  corruption during `GlobalFree`. The second failure occurred on a managed
+  client-disconnect thread; the exact Game View operation that appeared to
+  trigger it succeeded after the Win32 transport replaced old Mono pipes.
+  Missing Unity/Mono JIT symbols still prevent a symbol-complete identification
+  of the original overwrite.
+- Live Unity `5.6.7f1` MCP acceptance passed discovery, Console/editor/scene/
+  hierarchy/asset reads, a temporary-scene GameObject + typed `BoxCollider`
+  write with dry-run/readback and Undo/Redo, Scene View/Camera/exact Game View
+  PNG capture, a real script/domain reload with automatic bridge recovery, and
+  32 concurrent relay connections. The final Editor process remained alive
+  without a new transport warning or crash dump.
+
 ## 0.2.52
 
 ### Fixed

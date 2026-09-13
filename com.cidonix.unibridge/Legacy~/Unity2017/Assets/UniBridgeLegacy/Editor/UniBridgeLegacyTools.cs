@@ -18,34 +18,38 @@ namespace Cidonix.UniBridge.Legacy
             tools.Add(Descriptor(
                 "UniBridge_Discover",
                 "UniBridge Legacy discovery and health",
-                "Ping or inspect the Unity 2017-compatible UniBridge adapter. Actions: Ping, Status."));
+                "Ping or inspect the dependency-free legacy Unity adapter. Actions: Ping, Status."));
             tools.Add(Descriptor(
                 "UniBridge_ContextSnapshot",
                 "Compact Unity project context",
                 "Return project identity, Editor state, active scene summary, and compact console diagnostics."));
             tools.Add(Descriptor(
                 "UniBridge_ManageEditor",
-                "Manage Unity 2017 Editor lifecycle",
-                "Inspect Editor state or run basic lifecycle actions. Actions: GetState, RefreshAssets, SaveAssets, SaveAll, Play, ExitPlayMode, Pause, Resume, GetCompilationDiagnostics."));
+                "Manage legacy Unity Editor lifecycle",
+                "Inspect Editor state or run basic lifecycle actions. Actions: GetState, RefreshAssets, SaveAssets, SaveAll, Play, ExitPlayMode, Pause, Resume, Undo, Redo, GetCompilationDiagnostics."));
             tools.Add(Descriptor(
                 "UniBridge_ReadConsole",
-                "Read Unity 2017 console diagnostics",
+                "Read legacy Unity console diagnostics",
                 "Read adapter-captured Console messages. Actions: DiagnosticSummary, Get, Clear. Parameters: MaxEntries, IncludeStackTrace."));
             tools.Add(Descriptor(
                 "UniBridge_ManageScene",
-                "Inspect and save Unity 2017 scenes",
-                "Actions: GetOpenScenes, Save, SaveAll, Open. Parameters: ScenePath, Mode=Single|Additive."));
+                "Inspect and manage legacy Unity scenes",
+                "Actions: GetOpenScenes, Save, SaveAll, Open, New, SetActive, Close. Prefer SceneId for live scene identity. New defaults to an additive empty scene; Close refuses dirty scenes unless DiscardUnsavedChanges=true."));
             tools.Add(Descriptor(
                 "UniBridge_SceneObjectView",
-                "Inspect Unity 2017 scene hierarchy",
+                "Inspect legacy Unity scene hierarchy",
                 "Snapshot a complete or bounded hierarchy. Parameters: Target, IncludeInactive, IncludeComponents, MaxObjects, MaxDepth."));
             tools.Add(Descriptor(
+                "UniBridge_CaptureView",
+                "Capture legacy Unity views to PNG",
+                "Actions: Capabilities, CaptureSceneView, CaptureGameCamera, CaptureGameView, GetCaptureStatus, ListCaptures, ListCameras. Scene View and camera captures are immediate; exact Game View capture is queued and polled without blocking the legacy Unity main thread."));
+            tools.Add(Descriptor(
                 "UniBridge_ManageGameObject",
-                "Find and edit Unity 2017 scene objects",
-                "Actions: Find, Create, Modify, Delete, AddComponent, RemoveComponent. Targets support hierarchy path, name, or ObjectId. Parent lookup is strict."));
+                "Find and edit legacy Unity scene objects",
+                "Actions: Find, Create, Modify, Delete, GetComponents, GetComponent, AddComponent, RemoveComponent, SetComponentProperty. Mutations support DryRun, are blocked in Play Mode unless AllowPlayModeWrite=true, and should target live ObjectId/ComponentObjectId identities."));
             tools.Add(Descriptor(
                 "UniBridge_AssetIntelligence",
-                "Search and inspect Unity 2017 assets",
+                "Search and inspect legacy Unity assets",
                 "Actions: Search, Inspect, ReadText. Parameters: Query, AssetPath, Folders, MaxResults, MaxCharacters."));
             return tools;
         }
@@ -64,6 +68,8 @@ namespace Cidonix.UniBridge.Legacy
                 return ManageScene(parameters);
             if (String.Equals(toolName, "UniBridge_SceneObjectView", StringComparison.OrdinalIgnoreCase))
                 return SceneObjectView(parameters);
+            if (String.Equals(toolName, "UniBridge_CaptureView", StringComparison.OrdinalIgnoreCase))
+                return UniBridgeLegacyCapture.Execute(parameters);
             if (String.Equals(toolName, "UniBridge_ManageGameObject", StringComparison.OrdinalIgnoreCase))
                 return ManageGameObject(parameters);
             if (String.Equals(toolName, "UniBridge_AssetIntelligence", StringComparison.OrdinalIgnoreCase))
@@ -79,6 +85,29 @@ namespace Cidonix.UniBridge.Legacy
             properties["ObjectId"] = IntegerSchema("Unity instance ID.");
             properties["AssetPath"] = StringSchema("Unity project-relative asset path.");
             properties["ScenePath"] = StringSchema("Unity project-relative scene path.");
+            properties["SceneId"] = IntegerSchema("Adapter-session identity for a loaded Unity Scene.");
+            properties["SceneHandle"] = IntegerSchema("Backward-compatible alias for SceneId.");
+            properties["Component"] = StringSchema("Component short or fully-qualified type name.");
+            properties["ComponentName"] = StringSchema("Alias for Component.");
+            properties["ComponentObjectId"] = IntegerSchema("Live Unity Component instance ID.");
+            properties["ComponentIndex"] = IntegerSchema("Zero-based index among components matching Component.");
+            properties["PropertyPath"] = StringSchema("Exact SerializedProperty path for SetComponentProperty.");
+            properties["Value"] = AnySchema("JSON value for PropertyPath.");
+            properties["Properties"] = ObjectSchema("Map of exact SerializedProperty paths to JSON values.");
+            properties["DryRun"] = BooleanSchema("Validate and describe a mutation without changing Unity state.");
+            properties["AllowPlayModeWrite"] = BooleanSchema("Explicitly allow an ephemeral Play Mode mutation. Default false.");
+            properties["IncludeSerializedProperties"] = BooleanSchema("Include bounded serialized component-property details.");
+            properties["IncludeHidden"] = BooleanSchema("Include hidden serialized properties. Default false.");
+            properties["MaxProperties"] = IntegerSchema("Maximum serialized properties returned per component.");
+            properties["DiscardUnsavedChanges"] = BooleanSchema("Explicitly allow closing a dirty scene without saving it.");
+            properties["CaptureId"] = StringSchema("Opaque adapter-session capture identity returned by CaptureGameView.");
+            properties["Width"] = IntegerSchema("PNG width for immediate captures, clamped to 64..4096.");
+            properties["Height"] = IntegerSchema("PNG height for immediate captures, clamped to 64..4096.");
+            properties["SuperSize"] = IntegerSchema("Exact Game View supersampling multiplier, clamped to 1..4.");
+            properties["TimeoutMs"] = IntegerSchema("Exact Game View file timeout, clamped to 1000..30000 milliseconds.");
+            properties["RestoreFocus"] = BooleanSchema("Restore the previously focused Unity window after exact Game View capture.");
+            properties["CreateViewIfMissing"] = BooleanSchema("Allow creation of a missing Scene View or Game View window. Default false.");
+            properties["Label"] = StringSchema("Optional human-readable filename label; sanitized by the adapter.");
 
             Dictionary<string, object> schema = new Dictionary<string, object>();
             schema["type"] = "object";
@@ -87,7 +116,9 @@ namespace Cidonix.UniBridge.Legacy
 
             Dictionary<string, object> annotations = new Dictionary<string, object>();
             annotations["legacyUnityCompatibility"] = true;
-            annotations["unityVersion"] = "2017.4";
+            annotations["unityVersion"] = Application.unityVersion;
+            annotations["minimumUnityVersion"] = UniBridgeLegacyHost.MinimumUnityVersion;
+            annotations["compatibilityProfile"] = UniBridgeLegacyHost.CompatibilityProfile;
 
             Dictionary<string, object> descriptor = new Dictionary<string, object>();
             descriptor["name"] = name;
@@ -114,6 +145,30 @@ namespace Cidonix.UniBridge.Legacy
             return schema;
         }
 
+        private static Dictionary<string, object> BooleanSchema(string description)
+        {
+            Dictionary<string, object> schema = new Dictionary<string, object>();
+            schema["type"] = "boolean";
+            schema["description"] = description;
+            return schema;
+        }
+
+        private static Dictionary<string, object> ObjectSchema(string description)
+        {
+            Dictionary<string, object> schema = new Dictionary<string, object>();
+            schema["type"] = "object";
+            schema["description"] = description;
+            schema["additionalProperties"] = true;
+            return schema;
+        }
+
+        private static Dictionary<string, object> AnySchema(string description)
+        {
+            Dictionary<string, object> schema = new Dictionary<string, object>();
+            schema["description"] = description;
+            return schema;
+        }
+
         private static Dictionary<string, object> Discover(Dictionary<string, object> parameters)
         {
             string action = Action(parameters, "Ping");
@@ -122,7 +177,9 @@ namespace Cidonix.UniBridge.Legacy
             result["online"] = true;
             result["protocol"] = UniBridgeLegacyHost.ProtocolVersion;
             result["adapterVersion"] = UniBridgeLegacyHost.AdapterVersion;
-            result["compatibilityProfile"] = "Unity2017Legacy";
+            result["compatibilityProfile"] = UniBridgeLegacyHost.CompatibilityProfile;
+            result["adapterFamily"] = UniBridgeLegacyHost.AdapterFamily;
+            result["minimumUnityVersion"] = UniBridgeLegacyHost.MinimumUnityVersion;
             result["discoveryFile"] = UniBridgeLegacyHost.DiscoveryPath;
             result["editor"] = BuildEditorState();
             return result;
@@ -130,7 +187,7 @@ namespace Cidonix.UniBridge.Legacy
 
         private static Dictionary<string, object> ContextSnapshot(Dictionary<string, object> parameters)
         {
-            Dictionary<string, object> result = Result("Compact Unity 2017 project context captured.");
+            Dictionary<string, object> result = Result("Compact legacy Unity project context captured.");
             result["project"] = UniBridgeLegacyHost.BuildProjectContext();
             result["editor"] = BuildEditorState();
             result["scene"] = BuildSceneSummary(UnitySceneManager.GetActiveScene());
@@ -186,13 +243,33 @@ namespace Cidonix.UniBridge.Legacy
                 EditorApplication.isPaused = false;
                 return Result("Editor resumed.");
             }
+            if (EqualsAction(action, "Undo"))
+            {
+                if (EditorApplication.isPlaying)
+                    throw new InvalidOperationException("Editor Undo through UniBridge is available only in Edit Mode.");
+                Undo.PerformUndo();
+                Dictionary<string, object> undone = Result("Editor Undo performed.");
+                undone["editor"] = BuildEditorState();
+                undone["activeScene"] = BuildSceneSummary(UnitySceneManager.GetActiveScene());
+                return undone;
+            }
+            if (EqualsAction(action, "Redo"))
+            {
+                if (EditorApplication.isPlaying)
+                    throw new InvalidOperationException("Editor Redo through UniBridge is available only in Edit Mode.");
+                Undo.PerformRedo();
+                Dictionary<string, object> redone = Result("Editor Redo performed.");
+                redone["editor"] = BuildEditorState();
+                redone["activeScene"] = BuildSceneSummary(UnitySceneManager.GetActiveScene());
+                return redone;
+            }
             if (EqualsAction(action, "GetCompilationDiagnostics"))
             {
-                Dictionary<string, object> diagnostics = Result("Unity 2017 compilation diagnostics collected from the live Console buffer.");
+                Dictionary<string, object> diagnostics = Result("Legacy Unity compilation diagnostics collected from the live Console buffer.");
                 diagnostics["isCompiling"] = EditorApplication.isCompiling;
                 diagnostics["isUpdating"] = EditorApplication.isUpdating;
                 diagnostics["console"] = UniBridgeLegacyConsole.BuildSummary();
-                diagnostics["note"] = "Unity 2017 does not expose modern CompilationPipeline diagnostics; Console errors remain authoritative.";
+                diagnostics["note"] = "Legacy Unity does not expose the modern CompilationPipeline surface used by the full package; captured Console errors remain authoritative.";
                 return diagnostics;
             }
             if (!EqualsAction(action, "GetState") && !EqualsAction(action, "Status") && !EqualsAction(action, "WaitForReady"))
@@ -245,6 +322,7 @@ namespace Cidonix.UniBridge.Legacy
             }
             if (EqualsAction(action, "SaveAll"))
             {
+                EnsureEditMode("SaveAll scenes");
                 bool saved = EditorSceneManager.SaveOpenScenes();
                 Dictionary<string, object> result = Result("Open scenes saved.");
                 result["saved"] = saved;
@@ -252,10 +330,10 @@ namespace Cidonix.UniBridge.Legacy
             }
             if (EqualsAction(action, "Save"))
             {
-                string scenePath = UniBridgeLegacyValue.GetString(parameters, "ScenePath", null);
-                Scene scene = String.IsNullOrEmpty(scenePath) ? UnitySceneManager.GetActiveScene() : UnitySceneManager.GetSceneByPath(scenePath);
+                EnsureEditMode("Save scene");
+                Scene scene = ResolveScene(parameters, true);
                 if (!scene.IsValid() || !scene.isLoaded)
-                    throw new InvalidOperationException("Scene is not open: " + (scenePath ?? "<active scene>"));
+                    throw new InvalidOperationException("Scene is not open.");
                 bool saved = EditorSceneManager.SaveScene(scene);
                 Dictionary<string, object> result = Result("Scene saved.");
                 result["scene"] = BuildSceneSummary(scene);
@@ -264,6 +342,7 @@ namespace Cidonix.UniBridge.Legacy
             }
             if (EqualsAction(action, "Open"))
             {
+                EnsureEditMode("Open scene");
                 string scenePath = RequireString(parameters, "ScenePath");
                 if (!File.Exists(ToAbsoluteAssetPath(scenePath)))
                     throw new FileNotFoundException("Scene asset does not exist.", scenePath);
@@ -271,9 +350,104 @@ namespace Cidonix.UniBridge.Legacy
                 OpenSceneMode mode = String.Equals(modeName, "Additive", StringComparison.OrdinalIgnoreCase)
                     ? OpenSceneMode.Additive
                     : OpenSceneMode.Single;
+                if (mode == OpenSceneMode.Single && HasDirtyOpenScenes())
+                    throw new InvalidOperationException("Open Mode=Single is blocked while any open scene has unsaved changes.");
+                if (UniBridgeLegacyValue.GetBool(parameters, "DryRun", false))
+                {
+                    Dictionary<string, object> preview = Result("Scene open validated without changing Editor state.");
+                    preview["dryRun"] = true;
+                    preview["scenePath"] = scenePath;
+                    preview["mode"] = mode.ToString();
+                    return preview;
+                }
                 Scene scene = EditorSceneManager.OpenScene(scenePath, mode);
                 Dictionary<string, object> result = Result("Scene opened.");
                 result["scene"] = BuildSceneSummary(scene);
+                return result;
+            }
+            if (EqualsAction(action, "New"))
+            {
+                EnsureEditMode("Create scene");
+                string modeName = UniBridgeLegacyValue.GetString(parameters, "Mode", "Additive");
+                NewSceneMode mode = String.Equals(modeName, "Single", StringComparison.OrdinalIgnoreCase)
+                    ? NewSceneMode.Single
+                    : NewSceneMode.Additive;
+                if (mode == NewSceneMode.Single && HasDirtyOpenScenes())
+                    throw new InvalidOperationException("New Mode=Single is blocked while any open scene has unsaved changes.");
+                string setupName = UniBridgeLegacyValue.GetString(parameters, "Setup", "Empty");
+                NewSceneSetup setup = String.Equals(setupName, "Default", StringComparison.OrdinalIgnoreCase) ||
+                                      String.Equals(setupName, "DefaultGameObjects", StringComparison.OrdinalIgnoreCase)
+                    ? NewSceneSetup.DefaultGameObjects
+                    : NewSceneSetup.EmptyScene;
+                bool dryRun = UniBridgeLegacyValue.GetBool(parameters, "DryRun", false);
+                if (dryRun)
+                {
+                    Dictionary<string, object> preview = Result("New scene validated without changing Editor state.");
+                    preview["dryRun"] = true;
+                    preview["mode"] = mode.ToString();
+                    preview["setup"] = setup.ToString();
+                    return preview;
+                }
+
+                Scene previous = UnitySceneManager.GetActiveScene();
+                Scene created = EditorSceneManager.NewScene(setup, mode);
+                UnitySceneManager.SetActiveScene(created);
+                Dictionary<string, object> result = Result("New scene created and made active.");
+                result["scene"] = BuildSceneSummary(created);
+                result["previousActiveScene"] = BuildSceneSummary(previous);
+                result["saved"] = false;
+                return result;
+            }
+            if (EqualsAction(action, "SetActive"))
+            {
+                EnsureEditMode("Set active scene");
+                Scene scene = ResolveScene(parameters, false);
+                if (!scene.IsValid() || !scene.isLoaded)
+                    throw new InvalidOperationException("Scene is not loaded.");
+                bool changed = UnitySceneManager.SetActiveScene(scene);
+                Dictionary<string, object> result = Result("Active scene selected.");
+                result["changed"] = changed;
+                result["scene"] = BuildSceneSummary(scene);
+                return result;
+            }
+            if (EqualsAction(action, "Close"))
+            {
+                EnsureEditMode("Close scene");
+                Scene scene = ResolveScene(parameters, false);
+                if (!scene.IsValid() || !scene.isLoaded)
+                    throw new InvalidOperationException("Scene is not loaded.");
+                if (UnitySceneManager.sceneCount <= 1)
+                    throw new InvalidOperationException("The last open scene cannot be closed through the legacy bridge.");
+                bool discard = UniBridgeLegacyValue.GetBool(parameters, "DiscardUnsavedChanges", false);
+                if (scene.isDirty && !discard)
+                    throw new InvalidOperationException("Scene has unsaved changes. Save it first or pass DiscardUnsavedChanges=true explicitly.");
+                if (UniBridgeLegacyValue.GetBool(parameters, "DryRun", false))
+                {
+                    Dictionary<string, object> preview = Result("Scene close validated without changing Editor state.");
+                    preview["dryRun"] = true;
+                    preview["scene"] = BuildSceneSummary(scene);
+                    preview["wouldDiscardUnsavedChanges"] = scene.isDirty;
+                    return preview;
+                }
+
+                Dictionary<string, object> before = BuildSceneSummary(scene);
+                if (scene == UnitySceneManager.GetActiveScene())
+                {
+                    for (int index = 0; index < UnitySceneManager.sceneCount; index++)
+                    {
+                        Scene candidate = UnitySceneManager.GetSceneAt(index);
+                        if (candidate.IsValid() && candidate.isLoaded && candidate != scene)
+                        {
+                            UnitySceneManager.SetActiveScene(candidate);
+                            break;
+                        }
+                    }
+                }
+                bool closed = EditorSceneManager.CloseScene(scene, true);
+                Dictionary<string, object> result = Result("Scene closed.");
+                result["closed"] = closed;
+                result["before"] = before;
+                result["activeScene"] = BuildSceneSummary(UnitySceneManager.GetActiveScene());
                 return result;
             }
             throw new InvalidOperationException("Unsupported ManageScene action '" + action + "'.");
@@ -333,96 +507,275 @@ namespace Cidonix.UniBridge.Legacy
                 return found;
             }
 
-            if (EqualsAction(action, "Create"))
+            GameObject target;
+            if (EqualsAction(action, "GetComponents"))
             {
-                string name = RequireString(parameters, "Name");
-                GameObject parent = ResolveOptionalParent(parameters);
-                GameObject created = new GameObject(name);
-                if (!EditorApplication.isPlaying)
-                    Undo.RegisterCreatedObjectUndo(created, "UniBridge Create GameObject");
-                if (parent != null)
-                    created.transform.SetParent(parent.transform, UniBridgeLegacyValue.GetBool(parameters, "WorldPositionStays", false));
-                ApplyTransform(created.transform, parameters);
-
-                List<object> componentResults = AddRequestedComponents(created, parameters);
-                MarkSceneDirty(created);
-                Dictionary<string, object> result = Result("GameObject '" + name + "' created.");
-                result["gameObject"] = BuildGameObjectSnapshot(created, true);
-                result["componentResults"] = componentResults;
+                target = ResolveOne(parameters, true);
+                bool includeProperties = UniBridgeLegacyValue.GetBool(parameters, "IncludeSerializedProperties", false);
+                bool includeHidden = UniBridgeLegacyValue.GetBool(parameters, "IncludeHidden", false);
+                int maxProperties = Clamp(UniBridgeLegacyValue.GetInt(parameters, "MaxProperties", 256), 1, 4096);
+                List<object> components = UniBridgeLegacySerialized.BuildComponentDetails(
+                    target,
+                    includeProperties,
+                    includeHidden,
+                    maxProperties);
+                Dictionary<string, object> result = Result("Components inspected.");
+                result["gameObject"] = BuildGameObjectSnapshot(target, false);
+                result["componentCount"] = components.Count;
+                result["components"] = components;
                 return result;
             }
 
-            GameObject target = ResolveOne(parameters, true);
+            if (EqualsAction(action, "GetComponent"))
+            {
+                target = ResolveOne(parameters, true);
+                Component component = UniBridgeLegacySerialized.ResolveComponent(target, parameters, true);
+                bool includeProperties = UniBridgeLegacyValue.GetBool(parameters, "IncludeSerializedProperties", true);
+                bool includeHidden = UniBridgeLegacyValue.GetBool(parameters, "IncludeHidden", false);
+                int maxProperties = Clamp(UniBridgeLegacyValue.GetInt(parameters, "MaxProperties", 256), 1, 4096);
+                Dictionary<string, object> result = Result("Component inspected.");
+                result["gameObject"] = BuildGameObjectSnapshot(target, false);
+                result["component"] = UniBridgeLegacySerialized.BuildComponentData(
+                    component,
+                    includeProperties,
+                    includeHidden,
+                    maxProperties);
+                return result;
+            }
+
+            if (EqualsAction(action, "Create"))
+            {
+                EnsureMutationAllowed(parameters, "Create GameObject");
+                string name = RequireString(parameters, "Name");
+                GameObject parent = ResolveOptionalParent(parameters);
+                ValidateRequestedComponents(parameters);
+                bool dryRun = UniBridgeLegacyValue.GetBool(parameters, "DryRun", false);
+                if (dryRun)
+                {
+                    Dictionary<string, object> preview = Result("GameObject creation validated without changing the scene.");
+                    preview["dryRun"] = true;
+                    preview["name"] = name;
+                    preview["parent"] = parent == null ? null : BuildGameObjectSnapshot(parent, false);
+                    preview["activeScene"] = BuildSceneSummary(UnitySceneManager.GetActiveScene());
+                    return preview;
+                }
+
+                int undoGroup = BeginUndoGroup("UniBridge Create GameObject");
+                try
+                {
+                    GameObject created = new GameObject(name);
+                    if (!EditorApplication.isPlaying)
+                        Undo.RegisterCreatedObjectUndo(created, "UniBridge Create GameObject");
+                    if (parent != null)
+                        created.transform.SetParent(parent.transform, UniBridgeLegacyValue.GetBool(parameters, "WorldPositionStays", false));
+                    ApplyTransform(created.transform, parameters);
+
+                    List<object> componentResults = AddRequestedComponents(created, parameters);
+                    MarkSceneDirty(created);
+                    CompleteUndoGroup(undoGroup);
+                    Dictionary<string, object> result = Result("GameObject '" + name + "' created.");
+                    result["gameObject"] = BuildGameObjectSnapshot(created, true);
+                    result["componentResults"] = componentResults;
+                    result["undoGroup"] = undoGroup < 0 ? (object)null : undoGroup;
+                    result["persistent"] = !EditorApplication.isPlaying;
+                    return result;
+                }
+                catch
+                {
+                    RollbackUndoGroup(undoGroup);
+                    throw;
+                }
+            }
+
+            target = ResolveOne(parameters, true);
             if (EqualsAction(action, "Modify"))
             {
-                if (!EditorApplication.isPlaying)
+                EnsureMutationAllowed(parameters, "Modify GameObject");
+                Dictionary<string, object> before = BuildGameObjectSnapshot(target, true);
+                bool dryRun = UniBridgeLegacyValue.GetBool(parameters, "DryRun", false);
+                if (dryRun)
                 {
-                    Undo.RecordObject(target, "UniBridge Modify GameObject");
-                    Undo.RecordObject(target.transform, "UniBridge Modify Transform");
+                    Dictionary<string, object> preview = Result("GameObject modification validated without changing the scene.");
+                    preview["dryRun"] = true;
+                    preview["before"] = before;
+                    return preview;
                 }
 
-                string name = UniBridgeLegacyValue.GetString(parameters, "Name", null);
-                if (!String.IsNullOrEmpty(name)) target.name = name;
-                if (UniBridgeLegacyValue.Get(parameters, "Active") != null)
-                    target.SetActive(UniBridgeLegacyValue.GetBool(parameters, "Active", target.activeSelf));
-                if (UniBridgeLegacyValue.Get(parameters, "Layer") != null)
-                    target.layer = UniBridgeLegacyValue.GetInt(parameters, "Layer", target.layer);
-                string tag = UniBridgeLegacyValue.GetString(parameters, "Tag", null);
-                if (!String.IsNullOrEmpty(tag)) target.tag = tag;
-
-                if (UniBridgeLegacyValue.Get(parameters, "Parent") != null || UniBridgeLegacyValue.Get(parameters, "ParentObjectId") != null)
+                int undoGroup = BeginUndoGroup("UniBridge Modify GameObject");
+                try
                 {
-                    GameObject parent = ResolveOptionalParent(parameters);
-                    if (parent == target)
-                        throw new InvalidOperationException("A GameObject cannot be parented to itself.");
-                    target.transform.SetParent(parent == null ? null : parent.transform, UniBridgeLegacyValue.GetBool(parameters, "WorldPositionStays", true));
+                    if (!EditorApplication.isPlaying)
+                    {
+                        Undo.RecordObject(target, "UniBridge Modify GameObject");
+                        Undo.RecordObject(target.transform, "UniBridge Modify Transform");
+                    }
+
+                    string name = UniBridgeLegacyValue.GetString(parameters, "Name", null);
+                    if (!String.IsNullOrEmpty(name)) target.name = name;
+                    if (UniBridgeLegacyValue.Get(parameters, "Active") != null)
+                        target.SetActive(UniBridgeLegacyValue.GetBool(parameters, "Active", target.activeSelf));
+                    if (UniBridgeLegacyValue.Get(parameters, "Layer") != null)
+                        target.layer = UniBridgeLegacyValue.GetInt(parameters, "Layer", target.layer);
+                    string tag = UniBridgeLegacyValue.GetString(parameters, "Tag", null);
+                    if (!String.IsNullOrEmpty(tag)) target.tag = tag;
+
+                    if (UniBridgeLegacyValue.Get(parameters, "Parent") != null || UniBridgeLegacyValue.Get(parameters, "ParentObjectId") != null)
+                    {
+                        GameObject parent = ResolveOptionalParent(parameters);
+                        if (parent == target)
+                            throw new InvalidOperationException("A GameObject cannot be parented to itself.");
+                        target.transform.SetParent(parent == null ? null : parent.transform, UniBridgeLegacyValue.GetBool(parameters, "WorldPositionStays", true));
+                    }
+                    ApplyTransform(target.transform, parameters);
+                    MarkSceneDirty(target);
+                    CompleteUndoGroup(undoGroup);
+                    Dictionary<string, object> result = Result("GameObject modified.");
+                    result["before"] = before;
+                    result["gameObject"] = BuildGameObjectSnapshot(target, true);
+                    result["undoGroup"] = undoGroup < 0 ? (object)null : undoGroup;
+                    return result;
                 }
-                ApplyTransform(target.transform, parameters);
-                MarkSceneDirty(target);
-                Dictionary<string, object> result = Result("GameObject modified.");
-                result["gameObject"] = BuildGameObjectSnapshot(target, true);
-                return result;
+                catch
+                {
+                    RollbackUndoGroup(undoGroup);
+                    throw;
+                }
             }
             if (EqualsAction(action, "Delete"))
             {
+                EnsureMutationAllowed(parameters, "Delete GameObject");
                 Dictionary<string, object> before = BuildGameObjectSnapshot(target, true);
-                if (EditorApplication.isPlaying)
-                    UnityEngine.Object.Destroy(target);
-                else
-                    Undo.DestroyObjectImmediate(target);
-                Dictionary<string, object> result = Result("GameObject deleted.");
-                result["before"] = before;
-                return result;
+                if (UniBridgeLegacyValue.GetBool(parameters, "DryRun", false))
+                {
+                    Dictionary<string, object> preview = Result("GameObject deletion validated without changing the scene.");
+                    preview["dryRun"] = true;
+                    preview["before"] = before;
+                    return preview;
+                }
+                Scene scene = target.scene;
+                int undoGroup = BeginUndoGroup("UniBridge Delete GameObject");
+                try
+                {
+                    if (EditorApplication.isPlaying)
+                        UnityEngine.Object.Destroy(target);
+                    else
+                        Undo.DestroyObjectImmediate(target);
+                    if (!EditorApplication.isPlaying && scene.IsValid())
+                        EditorSceneManager.MarkSceneDirty(scene);
+                    CompleteUndoGroup(undoGroup);
+                    Dictionary<string, object> result = Result("GameObject deleted.");
+                    result["before"] = before;
+                    result["undoGroup"] = undoGroup < 0 ? (object)null : undoGroup;
+                    return result;
+                }
+                catch
+                {
+                    RollbackUndoGroup(undoGroup);
+                    throw;
+                }
             }
             if (EqualsAction(action, "AddComponent"))
             {
-                string componentName = RequireString(parameters, "Component");
+                EnsureMutationAllowed(parameters, "Add Component");
+                string componentName = UniBridgeLegacyValue.GetString(parameters, "Component", null);
+                if (String.IsNullOrEmpty(componentName))
+                    componentName = UniBridgeLegacyValue.GetString(parameters, "ComponentName", null);
+                if (String.IsNullOrEmpty(componentName))
+                    throw new InvalidOperationException("Component or ComponentName is required.");
                 Type type = ResolveComponentType(componentName);
                 if (type == null)
                     throw new InvalidOperationException("Component type was not found: " + componentName);
-                Component component = EditorApplication.isPlaying ? target.AddComponent(type) : Undo.AddComponent(target, type);
-                MarkSceneDirty(target);
-                Dictionary<string, object> result = Result("Component added.");
-                result["component"] = component.GetType().FullName;
-                result["gameObject"] = BuildGameObjectSnapshot(target, true);
-                return result;
+                if (UniBridgeLegacyValue.GetBool(parameters, "DryRun", false))
+                {
+                    Dictionary<string, object> preview = Result("Component addition validated without changing the scene.");
+                    preview["dryRun"] = true;
+                    preview["resolvedType"] = type.FullName;
+                    preview["gameObject"] = BuildGameObjectSnapshot(target, false);
+                    return preview;
+                }
+                int undoGroup = BeginUndoGroup("UniBridge Add Component");
+                try
+                {
+                    Component component = EditorApplication.isPlaying ? target.AddComponent(type) : Undo.AddComponent(target, type);
+                    MarkSceneDirty(target);
+                    CompleteUndoGroup(undoGroup);
+                    Dictionary<string, object> result = Result("Component added.");
+                    result["component"] = UniBridgeLegacySerialized.BuildComponentData(component, false, false, 1);
+                    result["gameObject"] = BuildGameObjectSnapshot(target, true);
+                    result["undoGroup"] = undoGroup < 0 ? (object)null : undoGroup;
+                    return result;
+                }
+                catch
+                {
+                    RollbackUndoGroup(undoGroup);
+                    throw;
+                }
             }
             if (EqualsAction(action, "RemoveComponent"))
             {
-                string componentName = RequireString(parameters, "Component");
-                Component component = FindComponent(target, componentName);
-                if (component == null)
-                    throw new InvalidOperationException("Component was not found on target: " + componentName);
+                EnsureMutationAllowed(parameters, "Remove Component");
+                Component component = UniBridgeLegacySerialized.ResolveComponent(target, parameters, true);
                 if (component is Transform)
                     throw new InvalidOperationException("Transform cannot be removed.");
-                if (EditorApplication.isPlaying)
-                    UnityEngine.Object.Destroy(component);
-                else
-                    Undo.DestroyObjectImmediate(component);
-                MarkSceneDirty(target);
-                Dictionary<string, object> result = Result("Component removed.");
-                result["component"] = componentName;
-                return result;
+                Dictionary<string, object> before = UniBridgeLegacySerialized.BuildComponentData(component, false, false, 1);
+                if (UniBridgeLegacyValue.GetBool(parameters, "DryRun", false))
+                {
+                    Dictionary<string, object> preview = Result("Component removal validated without changing the scene.");
+                    preview["dryRun"] = true;
+                    preview["component"] = before;
+                    return preview;
+                }
+                int undoGroup = BeginUndoGroup("UniBridge Remove Component");
+                try
+                {
+                    if (EditorApplication.isPlaying)
+                        UnityEngine.Object.Destroy(component);
+                    else
+                        Undo.DestroyObjectImmediate(component);
+                    MarkSceneDirty(target);
+                    CompleteUndoGroup(undoGroup);
+                    Dictionary<string, object> result = Result("Component removed.");
+                    result["before"] = before;
+                    result["undoGroup"] = undoGroup < 0 ? (object)null : undoGroup;
+                    return result;
+                }
+                catch
+                {
+                    RollbackUndoGroup(undoGroup);
+                    throw;
+                }
+            }
+            if (EqualsAction(action, "SetComponentProperty") || EqualsAction(action, "SetComponentProperties"))
+            {
+                EnsureMutationAllowed(parameters, "Set Component Property");
+                Component component = UniBridgeLegacySerialized.ResolveComponent(target, parameters, true);
+                Dictionary<string, object> properties = GetSerializedPropertyRequest(parameters);
+                bool dryRun = UniBridgeLegacyValue.GetBool(parameters, "DryRun", false);
+                if (dryRun)
+                {
+                    Dictionary<string, object> preview = UniBridgeLegacySerialized.ApplyProperties(component, properties, true);
+                    Dictionary<string, object> result = Result("Serialized component-property mutation validated without changing the scene.");
+                    result["application"] = preview;
+                    return result;
+                }
+
+                int undoGroup = BeginUndoGroup("UniBridge Set Component Properties");
+                try
+                {
+                    Dictionary<string, object> application = UniBridgeLegacySerialized.ApplyProperties(component, properties, false);
+                    MarkSceneDirty(target);
+                    CompleteUndoGroup(undoGroup);
+                    Dictionary<string, object> result = Result("Serialized component properties applied and verified.");
+                    result["application"] = application;
+                    result["gameObject"] = BuildGameObjectSnapshot(target, true);
+                    result["undoGroup"] = undoGroup < 0 ? (object)null : undoGroup;
+                    return result;
+                }
+                catch
+                {
+                    RollbackUndoGroup(undoGroup);
+                    throw;
+                }
             }
             throw new InvalidOperationException("Unsupported ManageGameObject action '" + action + "'.");
         }
@@ -509,6 +862,7 @@ namespace Cidonix.UniBridge.Legacy
         private static Dictionary<string, object> BuildSceneSummary(Scene scene)
         {
             Dictionary<string, object> summary = new Dictionary<string, object>();
+            summary["sceneId"] = scene.IsValid() ? scene.GetHashCode() : 0;
             summary["name"] = scene.IsValid() ? scene.name : null;
             summary["path"] = scene.IsValid() ? scene.path : null;
             summary["isLoaded"] = scene.IsValid() && scene.isLoaded;
@@ -572,6 +926,11 @@ namespace Cidonix.UniBridge.Legacy
                         componentNames.Add(components[index].GetType().FullName);
                 }
                 snapshot["components"] = componentNames;
+                snapshot["componentDetails"] = UniBridgeLegacySerialized.BuildComponentDetails(
+                    gameObject,
+                    false,
+                    false,
+                    1);
                 snapshot["missingScripts"] = missingScripts;
             }
             return snapshot;
@@ -606,6 +965,7 @@ namespace Cidonix.UniBridge.Legacy
             summary["name"] = asset == null ? Path.GetFileNameWithoutExtension(path) : asset.name;
             summary["type"] = asset == null ? null : asset.GetType().FullName;
             summary["isFolder"] = AssetDatabase.IsValidFolder(path);
+            summary["reference"] = UniBridgeLegacySerialized.BuildObjectReferenceInfo(asset);
             return summary;
         }
 
@@ -813,6 +1173,147 @@ namespace Cidonix.UniBridge.Legacy
             string action = UniBridgeLegacyValue.GetString(parameters, "Action", null);
             if (String.IsNullOrEmpty(action)) action = UniBridgeLegacyValue.GetString(parameters, "action", fallback);
             return action;
+        }
+
+        private static Scene ResolveScene(Dictionary<string, object> parameters, bool defaultToActive)
+        {
+            int sceneId = UniBridgeLegacyValue.GetInt(parameters, "SceneId", 0);
+            if (sceneId == 0)
+                sceneId = UniBridgeLegacyValue.GetInt(parameters, "SceneHandle", 0);
+            if (sceneId != 0)
+            {
+                for (int index = 0; index < UnitySceneManager.sceneCount; index++)
+                {
+                    Scene candidate = UnitySceneManager.GetSceneAt(index);
+                    if (candidate.GetHashCode() == sceneId)
+                        return candidate;
+                }
+                throw new InvalidOperationException("No loaded scene has SceneId " + sceneId + ".");
+            }
+
+            string scenePath = UniBridgeLegacyValue.GetString(parameters, "ScenePath", null);
+            if (!String.IsNullOrEmpty(scenePath))
+            {
+                Scene byPath = UnitySceneManager.GetSceneByPath(scenePath);
+                if (byPath.IsValid())
+                    return byPath;
+                throw new InvalidOperationException("No loaded scene has path: " + scenePath);
+            }
+
+            string sceneName = UniBridgeLegacyValue.GetString(parameters, "SceneName", null);
+            if (!String.IsNullOrEmpty(sceneName))
+            {
+                Scene byName = UnitySceneManager.GetSceneByName(sceneName);
+                if (byName.IsValid())
+                    return byName;
+                throw new InvalidOperationException("No loaded scene has name: " + sceneName);
+            }
+
+            if (defaultToActive)
+                return UnitySceneManager.GetActiveScene();
+            throw new InvalidOperationException("SceneId, ScenePath, or SceneName is required.");
+        }
+
+        private static bool HasDirtyOpenScenes()
+        {
+            for (int index = 0; index < UnitySceneManager.sceneCount; index++)
+            {
+                Scene scene = UnitySceneManager.GetSceneAt(index);
+                if (scene.IsValid() && scene.isLoaded && scene.isDirty)
+                    return true;
+            }
+            return false;
+        }
+
+        private static void EnsureEditMode(string operation)
+        {
+            if (EditorApplication.isPlaying)
+                throw new InvalidOperationException(operation + " is blocked while Unity is in Play Mode.");
+        }
+
+        private static void EnsureMutationAllowed(Dictionary<string, object> parameters, string operation)
+        {
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+                throw new InvalidOperationException(operation + " is blocked while Unity is compiling or updating.");
+            if (EditorApplication.isPlaying && !UniBridgeLegacyValue.GetBool(parameters, "AllowPlayModeWrite", false))
+                throw new InvalidOperationException(
+                    operation + " is blocked in Play Mode. Pass AllowPlayModeWrite=true only for an explicitly ephemeral runtime change.");
+        }
+
+        private static int BeginUndoGroup(string name)
+        {
+            if (EditorApplication.isPlaying)
+                return -1;
+            Undo.IncrementCurrentGroup();
+            int group = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName(name);
+            return group;
+        }
+
+        private static void CompleteUndoGroup(int group)
+        {
+            if (group >= 0)
+                Undo.CollapseUndoOperations(group);
+        }
+
+        private static void RollbackUndoGroup(int group)
+        {
+            if (group >= 0)
+            {
+                try { Undo.RevertAllDownToGroup(group); }
+                catch { }
+            }
+        }
+
+        private static void ValidateRequestedComponents(Dictionary<string, object> parameters)
+        {
+            List<object> requested = UniBridgeLegacyValue.GetArray(parameters, "ComponentsToAdd");
+            if (requested == null)
+                return;
+            for (int index = 0; index < requested.Count; index++)
+            {
+                string componentName = requested[index] == null ? null : requested[index].ToString();
+                if (ResolveComponentType(componentName) == null)
+                    throw new InvalidOperationException("Component type was not found: " + componentName);
+            }
+        }
+
+        private static Dictionary<string, object> GetSerializedPropertyRequest(Dictionary<string, object> parameters)
+        {
+            Dictionary<string, object> properties = UniBridgeLegacyValue.GetObject(parameters, "Properties");
+            if (properties == null)
+                properties = UniBridgeLegacyValue.GetObject(parameters, "ComponentProperties");
+            if (properties == null)
+                properties = UniBridgeLegacyValue.GetObject(parameters, "component_properties");
+
+            string propertyPath = UniBridgeLegacyValue.GetString(parameters, "PropertyPath", null);
+            if (!String.IsNullOrEmpty(propertyPath))
+            {
+                if (!parameters.ContainsKey("Value"))
+                    throw new InvalidOperationException("Value is required when PropertyPath is provided. JSON null is allowed for object references.");
+                Dictionary<string, object> single = new Dictionary<string, object>();
+                single[propertyPath] = UniBridgeLegacyValue.Get(parameters, "Value");
+                return single;
+            }
+
+            if (properties == null || properties.Count == 0)
+                throw new InvalidOperationException("Properties or PropertyPath/Value is required.");
+
+            string componentName = UniBridgeLegacyValue.GetString(parameters, "Component", null);
+            if (String.IsNullOrEmpty(componentName))
+                componentName = UniBridgeLegacyValue.GetString(parameters, "ComponentName", null);
+            if (!String.IsNullOrEmpty(componentName))
+            {
+                object nested;
+                if (properties.TryGetValue(componentName, out nested))
+                {
+                    Dictionary<string, object> nestedProperties = nested as Dictionary<string, object>;
+                    if (nestedProperties == null || nestedProperties.Count == 0)
+                        throw new InvalidOperationException("Nested ComponentProperties entry must be a non-empty object.");
+                    return nestedProperties;
+                }
+            }
+            return properties;
         }
 
         private static bool EqualsAction(string actual, string expected)

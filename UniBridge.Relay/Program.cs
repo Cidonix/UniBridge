@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.18";
+    public const string Version = "1.1.0-build.19";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -1909,10 +1909,27 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
                     continue;
 
                 var requestId = message["requestId"]?.GetValue<string>();
-                if (!string.IsNullOrWhiteSpace(requestId) && pending.TryRemove(requestId, out var tcs))
+                var status = message["status"]?.GetValue<string>();
+                var isResponse = string.Equals(status, "success", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(status, "error", StringComparison.OrdinalIgnoreCase);
+                if (!string.IsNullOrWhiteSpace(requestId) && isResponse && pending.TryRemove(requestId, out var tcs))
                 {
                     message.Remove("requestId");
                     tcs.TrySetResult(message);
+                    continue;
+                }
+
+                // Unity 5.6's legacy Mono named-pipe implementation can echo a
+                // client's duplex write back to that same client. An echoed
+                // command carries the original requestId but is not a response;
+                // only status=success/error frames may complete a pending call.
+                // Keep the pending entry alive for the real Unity response.
+                if (!string.IsNullOrWhiteSpace(requestId) &&
+                    !isResponse &&
+                    message["type"] != null &&
+                    message["params"] is JsonObject)
+                {
+                    logger.Info($"Ignoring echoed Unity command: {Truncate(line, 200)}");
                     continue;
                 }
 
