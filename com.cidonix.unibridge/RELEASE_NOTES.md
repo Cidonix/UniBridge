@@ -1,4 +1,59 @@
-# UniBridge 0.2.55 Release Notes
+# UniBridge 0.2.56 Release Notes
+
+Release date: 2026-10-09
+
+The bundled relay is `1.1.0-build.20`. A command keeps the operation ID assigned
+before its first submission. After a connection failure, the relay queries the
+modern Editor journal for that operation instead of submitting a mutation again.
+If the original command finished, its retained success or error is returned;
+if it is still running, recovery can briefly wait for its result.
+
+Admission is scoped to the approved executable identity and immutable command
+arguments. Matching duplicate requests share the original execution. Reusing an
+ID with different arguments returns `request_conflict`. Started mutations and
+terminal results are recorded on the Unity main thread before execution and
+before response delivery respectively.
+
+Evidence is retained for ten minutes within one Editor session and survives a
+script/domain reload. It does not survive an Editor restart. The journal is
+bounded to 2,048 records and 8 MiB, with at most 512 KiB per retained response.
+Missing, expired, oversized, unavailable, or interrupted results become
+`outcome_unknown`; missing evidence never authorizes a write replay. Legacy and
+older bridges without query recovery receive the same conservative treatment.
+
+Only a tool certified as read-only for its entire public execution contract can
+be resubmitted after a same-session reconnect. Individual read-looking actions
+of a mixed tool, arbitrary custom MCP hints, captures, batches, and unknown
+commands cannot authorize that retry. Certification requires the explicit
+`annotations.uniBridgeExecution.replaySafe` field and a safe execution policy.
+An explicit `ReadOnly` or `Observer` declaration alone is insufficient. Custom
+tools default to `McpToolAttribute.ReplaySafe=false`; their opt-in must declare
+both replay safety and one of those policies. Built-in certification uses a
+separate audited list that excludes inspection tools with file-export,
+snapshot, or probe-reset actions. Pure read duplicate caches stay in memory
+without rewriting the durable mutation journal.
+
+Use the `nextSuggestedCall` returned with an unknown outcome to call
+`UniBridge_CommandStatus`. It only observes the original operation. Check
+actual scene, asset, or runtime state before issuing any further mutation.
+An interrupted `UniBridge_BatchActions` call remains unknown unless its actual
+terminal response was retained; the relay does not invent step completion,
+rollback results, or batch success from final Editor state.
+
+`Tools~/CommandReplayRegression` contains isolated relay fault tests, production
+journal tests, and opt-in live tests that create a task-owned additive scene.
+The live fixtures are qualification tools, not production MCP tools. See the
+README for prerequisites and reproducible commands.
+
+Qualification passed 39 isolated relay/journal cases, a real 120-second timeout
+case, and 14 live Unity `6000.6.5f1` checks. The live run proved an actual domain
+change, one side effect per original mutation, durable retention for an
+uncertified read with side effects, and preservation of the original scene and
+selection. Temporary fixture scenes were closed without saving. All four relay
+targets were published; Windows received live validation, and Linux/macOS
+received build validation.
+
+## Previous 0.2.55 Notes
 
 Release date: 2026-09-14
 

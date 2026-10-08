@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.19";
+    public const string Version = "1.1.0-build.20";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -266,6 +266,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     readonly UnityConnection unity = new(options, logger);
     readonly SemaphoreSlim stdoutLock = new(1, 1);
     readonly SemaphoreSlim toolsChangedNotificationLock = new(1, 1);
+    readonly SemaphoreSlim reconnectLock = new(1, 1);
     string? clientName;
     string? clientVersion;
     volatile bool clientInitialized;
@@ -417,7 +418,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
             await unity.RefreshToolsAsync(ct).ConfigureAwait(false);
         }
 
-        var tools = new JsonArray { CreateServerInfoTool() };
+        var tools = new JsonArray { CreateServerInfoTool(), CreateCommandStatusTool() };
         foreach (var tool in unity.Tools)
             tools.Add(tool.DeepClone());
 
@@ -448,6 +449,13 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
             return;
         }
 
+        if (name == "UniBridge_CommandStatus")
+        {
+            var recovery = await GetCommandStatusAsync(args, ct).ConfigureAwait(false);
+            await WriteToolTextResultAsync(id, recovery, isError: false, ct).ConfigureAwait(false);
+            return;
+        }
+
         var response = await SendUnityCommandWithReconnectAsync(name, args, ct).ConfigureAwait(false);
         var status = response["status"]?.GetValue<string>();
         var success = string.Equals(status, "success", StringComparison.OrdinalIgnoreCase);
@@ -467,13 +475,61 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     {
         await EnsureUnityConnectedAsync(ct).ConfigureAwait(false);
         var scopedArgs = AddExpectedProjectRoot(args);
+        var operationId = unity.CreateRequestId();
+        var sessionId = unity.CommandRecoverySessionId;
+        var projectId = unity.ProjectId;
+        var projectRoot = unity.ProjectRoot;
+        var editorPid = unity.EditorPid;
+        var connectionGeneration = unity.ConnectionGeneration;
+        var readOnly = IsCertifiedReadOnly(name);
 
         try
         {
-            return await unity.SendCommandAsync(name, scopedArgs, ct).ConfigureAwait(false);
+            return await unity.SendCommandAsync(name, scopedArgs, ct, operationId).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            // A response timeout does not cancel an already-started Unity mutation.
+            return UnknownCommandOutcome(name, scopedArgs, operationId, sessionId, ex.Message, "response_timeout", !readOnly);
         }
         catch (Exception ex) when (UnityConnection.IsConnectionFailure(ex))
         {
+            logger.Warn($"Unity response lost for operation {operationId}; recovering by status query, never by write replay: {ex.Message}");
+            JsonObject? recovered = null;
+            try
+            {
+                await ReconnectUnityAsync(ct, connectionGeneration).ConfigureAwait(false);
+                if (!string.Equals(projectId, unity.ProjectId, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(NormalizeProjectRoot(projectRoot), NormalizeProjectRoot(unity.ProjectRoot), StringComparison.OrdinalIgnoreCase))
+                    return UnknownCommandOutcome(name, scopedArgs, operationId, sessionId, ex.Message, "project_changed", !readOnly);
+                if (editorPid != unity.EditorPid || (!string.IsNullOrEmpty(sessionId) && !string.Equals(sessionId, unity.CommandRecoverySessionId, StringComparison.Ordinal)))
+                    return UnknownCommandOutcome(name, scopedArgs, operationId, sessionId, ex.Message, "editor_session_changed", !readOnly);
+
+                if (!string.IsNullOrEmpty(sessionId) && string.Equals(sessionId, unity.CommandRecoverySessionId, StringComparison.Ordinal))
+                {
+                    recovered = await QueryCommandRecoveryAsync(operationId, name, scopedArgs, sessionId, ct, waitForCompletion: true).ConfigureAwait(false);
+                    if (ReadString(recovered, "state") == "completed" && recovered["response"] is JsonObject response)
+                        return response.DeepClone().AsObject();
+                    if (ReadString(recovered, "state") == "request_conflict")
+                        return UnknownCommandOutcome(name, scopedArgs, operationId, sessionId, "Recovery payload does not match the admitted operation.", "request_conflict");
+                }
+
+                // Only a whole-tool read-only execution contract permits resubmission.
+                // A read-looking Action, custom MCP hint, or missing policy is insufficient.
+                if (readOnly)
+                    return await unity.SendCommandAsync(name, scopedArgs, ct, operationId).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception recoveryFailure)
+            {
+                return UnknownCommandOutcome(name, scopedArgs, operationId, sessionId, recoveryFailure.Message, "recovery_unavailable", !readOnly);
+            }
+
+            // Preserve existing query-based lifecycle verification. An interrupted batch
+            // is not restarted and cannot be reported as fully executed from final state.
+            if (name.Equals("UniBridge_BatchActions", StringComparison.Ordinal))
+                return UnknownCommandOutcome(name, scopedArgs, operationId, sessionId, ex.Message, "batch_interrupted");
+
             if (IsScriptCompilationReloadRecoveryCandidate(name, scopedArgs))
             {
                 logger.Warn($"Unity connection lost during script compilation workflow; attempting reload-safe recovery: {ex.Message}");
@@ -492,11 +548,79 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
                 return await RecoverRefreshAssetsAfterReloadAsync(name, refreshArgs, ex, ct).ConfigureAwait(false);
             }
 
-            logger.Warn($"Unity connection lost while calling {name}; reconnecting once: {ex.Message}");
-            await ReconnectUnityAsync(ct).ConfigureAwait(false);
-            return await unity.SendCommandAsync(name, scopedArgs, ct).ConfigureAwait(false);
+            return UnknownCommandOutcome(name, scopedArgs, operationId, sessionId, ex.Message,
+                recovered == null ? "recovery_not_supported_or_session_changed" : ReadString(recovered, "reason", "state") ?? "outcome_unknown", !readOnly);
         }
     }
+
+    bool IsCertifiedReadOnly(string name)
+    {
+        var tool = unity.Tools.FirstOrDefault(tool => string.Equals(ReadString(tool, "name"), name, StringComparison.Ordinal));
+        var execution = tool?["annotations"]?["uniBridgeExecution"] as JsonObject;
+        var policy = execution == null ? null : ReadString(execution, "policy");
+        return execution?["replaySafe"]?.GetValue<bool>() == true && policy is "ReadOnly" or "Observer";
+    }
+
+    async Task<JsonObject> QueryCommandRecoveryAsync(string operationId, string name, JsonObject args, string sessionId, CancellationToken ct, bool waitForCompletion)
+    {
+        var query = AddExpectedProjectRoot(new JsonObject
+        {
+            ["originalRequestId"] = operationId,
+            ["originalType"] = name,
+            ["originalParams"] = args.DeepClone(),
+            ["expectedSessionId"] = sessionId
+        });
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var remainingMs = Math.Max(1, (int)(deadline - DateTime.UtcNow).TotalMilliseconds);
+            var response = await unity.SendCommandAsync("recover_command", query, ct, responseTimeoutMs: remainingMs).ConfigureAwait(false);
+            if (!string.Equals(ReadString(response, "status"), "success", StringComparison.OrdinalIgnoreCase) || response["result"] is not JsonObject result)
+                return new JsonObject { ["state"] = "outcome_unknown", ["reason"] = "recovery_query_rejected", ["details"] = response.DeepClone() };
+            if (!waitForCompletion || ReadString(result, "state") != "in_flight" || DateTime.UtcNow >= deadline)
+                return result.DeepClone().AsObject();
+            await Task.Delay(100, ct).ConfigureAwait(false);
+        }
+    }
+
+    async Task<JsonObject> GetCommandStatusAsync(JsonObject args, CancellationToken ct)
+    {
+        await EnsureUnityConnectedAsync(ct).ConfigureAwait(false);
+        var operationId = ReadString(args, "OperationId", "operationId");
+        var name = ReadString(args, "ToolName", "toolName");
+        var sessionId = ReadString(args, "SessionId", "sessionId");
+        if (string.IsNullOrWhiteSpace(operationId) || string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(sessionId) || args["Arguments"] is not JsonObject originalArgs)
+            return new JsonObject { ["state"] = "outcome_unknown", ["reason"] = "OperationId, ToolName, Arguments and SessionId are required." };
+        if (!string.Equals(sessionId, unity.CommandRecoverySessionId, StringComparison.Ordinal))
+            return new JsonObject { ["state"] = "outcome_unknown", ["reason"] = "recovery_not_supported_or_session_changed", ["originalRequestId"] = operationId };
+        return await QueryCommandRecoveryAsync(operationId, name, AddExpectedProjectRoot(originalArgs), sessionId, ct, waitForCompletion: false).ConfigureAwait(false);
+    }
+
+    static JsonObject UnknownCommandOutcome(string name, JsonObject args, string operationId, string? sessionId, string failure, string reason, bool mayMutate = true) => new()
+    {
+        ["status"] = "error",
+        ["code"] = "outcome_unknown",
+        ["error"] = mayMutate
+            ? "The Unity command may already have changed the project. It was not replayed. Verify actual state before issuing a new operation."
+            : "The Unity command result could not be recovered. It was not replayed across a changed or unavailable Editor session.",
+        ["operationId"] = operationId,
+        ["originalTool"] = name,
+        ["reason"] = reason,
+        ["connectionFailure"] = failure,
+        ["automaticReplay"] = false,
+        ["mutationMayStillBeRunning"] = mayMutate,
+        ["nextSuggestedCall"] = string.IsNullOrEmpty(sessionId) ? null : new JsonObject
+        {
+            ["tool"] = "UniBridge_CommandStatus",
+            ["arguments"] = new JsonObject
+            {
+                ["OperationId"] = operationId,
+                ["ToolName"] = name,
+                ["Arguments"] = args.DeepClone(),
+                ["SessionId"] = sessionId
+            }
+        }
+    };
 
     static bool IsScriptCompilationReloadRecoveryCandidate(string name, JsonObject args)
     {
@@ -1075,10 +1199,19 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         return scoped;
     }
 
-    async Task ReconnectUnityAsync(CancellationToken ct)
+    async Task ReconnectUnityAsync(CancellationToken ct, int failedGeneration = -1)
     {
-        await unity.DisconnectAsync("Reconnecting to Unity.").ConfigureAwait(false);
-        await EnsureUnityConnectedAsync(ct).ConfigureAwait(false);
+        await reconnectLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // Concurrent failed calls share the replacement connection. A later recovery
+            // must not close the fresh transport while another call queries its result.
+            if (failedGeneration >= 0 && unity.IsConnected && unity.ConnectionGeneration > failedGeneration)
+                return;
+            await unity.DisconnectAsync("Reconnecting to Unity.").ConfigureAwait(false);
+            await EnsureUnityConnectedAsync(ct).ConfigureAwait(false);
+        }
+        finally { reconnectLock.Release(); }
     }
 
     async Task EnsureUnityConnectedAsync(CancellationToken ct)
@@ -1351,6 +1484,26 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     static bool IsHex(char c) =>
         c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
 
+    static JsonObject CreateCommandStatusTool() => new()
+    {
+        ["name"] = "UniBridge_CommandStatus",
+        ["title"] = "Recover a Unity command result",
+        ["description"] = "Read-only lookup of an interrupted operation. Never executes or resumes the original command. Use the nextSuggestedCall returned with outcome_unknown, then verify project state before deciding to issue a new operation.",
+        ["annotations"] = new JsonObject { ["readOnlyHint"] = true, ["destructiveHint"] = false, ["openWorldHint"] = false },
+        ["inputSchema"] = new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["OperationId"] = new JsonObject { ["type"] = "string" },
+                ["ToolName"] = new JsonObject { ["type"] = "string" },
+                ["Arguments"] = new JsonObject { ["type"] = "object" },
+                ["SessionId"] = new JsonObject { ["type"] = "string" }
+            },
+            ["required"] = new JsonArray("OperationId", "ToolName", "Arguments", "SessionId")
+        }
+    };
+
     static JsonObject CreateServerInfoTool() => new()
     {
         ["name"] = "_server_info",
@@ -1471,11 +1624,12 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
     StreamReader? reader;
     StreamWriter? writer;
     Task? readerTask;
+    volatile bool handshakeComplete;
     readonly string requestPrefix = $"{Environment.ProcessId}-{Guid.NewGuid():N}";
     int nextRequestId;
     string? toolsHash;
 
-    public bool IsConnected => IsTransportOpen();
+    public bool IsConnected => handshakeComplete && IsTransportOpen();
     public List<JsonObject> Tools { get; } = new();
     public string? ConnectionPath { get; private set; }
     public string? ProjectId { get; private set; }
@@ -1484,6 +1638,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
     public string? ProjectRoot { get; private set; }
     public int? EditorPid { get; private set; }
     public int ConnectionGeneration { get; private set; }
+    public string? CommandRecoverySessionId { get; private set; }
 
     public async Task ConnectAsync(CancellationToken ct)
     {
@@ -1524,6 +1679,10 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
             EditorPid = entry.EditorPid;
 
             toolsHash = handshake["toolsHash"]?.GetValue<string>();
+            var recovery = handshake["commandRecovery"] as JsonObject;
+            CommandRecoverySessionId = recovery?["version"]?.GetValue<int>() == 1 &&
+                string.Equals(recovery["mode"]?.GetValue<string>(), "query-only", StringComparison.Ordinal)
+                ? recovery["sessionId"]?.GetValue<string>() : null;
             Tools.Clear();
             if (handshake["tools"] is JsonArray tools)
             {
@@ -1535,8 +1694,9 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
             }
 
             logger.Info($"Unity MCP handshake received: protocol={protocol} version={version} tools={Tools.Count}");
-            ConnectionGeneration++;
-            readerTask = Task.Run(() => ReadLoopAsync(ct), ct);
+            var generation = ++ConnectionGeneration;
+            readerTask = Task.Run(() => ReadLoopAsync(ct, generation), ct);
+            handshakeComplete = true;
         }
         catch
         {
@@ -1600,11 +1760,13 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         return readerTask == null || !readerTask.IsCompleted;
     }
 
-    public async Task DisconnectAsync(string reason)
+    public async Task DisconnectAsync(string reason, int? expectedGeneration = null)
     {
         await connectionLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (expectedGeneration.HasValue && expectedGeneration.Value != ConnectionGeneration)
+                return;
             await CloseConnectionCoreAsync(reason, waitForReader: true).ConfigureAwait(false);
         }
         finally
@@ -1615,6 +1777,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
 
     async Task CloseConnectionCoreAsync(string reason, bool waitForReader)
     {
+        handshakeComplete = false;
         var oldWriter = writer;
         var oldReader = reader;
         var oldStream = connectionStream;
@@ -1629,6 +1792,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         unixSocket = null;
         readerTask = null;
         toolsHash = null;
+        CommandRecoverySessionId = null;
 
         ConnectionPath = null;
         ProjectId = null;
@@ -1828,12 +1992,15 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         logger.Info($"Refreshed Unity tools: {Tools.Count}");
     }
 
-    public async Task<JsonObject> SendCommandAsync(string type, JsonObject parameters, CancellationToken ct)
+    public string CreateRequestId() => $"{requestPrefix}-{Interlocked.Increment(ref nextRequestId)}";
+
+    public async Task<JsonObject> SendCommandAsync(string type, JsonObject parameters, CancellationToken ct, string? operationId = null, int responseTimeoutMs = 120000)
     {
+        var generation = ConnectionGeneration;
         if (!IsConnected)
             throw new InvalidOperationException("Unity connection is not established.");
 
-        var requestId = $"{requestPrefix}-{Interlocked.Increment(ref nextRequestId)}";
+        var requestId = operationId ?? CreateRequestId();
         var tcs = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         pending[requestId] = tcs;
 
@@ -1846,9 +2013,9 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
 
         try
         {
-            await WriteRawAsync(request, ct).ConfigureAwait(false);
+            await WriteRawAsync(request, ct, generation).ConfigureAwait(false);
 
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(responseTimeoutMs));
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
             await using var registration = linked.Token.Register(() =>
             {
@@ -1861,7 +2028,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         catch (Exception ex) when (IsConnectionFailure(ex))
         {
             pending.TryRemove(requestId, out _);
-            await DisconnectAsync($"Unity connection lost: {ex.Message}").ConfigureAwait(false);
+            await DisconnectAsync($"Unity connection lost: {ex.Message}", generation).ConfigureAwait(false);
             throw new IOException($"Unity connection lost: {ex.Message}", ex);
         }
         catch
@@ -1871,11 +2038,11 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         }
     }
 
-    async Task ReadLoopAsync(CancellationToken ct)
+    async Task ReadLoopAsync(CancellationToken ct, int generation)
     {
         try
         {
-            while (!ct.IsCancellationRequested && IsConnected)
+            while (!ct.IsCancellationRequested && generation == ConnectionGeneration && IsTransportOpen())
             {
                 string line;
                 try
@@ -1942,7 +2109,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
             {
                 try
                 {
-                    await DisconnectAsync("Unity connection closed.").ConfigureAwait(false);
+                    await DisconnectAsync("Unity connection closed.", generation).ConfigureAwait(false);
                 }
                 catch (ObjectDisposedException)
                 {
@@ -1952,7 +2119,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         }
     }
 
-    async Task WriteRawAsync(JsonObject message, CancellationToken ct)
+    async Task WriteRawAsync(JsonObject message, CancellationToken ct, int? expectedGeneration = null)
     {
         if (writer == null)
             throw new InvalidOperationException("Unity pipe writer is not available.");
@@ -1965,8 +2132,11 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         await writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await writer.WriteLineAsync(json.AsMemory(), ct).ConfigureAwait(false);
-            await writer.FlushAsync(ct).ConfigureAwait(false);
+            if (expectedGeneration.HasValue && expectedGeneration.Value != ConnectionGeneration)
+                throw new IOException("Unity connection changed before command transmission.");
+            var activeWriter = writer ?? throw new IOException("Unity connection closed before command transmission.");
+            await activeWriter.WriteLineAsync(json.AsMemory(), ct).ConfigureAwait(false);
+            await activeWriter.FlushAsync(ct).ConfigureAwait(false);
         }
         finally
         {

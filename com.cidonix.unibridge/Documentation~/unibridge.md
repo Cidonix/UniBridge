@@ -41,9 +41,11 @@ package or an external OS-level capture tool.
 
 On Windows this profile uses a direct Win32 pipe instead of Unity 5.6's
 old-Mono `System.IO.Pipes` implementation. The bundled relay
-`1.1.0-build.19` ignores legacy duplex request echoes and waits for a real
+`1.1.0-build.20` ignores legacy duplex request echoes and waits for a real
 `status=success|error` response. The bridge closes and re-registers across
 script/domain reloads without requiring the MCP client to restart.
+The legacy adapter does not advertise the modern command journal. If a write
+reply is lost, the relay reports `outcome_unknown` without repeating the write.
 
 The package includes relay binaries for:
 
@@ -75,6 +77,77 @@ The Local Bridge should start automatically. If it is stopped, use the Start but
 6. When Unity shows a new MCP connection approval dialog, review the executable identity and choose `Allow` if you trust the client.
 
 After approval, the client can call the enabled UniBridge MCP tools for this Unity project.
+
+## Recover A Lost Command Result
+
+Package `0.2.56` and relay `1.1.0-build.20` assign one stable operation ID before
+the initial command is submitted. After a transport failure, the relay may
+reconnect and query the modern Editor admission journal. This recovery query
+only observes the original operation; it never executes or resumes its handler.
+
+The Editor admits commands by approved executable identity, request ID, and an
+immutable fingerprint of the tool name and arguments. The approval and expected
+project-root checks run before cache lookup. A matching duplicate shares the
+original execution or its result; an ID reused with different arguments is
+refused as `request_conflict`. Started mutations are recorded before the handler
+runs, and both successful and failed terminal responses are recorded before
+response delivery.
+
+Recovery returns one of these states:
+
+| State | Meaning |
+| --- | --- |
+| `completed` | The actual original terminal response is available, including an original error. |
+| `in_flight` | The original operation is still running in this domain. Automatic recovery can wait briefly; a status call observes it immediately. |
+| `outcome_unknown` | There is insufficient retained evidence to return a terminal result. The command may already have changed the project or may still be running. |
+| `request_conflict` | The supplied tool or arguments do not match the operation admitted under that ID. |
+
+The journal retains bounded evidence for ten minutes in one Editor session.
+It survives script/domain reloads through `SessionState`; an Editor restart
+starts a different session. A started operation abandoned by reload is unknown,
+not eligible for execution again. The bounds are 2,048 records, 8 MiB total
+journal size, and 512 KiB per retained response. A response omitted because of
+these bounds remains unknown. Missing or expired evidence, changed sessions,
+unavailable storage, and older or legacy bridges also cannot authorize replay.
+Do not manually resubmit a mutation using its old request ID after retention
+has expired; this journal is not permanent operation storage.
+
+Only a tool certified as read-only for its whole execution contract may be
+resubmitted after a same-session reconnect. An individual read-looking action
+of a mixed tool, an arbitrary MCP `readOnlyHint`, an unknown custom tool, or a
+capture does not grant that permission. The certificate is
+`annotations.uniBridgeExecution.replaySafe=true`; it must accompany a
+`ReadOnly` or `Observer` policy. Mixed tools do not receive this certificate
+from their default action. Scheduling a tool as `ReadOnly` or `Observer` alone
+does not certify replay safety: some such tools can export files, persist
+snapshots, or reset probe state. The built-in certificate uses a separately
+audited tool list; `AssetIntelligence`, `RuntimeProfiler`, `RuntimeStateProbe`,
+`TypeSchema`, and `SceneObjectView` are not certified.
+
+Custom tools default to `McpToolAttribute.ReplaySafe=false`. Opt-in requires
+both `ReplaySafe=true` and an explicit `ExecutionPolicy=ReadOnly` or `Observer`,
+after verifying that every action can be repeated without persistent side
+effects. A policy declaration or ordinary MCP hint alone is insufficient.
+Pure read duplicate caches stay in memory and do not consume the durable
+mutation journal.
+
+An unknown-outcome error includes `operationId`, `originalTool`,
+`automaticReplay=false`, and, when session evidence is available,
+`nextSuggestedCall`. Use that suggested `UniBridge_CommandStatus` call with its
+`OperationId`, `ToolName`, original `Arguments`, and `SessionId` unchanged. It
+returns the same recovery states without starting a new mutation. Inspect
+actual scene, asset, or runtime state before deciding to issue a new operation.
+A response timeout does not cancel a mutation already executing in Unity.
+
+A lost `UniBridge_BatchActions` response remains unknown unless the actual
+terminal response was retained. The relay does not invent successful steps,
+rollback completion, or whole-batch success from final Editor state. Query the
+operation, then verify each relevant effect before planning follow-up work.
+
+For reproducible isolated fault tests and opt-in live qualification, see
+`../README.md` under **Command Delivery Regression**. Files under
+`Tools~/CommandReplayRegression` are test fixtures; live fixtures are installed
+temporarily into an authorized test project and are not production tools.
 
 ## Discoverability And First Ping
 
@@ -1607,7 +1680,12 @@ Open `Project Settings > UniBridge > MCP` and check that Local Bridge status is 
 
 Use the integration snippet from the same Unity project so the client points to the correct relay path and project ID.
 
-If Unity was restarted while the MCP client stayed open, ask the client to reconnect its MCP server. The relay also drops stale pipes automatically on the next failed command and retries once against the current Unity bridge.
+If Unity was restarted while the MCP client stayed open, ask the client to
+reconnect its MCP server. The relay can drop stale pipes and reconnect after a
+failed command. It queries retained results in the same Editor session and
+never automatically repeats a project mutation. An Editor restart or an
+unrecoverable write response produces `outcome_unknown`; inspect actual state
+before submitting another mutation.
 
 ### Wrong Unity project is targeted
 

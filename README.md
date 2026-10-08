@@ -23,6 +23,8 @@ This repository is used as a public project page for overview, documentation lin
 - Lets agents inspect or ensure editability for one or many version-controlled assets before mutation.
 - Gives fresh agents compact playbooks for read-before-modify, safe execution, scope awareness, and verification workflows.
 - Includes visual self-check tools so agents can verify Unity output before reporting success.
+- Recovers lost command results through an Editor-session journal and reports
+  unknown outcomes without automatically repeating project mutations.
 
 ## Requirements
 

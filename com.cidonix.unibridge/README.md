@@ -108,6 +108,30 @@ AI agent/MCP client so it reloads the available Unity projects.
 
 ## Documentation
 
+### Command Recovery In 0.2.56
+
+Relay `1.1.0-build.20` gives each command one stable operation ID. When a reply
+is lost, it reconnects and queries the modern Editor journal for the original
+result. Matching duplicate IDs share one execution; changed arguments are
+refused. Recovery never invokes a mutating command again.
+
+The bounded journal retains started mutations and completed successes/errors
+for ten minutes in the same Editor session. It survives domain reloads, but an
+Editor restart clears it. Missing, interrupted, expired, or oversized results
+return `outcome_unknown`; legacy bridges without the journal also refuse write
+replay. Only an entire tool certified as read-only can be resubmitted after a
+same-session reconnect. A read-looking `Action` or custom MCP `readOnlyHint`
+does not certify a mixed or unknown tool. The relay requires
+`annotations.uniBridgeExecution.replaySafe=true` alongside a safe policy.
+`ReadOnly` or `Observer` alone is insufficient. Custom tools default to
+`ReplaySafe=false`; explicit replay opt-in also requires one of those policies
+and a whole-tool side-effect audit.
+
+Follow `nextSuggestedCall` with `UniBridge_CommandStatus` to inspect an unknown
+operation without executing it. Verify actual project state before submitting
+another mutation. A lost `UniBridge_BatchActions` reply does not establish any
+step's success, rollback, or whole-batch completion.
+
 Full documentation lives in `Documentation~/unibridge.md`.
 
 For safe C# changes, use `UniBridge_GetSha` followed by
@@ -136,6 +160,50 @@ writes a JSON report to the target project's `Library/UniBridge` folder. Use
 `-IncludePlayMode`, `-IncludeUiRecipe`, or `-IncludeAssetRecipe` for broader
 coverage. Python must be available on `PATH`; the PowerShell script is the
 Windows entrypoint and launches the Python helper that manages JSON-RPC.
+
+## Command Delivery Regression
+
+Run the isolated relay and production journal tests from the repository root
+on Windows with Python, the .NET 10 SDK, and a Unity Newtonsoft dependency:
+
+```powershell
+$testProject = 'H:\Repos\UnityRepos\UniBridge_Test_Project'
+$newtonsoftDll = Get-ChildItem -Path "$testProject\Library\PackageCache\com.unity.nuget.newtonsoft-json@*\Runtime\Newtonsoft.Json.dll" |
+  Select-Object -First 1 -ExpandProperty FullName
+powershell -ExecutionPolicy Bypass `
+  -File .\com.cidonix.unibridge\Tools~\CommandReplayRegression\Run-CommandReplayRegression.ps1 `
+  -ReportPath "$env:TEMP\UniBridge-command-replay-regression.json" `
+  -NewtonsoftDll $newtonsoftDll `
+  -IncludeTimeout
+```
+
+These tests compile the current production relay and journal into a temporary
+harness. Fault injection uses an isolated fake Unity named pipe and discovery
+directory; it does not connect to real Editors. The optional `-IncludeTimeout`
+gate exercises the actual 120-second response timeout. JSON reports record each
+assertion, and failed assertions return a non-zero process exit code.
+
+Live qualification is opt-in. `LiveProbeFixture.cs` is ignored by Unity under
+`Tools~`; copy it temporarily into the test project's UniBridge Editor assembly
+only when qualifying an authorized test project. Compile the fixture first,
+and set `$testDiscovery` to the verified discovery JSON for that exact project
+under the user's `.unibridge/mcp/connections` directory. Then run:
+
+```powershell
+python .\com.cidonix.unibridge\Tools~\CommandReplayRegression\run_live_command_replay_regression.py `
+  --real-discovery $testDiscovery `
+  --project-root $testProject `
+  --report "$env:TEMP\UniBridge-command-replay-live.json" `
+  --run-id ('delivery-' + [guid]::NewGuid().ToString('N'))
+```
+
+The live harness forwards calls to that Editor through a task-owned fault
+proxy. Its mutations stay in a temporary additive scene; it checks counters,
+reload recovery, and original scene/selection preservation, and cleans up its
+owned scene and markers. Remove the temporary fixture copy and its generated
+metadata afterward. These fixtures are qualification tools and must not be
+included in a production Editor package. `--build-only` compiles the live
+harness without connecting to any Editor.
 
 ## Known 0.2.35 Notes
 

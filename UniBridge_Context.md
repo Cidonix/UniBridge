@@ -1,5 +1,97 @@
 # UniBridge Context
 
+## 2026-10-09 - Domovyk upgrade and release publication
+
+- Owner authorized updating Domovyk and committing/pushing this release.
+  This supersedes the preceding task's restriction on publication and updates
+  to other projects. Source scope remains the qualified 0.2.56/build.20 change.
+- Domovyk embedded package upgraded from 0.2.51 to 0.2.56 with a guarded,
+  non-deleting overlay: 29 changed/new files and 585 controlled source files
+  matched byte-for-byte. Seven existing Unity-generated metadata files and
+  the complete previous context history were preserved.
+- Four changed modern production scripts passed standard validation. Actual
+  script reload completed in Unity 6000.6.5f1; Edit Mode ready, Console errors
+  and exceptions zero, critical build issues zero, stale/missing outputs zero
+  across 115 assemblies. CommandStatus and audited replay-safety metadata are
+  available through project-scoped MCP. Installed Windows relay bytes match
+  the qualified build.20 without editing global Codex configuration.
+- Loaded scene, clean state, Prefab Stage and selection match the baseline;
+  authored scene and metadata hashes are unchanged. WorkSession semantic
+  review reports zero changes across all 29 loaded objects; session closed.
+- Console has 45 warnings from unchanged Domovyk source/materials, including
+  obsolete APIs, unused fields and water validation/batching. No UniBridge
+  warning groups. Retained compiler diagnostics reset across domain reload;
+  they are not proof that author code compiled without warnings.
+- Domovyk server check-in is changeset 278 on /main, scoped to the embedded
+  package and Domovyk_context.md, with a detailed Ukrainian comment. Server
+  paths/comment and a clean Plastic workspace were verified. Local evidence
+  is under Library/AgentValidation/UniBridge0256-20261009 in that project.
+- Source publication uses the existing main branch and non-force GitHub push;
+  qualified production/binary bytes remain unchanged. Release validation is
+  39 deterministic cases, one real 120-second timeout and 14 live cases in
+  UniBridge_Test_Project. Windows transport is live-tested; Linux/macOS
+  artifacts are build-qualified. Final remote verification is saved in
+  Temp/DomovykUniBridge0256-20261009/publication-verification.json.
+
+## 2026-10-09 - Command recovery safety completed (0.2.56)
+
+- User authorized completing only the command replay safety fix and live tests
+  in `H:/Repos/UnityRepos/UniBridge_Test_Project` (Unity 6000.6.5f1,
+  project ID `ae4e323353aa487f9ea74d566b38eaac`). Source baseline is clean
+  `main` commit `484cc1905605bc37c4dbe69cde79067ee0cc2e83`, package 0.2.55,
+  relay 1.1.0-build.19; target embedded package is 0.2.51.
+- Implement stable logical command identity and query-only recovery: an
+  uncertain mutation is never resubmitted. Add fingerprint-checked atomic
+  admission and reload-surviving started/completed evidence; missing evidence
+  reports an unknown outcome. Unknown/custom and legacy tools default unsafe.
+- Separate deterministic fault-injection regression and live target
+  qualification preserve user scenes/assets and concurrent work. Target
+  package changes require hash inventory and guarded writes. No commit,
+  push, other-project updates, or unrelated comparison fixes are authorized.
+- Codex's configured project MCP was attempted; startup timed out awaiting
+  tools/list. Direct project-scoped relay is the working fallback under test.
+- Direct MCP baseline passed: correct project identity, Edit Mode, clean
+  `Assets/CorgiEngine/Demos/Minimal/FeaturesPlatforms.unity`, seven roots;
+  retained compiler diagnostics 0 errors/0 warnings, stale/missing assemblies
+  0/0. Preserve the one existing Codex certificate-collection Console warning.
+- Relay query-only recovery and modern SessionState admission are implemented;
+  35 deterministic cases and the real 120-second timeout gate passed before
+  the latest whole-tool replay certificate refinement. Concurrent reconnects
+  share a replacement generation; stale readers cannot tear it down.
+- Release versions are package 0.2.56 and relay 1.1.0-build.20. The test project
+  now has hash-guarded modern source and a transient Tools~ qualification fixture
+  installed in the Editor assembly; backups and manifest are under
+  `Temp/CommandReplay-20261009`. Live v3 passed 12/12, including proven domain
+  identity change/reload event and real side-effect counters of exactly one;
+  authored scene/selection snapshots and task-owned scene cleanup match.
+- Latest deterministic gate passed 39/39; a separate production 120-second
+  response-timeout gate passed with one effect and `outcome_unknown`.
+- Installed the byte-verified versioned build.20 relay and changed only the
+  test-project Codex MCP command. Config TOML parsed and all other configuration
+  values matched exactly. The current Codex MCP client retains its startup
+  timeout failure; direct MCP calls remain the verified fallback without restart.
+- Final Bridge durability also covers unsafe `ReadOnly`/`Observer` side effects.
+  Live v4 passed 14/14, including a raw duplicate of an uncertified read after
+  a proven domain reload: one effect, cached result, unchanged object count.
+- Final target package is synchronized with source, including four build.20
+  bundled relay binaries. Windows was exercised live; Linux/macOS were published
+  and build-validated. Source/target snapshots preserve authored scene bytes.
+- Removed only the task-owned compiled fixture, generated fixture metadata, and
+  empty qualification folder after semantic cleanup. Tools~ retains reusable
+  fixtures and runners. Final exact Codex-configured command initialized build.20,
+  exposed CommandStatus, and advertised no transient test tools.
+- Final Editor health: ready/Edit Mode, compiler errors/warnings 0/0, critical
+  build issues 0, stale/missing assemblies 0/0; FeaturesPlatforms clean/7 roots.
+  No explicit Console clear was issued; original baseline evidence is retained.
+- Delivery reports are under the test project's `Library/UniBridge`:
+  `command_replay_live_qualification_final.json`,
+  `command_replay_20261009_deterministic.json`,
+  `command_replay_20261009_real_timeout.json`, and
+  `command_replay_delivery_summary.json`. Earlier failed harness qualifications
+  remain as evidence. No commit, push, global relay replacement, or other-project
+  configuration update was performed.
+
+
 Останнє оновлення: 2026-09-14, Europe/Kiev.
 
 Цей файл створено як переносний контекст для нового проєкту `UniBridge`.

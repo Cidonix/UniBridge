@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.55",
+  "version": "0.2.56",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Added\n\n- Reusable Unity53Legacy profile for Unity 5.3.2+ in the 5.3.x line, preserving all nine legacy tools and the build.19 relay.\n- The compile matrix now includes Unity 5.3 with matching version symbols.\n\n### Fixed\n\n- ExposedReference serialized reads and writes compile only on Unity 5.6 and newer; ordinary typed object references remain available on Unity 5.3.\n\n### Verified\n\n- Compilation passes on Unity 5.3.2f1, 5.6.5f1, 5.6.7f1, 2017.4.6f1, and 2018.4.8f1.\n- Live Unity 5.3.2f1 passed identity, hierarchy, DLL-backed component reads, asset search, three PNG capture paths, and temporary-scene write/readback/Undo/Redo with the original scene preserved."
+    "changelog": "### Added\n\n- Stable operation IDs and query-only command recovery with UniBridge_CommandStatus.\n- Identity-scoped, bounded ten-minute Editor-session journal survives domain reloads; started writes and completed successes/errors are recorded before execution and delivery.\n- Reproducible relay/journal fault tests and opt-in live qualification fixtures under Tools~/CommandReplayRegression.\n\n### Fixed\n\n- Relay 1.1.0-build.20 does not automatically repeat mutations, captures, mixed tools, or unknown commands after losing a response. Only whole-tool certified reads with replaySafe=true may be resubmitted in the same Editor session; custom tools default ReplaySafe=false and require explicit opt-in plus ReadOnly/Observer policy.\n- Missing, interrupted, expired, oversized, unavailable, restarted-Editor, and legacy outcomes return outcome_unknown with a status-query suggestion when available.\n- Lost BatchActions replies do not fabricate partial or whole-batch success. Pure reads use an in-memory duplicate cache without writing the durable mutation journal."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

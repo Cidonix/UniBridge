@@ -61,11 +61,10 @@ namespace Cidonix.UniBridge.MCP.Editor
         static readonly Dictionary<string, TaskCompletionSource<bool>> pendingApprovalsByIdentity = new();
         static readonly object pendingApprovalsLock = new();
 
-        // Command deduplication
-        readonly ConcurrentDictionary<string, Task<string>> inFlightCommands = new();
-        readonly ConcurrentDictionary<string, (string result, DateTime expiry)> completedCommands = new();
-        static readonly TimeSpan ResultCacheDuration = TimeSpan.FromMinutes(5);
-        double nextCacheCleanupAt;
+        // Main-thread admission journal. A recovery request only observes this evidence;
+        // it never invokes the original handler when a response has been lost.
+        CommandRecoveryJournal commandRecovery;
+        JObject commandRecoveryHandshake;
 
         // Write serialization — multiple async responses and heartbeats may complete concurrently
         readonly SemaphoreSlim transportWriteLock = new(1, 1);
@@ -272,6 +271,19 @@ namespace Cidonix.UniBridge.MCP.Editor
                     // Pre-warm tools cache so handshake can include tools immediately
                     ComputeToolsSnapshotAndHash();
 
+                    // SessionState is a Unity main-thread API. Capture the session epoch and
+                    // immutable handshake metadata before starting the background listener.
+                    commandRecovery = new CommandRecoveryJournal(
+                        key => SessionState.GetString(key, string.Empty),
+                        (key, value) => SessionState.SetString(key, value));
+                    commandRecoveryHandshake = new JObject
+                    {
+                        ["version"] = 1,
+                        ["mode"] = "query-only",
+                        ["sessionId"] = commandRecovery.SessionId,
+                        ["retentionSeconds"] = CommandRecoveryJournal.RetentionSeconds
+                    };
+
                     // Start background listener with cooperative cancellation
                     cts = new CancellationTokenSource();
                     listenerTask = Task.Run(() => ListenerLoopAsync(cts.Token));
@@ -289,6 +301,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                 {
                     Debug.LogError($"Failed to start MCP Bridge: {ex.Message}");
                     isRunning = false;
+                    commandRecovery?.Deactivate();
                 }
             }
         }
@@ -304,6 +317,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                 try
                 {
                     isRunning = false;
+                    commandRecovery?.Deactivate();
 
                     // Delete discovery files
                     ServerDiscovery.DeleteDiscoveryFiles();
@@ -560,7 +574,9 @@ namespace Cidonix.UniBridge.MCP.Editor
                     try
                     {
                         // Include pre-warmed tools in handshake to eliminate discovery round trips
-                        await MessageProtocol.SendHandshakeAsync(transport, s_ToolsSnapshot, s_CurrentToolsHash);
+                        var handshake = JObject.Parse(MessageProtocol.CreateHandshakeMessage(s_ToolsSnapshot, s_CurrentToolsHash));
+                        handshake["commandRecovery"] = commandRecoveryHandshake?.DeepClone();
+                        await WriteWithLockAsync(transport, handshake.ToString(Formatting.None), transportToken);
                         McpLog.LogDelayed($"Sent handshake (unity-mcp protocol v2.0, tools={s_ToolsSnapshot?.Length ?? 0})");
                     }
                     catch (Exception ex)
@@ -1152,14 +1168,6 @@ namespace Cidonix.UniBridge.MCP.Editor
 
             try
             {
-                // Cache cleanup for completed commands (every 60 seconds)
-                double now = EditorApplication.timeSinceStartup;
-                if (now >= nextCacheCleanupAt)
-                {
-                    CleanExpiredCommandResults();
-                    nextCacheCleanupAt = now + 60;
-                }
-
                 if (commandQueue.IsEmpty)
                     return;
 
@@ -1180,70 +1188,20 @@ namespace Cidonix.UniBridge.MCP.Editor
                         // re-processing on subsequent Update frames
                         commandQueue.TryRemove(id, out _);
 
-                        // Deduplication: check if this requestId is already being processed or completed
-                        if (!string.IsNullOrEmpty(command.requestId))
-                        {
-                            // Check for in-flight duplicate
-                            if (inFlightCommands.TryGetValue(command.requestId, out var existingTask))
-                            {
-                                // Wait for existing task and return its result
-                                _ = WaitForExistingAndComplete(existingTask, tcs, command.requestId);
-                                continue;
-                            }
-
-                            // Check for completed duplicate
-                            if (completedCommands.TryGetValue(command.requestId, out var cached) &&
-                                cached.expiry > DateTime.UtcNow)
-                            {
-                                tcs.SetResult(InjectRequestId(cached.result, command.requestId));
-                                continue;
-                            }
-                        }
-
-                        // Start execution and track the result Task
-                        Task<string> resultTask = ExecuteCommandAsync(command, client, cancellationToken);
-
-                        // Complete the TCS when execution finishes (bridges to background I/O thread).
-                        // Inject requestId into the response so the multiplexed MCP client
-                        // can route it to the correct pending promise.
-                        string reqIdForResponse = command.requestId; // capture for closure
-                        _ = resultTask.ContinueWith(t =>
-                        {
-                            string response;
-                            if (t.IsFaulted)
-                                response = JsonConvert.SerializeObject(new { status = "error", error = t.Exception?.InnerException?.Message ?? "Unknown error" });
-                            else
-                                response = t.Result;
-
-                            tcs.SetResult(InjectRequestId(response, reqIdForResponse));
-                        }, TaskScheduler.Default);
-
-                        // Track by requestId for deduplication
-                        if (!string.IsNullOrEmpty(command.requestId))
-                        {
-                            inFlightCommands[command.requestId] = resultTask;
-
-                            // When complete, move to cache (fire-and-forget continuation)
-                            string reqId = command.requestId; // Capture for closure
-                            _ = resultTask.ContinueWith(t =>
-                            {
-                                inFlightCommands.TryRemove(reqId, out _);
-                                if (t.IsCompletedSuccessfully)
-                                {
-                                    completedCommands[reqId] = (t.Result, DateTime.UtcNow + ResultCacheDuration);
-                                }
-                            }, TaskScheduler.Default);
-                        }
+                        // Admission, completion publication, and SessionState access all run
+                        // on the Unity synchronization context. No remove-before-publish gap.
+                        var resultTask = DispatchCommandAsync(command, client, cancellationToken);
+                        _ = WaitForExistingAndComplete(resultTask, tcs, command.requestId);
                     }
                     catch (Exception ex)
                     {
                         Debug.LogError($"Error processing command: {ex.Message}\\n{ex.StackTrace}");
-                        tcs.SetResult(JsonConvert.SerializeObject(new
+                        tcs.TrySetResult(InjectRequestId(JsonConvert.SerializeObject(new
                         {
                             status = "error",
                             error = ex.Message,
                             commandType = command.type ?? "Unknown"
-                        }));
+                        }), command.requestId));
                     }
                 }
             }
@@ -1311,6 +1269,181 @@ namespace Cidonix.UniBridge.MCP.Editor
             {
                 transportWriteLock.Release();
             }
+        }
+
+        async Task<string> DispatchCommandAsync(Command command, IConnectionTransport client, CancellationToken cancellationToken)
+        {
+            try
+            {
+                // These protocol-management commands have no project handler and no result cache.
+                // Keep the eager handshake usable while connection validation is still running.
+                if (IsProtocolManagementCommand(command.type))
+                    return await ExecuteCommandAsync(command, client, cancellationToken);
+
+                var identity = await RequireCommandAdmissionAsync(command, client, cancellationToken);
+                var journal = commandRecovery;
+
+                if (string.Equals(command.type, "recover_command", StringComparison.Ordinal))
+                {
+                    var args = command.@params ?? new JObject();
+                    var originalType = args.Value<string>("originalType");
+                    var originalParams = args["originalParams"] as JObject;
+                    if (originalParams == null || string.IsNullOrEmpty(originalType))
+                        return RecoveryEnvelope(args.Value<string>("originalRequestId"),
+                            new CommandRecoveryJournal.RecoveryResult { State = "outcome_unknown", Reason = "invalid_recovery_arguments" });
+                    // Guard both the current request and the immutable original arguments before
+                    // observing any cached result. This path never calls ExecuteCommandAsync.
+                    ProjectContextGuard.AssertExpectedRootForPolicy(originalType, originalParams,
+                        ToolExecutionScheduler.ResolvePolicy(originalType, originalParams, McpToolRegistry.GetTool(originalType ?? string.Empty)));
+                    var recovered = journal?.Query(identity, args.Value<string>("originalRequestId"), originalType,
+                        originalParams, args.Value<string>("expectedSessionId"))
+                        ?? new CommandRecoveryJournal.RecoveryResult { State = "outcome_unknown", Reason = "journal_unavailable" };
+                    return RecoveryEnvelope(args.Value<string>("originalRequestId"), recovered);
+                }
+
+                if (string.IsNullOrEmpty(command.requestId))
+                    return await ExecuteCommandAsync(command, client, cancellationToken);
+
+                var policy = ToolExecutionScheduler.ResolvePolicy(command.type, command.@params,
+                    McpToolRegistry.GetTool(command.type ?? string.Empty));
+                bool persist = RequiresDurableCommandEvidence(command.type, command.@params, policy,
+                    McpToolRegistry.GetTool(command.type ?? string.Empty));
+                var admission = journal?.Begin(identity, command.requestId, command.type, command.@params, persist);
+                if (admission == null)
+                    return RecoveryRefusal(command.requestId, "outcome_unknown", "journal_unavailable");
+                if (!admission.ShouldExecute)
+                {
+                    if (admission.Existing.State == "completed")
+                        return admission.Existing.Response;
+                    if (admission.Existing.State == "in_flight")
+                        return await admission.Record.Completion;
+                    return RecoveryRefusal(command.requestId, admission.Existing.State, admission.Existing.Reason);
+                }
+
+                // The durable started record was published before admission. Complete catches
+                // terminal handler errors as well, and persists before this response is released.
+                var response = await ExecuteCommandAsync(command, client, cancellationToken);
+                journal.Complete(admission.Record, response);
+                return response;
+            }
+            catch (Exception ex)
+            {
+                return JsonConvert.SerializeObject(new
+                {
+                    status = "error",
+                    error = ex.Message,
+                    command = command?.type ?? "Unknown",
+                    projectContext = ProjectContextGuard.BuildProjectContext()
+                });
+            }
+        }
+
+        static bool IsProtocolManagementCommand(string type)
+        {
+            return string.Equals(type, "set_client_info", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type, "get_available_tools", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type, "mcp/request_tool_approval", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool RequiresDurableCommandEvidence(string type, JObject parameters, ToolExecutionPolicy policy, IToolHandler handler)
+        {
+            if (policy != ToolExecutionPolicy.ReadOnly && policy != ToolExecutionPolicy.Observer)
+                return true;
+
+            // Scheduling a command as a read is not proof that it has no side effects:
+            // exports, snapshot persistence, probe resets, and custom observers also need
+            // durable admission so a raw duplicate cannot execute them again after reload.
+            var contract = JObject.FromObject(ToolExecutionScheduler.BuildAnnotation(type, handler));
+            if (contract.Value<bool>("replaySafe"))
+                return false;
+
+            // These built-in mixed tools have separately inspected pure read actions.
+            // Keep ordinary Editor/Console polling out of the durable write budget.
+            // An explicit custom policy without replay opt-in cannot inherit this exception.
+            if (handler?.Attribute?.ExecutionPolicy != ToolExecutionPolicy.Auto)
+                return true;
+            if (type == "UniBridge_ManageEditor" || type == "UniBridge_ManageScene" ||
+                type == "UniBridge_WorkSession" || type == "UniBridge_EditorSnapshot" ||
+                type == "UniBridge_VersionControl")
+                return false; // The resolved read policy already selects their pure actions.
+
+            var action = (parameters?["Action"] ?? parameters?["action"] ??
+                parameters?["operation"] ?? parameters?["Operation"])?.ToString();
+            if (type == "UniBridge_ReadConsole")
+            {
+                if (string.IsNullOrEmpty(action)) action = "Get";
+                return !new[] { "Get", "ReadSinceMarker", "Search", "Overview", "Groups", "GroupDetails",
+                    "Timeline", "TimelineWindow", "DiagnosticSummary", "ImportantRanges" }
+                    .Any(candidate => string.Equals(candidate, action, StringComparison.OrdinalIgnoreCase));
+            }
+            if (type == "UniBridge_EditorEvents")
+                return !string.IsNullOrEmpty(action) &&
+                    !string.Equals(action, "Snapshot", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(action, "Get", StringComparison.OrdinalIgnoreCase);
+
+            // Conservatively retain evidence for other dynamic/unknown read contracts.
+            return true;
+        }
+
+        async Task<string> RequireCommandAdmissionAsync(Command command, IConnectionTransport client, CancellationToken cancellationToken)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            TransportState state;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                state = TransportStore.GetState(client);
+                if (!isRunning || state == null || !client.IsConnected)
+                    throw new InvalidOperationException("Connection closed before command admission; the command was not executed.");
+                if (state.ApprovalState == ConnectionApprovalState.Denied)
+                    throw new InvalidOperationException("Connection revoked. Go to Unity Editor > Project Settings > UniBridge > MCP to change approval.");
+                if (state.ApprovalState == ConnectionApprovalState.Approved)
+                    break;
+                if (DateTime.UtcNow >= deadline)
+                    throw new InvalidOperationException("Connection identity or approval is not ready; the command was not executed.");
+                await Task.Delay(25, cancellationToken);
+            }
+
+            // Apply the ordinary tool/project policy before every admission/cache/query lookup.
+            // The internal recovery request is conservatively guarded like a mutating command.
+            var policy = string.Equals(command.type, "recover_command", StringComparison.Ordinal)
+                ? ToolExecutionPolicy.Mutating
+                : ToolExecutionScheduler.ResolvePolicy(command.type, command.@params, McpToolRegistry.GetTool(command.type ?? string.Empty));
+            ProjectContextGuard.AssertExpectedRootForPolicy(command.type, command.@params, policy);
+
+            // Validation-disabled or unidentified transports cannot share results across reconnects.
+            // Use a private transport namespace instead of accidentally sharing an "Unknown" key.
+            return string.IsNullOrEmpty(state.IdentityKey) || state.IdentityKey.StartsWith("pending-", StringComparison.Ordinal) ||
+                state.IdentityKey.IndexOf("Unknown:", StringComparison.Ordinal) >= 0
+                ? "transport:" + client.ConnectionId
+                : state.IdentityKey;
+        }
+
+        static string RecoveryEnvelope(string originalRequestId, CommandRecoveryJournal.RecoveryResult recovered)
+        {
+            return new JObject
+            {
+                ["status"] = "success",
+                ["result"] = new JObject
+                {
+                    ["state"] = recovered.State,
+                    ["originalRequestId"] = originalRequestId,
+                    ["response"] = recovered.Response == null ? null : JObject.Parse(recovered.Response),
+                    ["reason"] = recovered.Reason
+                }
+            }.ToString(Formatting.None);
+        }
+
+        static string RecoveryRefusal(string requestId, string state, string reason)
+        {
+            return JsonConvert.SerializeObject(new
+            {
+                status = "error",
+                error = state == "request_conflict"
+                    ? "Request ID was already used for different arguments; command refused."
+                    : "The earlier command outcome is unknown; command refused. Inspect project state before issuing a new operation.",
+                commandRecovery = new { state, originalRequestId = requestId, reason }
+            });
         }
 
         async Task<string> ExecuteCommandAsync(Command command, IConnectionTransport client, CancellationToken cancellationToken = default)
@@ -1547,37 +1680,16 @@ namespace Cidonix.UniBridge.MCP.Editor
             try
             {
                 string result = await existingTask;
-                tcs.SetResult(InjectRequestId(result, requestId));
+                tcs.TrySetResult(InjectRequestId(result, requestId));
             }
             catch (Exception ex)
             {
                 McpLog.LogDelayed($"Error waiting for existing command {requestId}: {ex.Message}");
-                tcs.SetResult(InjectRequestId(JsonConvert.SerializeObject(new
+                tcs.TrySetResult(InjectRequestId(JsonConvert.SerializeObject(new
                 {
                     status = "error",
                     error = $"Deduplication error: {ex.Message}"
                 }), requestId));
-            }
-        }
-
-        /// <summary>
-        /// Clean expired entries from the completed commands cache.
-        /// </summary>
-        void CleanExpiredCommandResults()
-        {
-            var expiredKeys = completedCommands
-                .Where(kvp => kvp.Value.expiry <= DateTime.UtcNow)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var key in expiredKeys)
-            {
-                completedCommands.TryRemove(key, out _);
-            }
-
-            if (expiredKeys.Count > 0)
-            {
-                McpLog.Log($"[Command Cache] Cleaned {expiredKeys.Count} expired entries");
             }
         }
 

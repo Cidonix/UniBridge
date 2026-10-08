@@ -76,6 +76,23 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             "UniBridge_ValidateScript"
         };
 
+        static readonly HashSet<string> ReplaySafeTools = new(StringComparer.Ordinal)
+        {
+            "UniBridge_BehaviourContext",
+            "UniBridge_ContextSnapshot",
+            "UniBridge_Discover",
+            "UniBridge_DomainCatalog",
+            "UniBridge_FindInFile",
+            "UniBridge_GetSha",
+            "UniBridge_ListResources",
+            "UniBridge_ReadResource",
+            "UniBridge_ScriptIntelligence",
+            "UniBridge_ToolGuide",
+            "UniBridge_UnitySearch",
+            "UniBridge_ValidateAdditiveSceneRegistration",
+            "UniBridge_ValidateScript"
+        };
+
         static readonly HashSet<string> CaptureTools = new(StringComparer.Ordinal)
         {
             "UniBridge_CaptureAsset",
@@ -385,6 +402,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             return new
             {
                 policy = policy.ToString(),
+                replaySafe = HasWholeToolReadOnlyContract(toolName, handler),
                 readOnly = policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer,
                 exclusive = policy != ToolExecutionPolicy.ReadOnly && policy != ToolExecutionPolicy.Observer,
                 timeoutParameters = new[] { "ExecutionTimeoutMs", "SchedulerTimeoutMs" },
@@ -394,6 +412,20 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                         ? "May run concurrently with other read-only UniBridge tools."
                         : "Runs through UniBridge's exclusive editor execution gate."
             };
+        }
+
+        // ResolvePolicy(null) describes the default action. Mixed tools such as
+        // ReadConsole also expose Clear/MarkSession and must never certify replay.
+        static bool HasWholeToolReadOnlyContract(string toolName, IToolHandler handler)
+        {
+            var policy = ResolvePolicy(toolName, null, handler);
+            if (policy != ToolExecutionPolicy.ReadOnly && policy != ToolExecutionPolicy.Observer)
+                return false;
+            // Scheduling reads may still export files, select objects, or reap operations.
+            // Replay is a stricter, independently audited whole-tool contract.
+            return ReplaySafeTools.Contains(toolName ?? string.Empty) ||
+                string.Equals(toolName, "UniBridge_WaitForEvent", StringComparison.Ordinal) ||
+                handler?.Attribute?.ReplaySafe == true;
         }
 
         public static object Snapshot(int recentLimit = 20)

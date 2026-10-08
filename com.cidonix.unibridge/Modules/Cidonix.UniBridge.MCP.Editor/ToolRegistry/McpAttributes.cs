@@ -100,6 +100,13 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         public ToolExecutionPolicy ExecutionPolicy { get; set; } = ToolExecutionPolicy.Auto;
 
         /// <summary>
+        /// Explicit whole-tool promise that every action can be repeated without side effects.
+        /// Requires a declared ReadOnly or Observer policy; false by default. Scheduling
+        /// reads that export files, select objects, or cancel work must leave this false.
+        /// </summary>
+        public bool ReplaySafe { get; set; }
+
+        /// <summary>
         /// Creates an MCP tool attribute to mark a method or class as a discoverable tool.
         /// </summary>
         /// <param name="name">The unique name of the tool as exposed to MCP clients (use snake_case)</param>

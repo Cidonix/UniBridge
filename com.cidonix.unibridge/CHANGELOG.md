@@ -2,6 +2,55 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.56
+
+### Added
+
+- Relay `1.1.0-build.20` assigns one stable operation ID before submitting a
+  command and recovers lost responses with a query-only lookup.
+- Modern Editor commands use an identity-scoped admission journal. Started
+  mutations are recorded before execution; completed responses, including
+  errors, are published before callers receive them. Matching duplicates wait
+  for the original operation or return its retained result; conflicting
+  arguments are refused.
+- `UniBridge_CommandStatus` observes an interrupted operation without executing
+  or resuming it. Unknown outcomes include `nextSuggestedCall` when session
+  evidence is available.
+- Reproducible relay/journal fault regressions and opt-in live qualification
+  fixtures are included under `Tools~/CommandReplayRegression`.
+
+### Fixed
+
+- Disconnect recovery no longer resubmits mutations, captures, unknown custom commands,
+  or tools without a whole-tool read-only execution contract. A read-looking
+  action or ordinary MCP `readOnlyHint` does not authorize replay.
+- Automatic read resubmission requires both a safe execution policy and the
+  explicit `annotations.uniBridgeExecution.replaySafe` certificate. Mixed
+  tools do not acquire that certificate from their default read action.
+- Built-in replay certification uses a separate audited list. Custom tools
+  require `McpToolAttribute.ReplaySafe=true` and an explicit `ReadOnly` or
+  `Observer` policy; the replay opt-in defaults to false.
+- The journal retains bounded evidence for ten minutes in the same Editor
+  session, including across domain reloads. Interrupted execution, unavailable
+  or expired evidence, oversized responses, an Editor restart, and older or
+  legacy bridges produce `outcome_unknown` instead of executing a write again.
+- Lost `BatchActions` responses cannot be converted into invented partial or
+  whole-batch success. Verify actual project state before planning further
+  mutations.
+- Pure reads keep their duplicate cache in memory; they do not consume durable
+  mutation journal capacity or write SessionState for each request.
+- Tools with file/probe side effects retain durable evidence even when their
+  scheduler policy is `ReadOnly` or `Observer`.
+
+### Validation
+
+- 39 isolated relay/journal regressions and a separate real 120-second response
+  timeout gate passed. Live Unity `6000.6.5f1` qualification passed 14 checks,
+  including an actual domain reload, unsafe-read duplicate retention, original
+  scene/selection preservation, and task-owned fixture cleanup.
+- All four bundled relay targets were published. Windows was exercised live;
+  Linux and macOS binaries were build-validated.
+
 ## 0.2.55
 
 ### Added
