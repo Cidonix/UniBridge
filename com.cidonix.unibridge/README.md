@@ -108,6 +108,17 @@ AI agent/MCP client so it reloads the available Unity projects.
 
 ## Documentation
 
+### Windows Named-Pipe Identity In 0.2.58
+
+The Windows Editor bridge reads `TokenUser` from its process token to build
+the named-pipe ACL. It no longer resolves a username with `LookupAccountName`,
+which can fail for Microsoft Account / CloudAP identities. SID conversion uses
+the explicit Unicode Windows API, and native handles/buffers are released on
+success and failure. The existing user/System ACL and owner/System fallback
+remain unchanged. The bundled relay remains `1.1.0-build.21`.
+
+Focused native and failure-path tests are under `Tools~/WindowsSidRegression`.
+
 ### Editor Waits In 0.2.57
 
 Relay `1.1.0-build.21` and the Editor bridge preserve failed wait results.

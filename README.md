@@ -27,6 +27,8 @@ This repository is used as a public project page for overview, documentation lin
   unknown outcomes without automatically repeating project mutations.
 - Reports Editor wait timeouts as failures, including after reload/reconnect,
   and preserves MCP error flags instead of wrapping failed waits in success.
+- Resolves the Windows named-pipe user SID from the Editor process token,
+  without depending on account-name resolution.
 
 ## Requirements
 

@@ -1,5 +1,166 @@
 # UniBridge Context
 
+## 2026-10-09 - UniBridge 0.2.58 source publication
+
+- Owner explicitly requested source Git commit/push after deferring the Mono
+  crash investigation. Publication scope is the already qualified process-token
+  SID release, its seven focused regression files and release/context docs.
+- Read-only final review found no SID implementation or regression blockers;
+  normalized listener/transport hashes still match the 66 PASS / 0 FAIL report.
+  The 0.2.58 release documents the unresolved native crash without claiming a fix.
+- Source main and origin/main match at ca119aa before the scoped commit. No
+  generated diagnostics, dumps, local configuration or authored Unity assets
+  are included. Test, Domovyk and Corgi packages were already delivered earlier.
+- Final preservation hashes match all 9,639 original Test project Assets,
+  Packages and ProjectSettings files, with no changed, missing or added files.
+
+## 2026-10-09 - Isolated x64 Mono crash investigation (deferred by owner)
+
+- Owner explicitly requested a dump, reproduction in the x64 Unity Editor,
+  a fix for the confirmed ProcessInfoCollector cause, and short-lived MCP
+  client qualification. All application launches must be elevated.
+- Existing 0.2.58 SID work and all author changes are preserved. Debugger and
+  crash probes only target the separately identified copy. The author Editor
+  was independently relaunched as PID 123932; a fresh MCP snapshot confirms
+  version 0.2.58, idle Edit Mode, clean FeaturesPlatforms scene and no selection.
+- Investigation uses a separately identified copy under C:/Temp, with local
+  debugging tools and dumps; no global debugger/security/client configuration
+  changes. Existing x86 collector passes are not x64 Editor evidence.
+- Local full baseline dump (4,334,335,450 bytes) is under
+  C:/Temp/UniBridgeMonoCrash-20261009/MonoCrashEvidence/baseline-02.
+  It is a healthy debugger-break snapshot, not a reproduced crash dump.
+- Exact x64 Editor 6000.6.5f1: 21/21 short clients completed while native
+  process liveness and the main-thread heartbeat stayed healthy (ACL inspection,
+  early/partial handshake disconnects, handshake close/abrupt process exit,
+  brief hold and versioned relay initialize/tools-list). Direct unchanged
+  collector calls for a live and an exited owned helper also completed.
+- Concurrent collector/reload probes did not establish the native cause.
+  Their first fixture has logger/result-file contention and caught thread aborts;
+  these are retained as non-qualifying diagnostic results. Logger contention
+  was corrected only in the isolated harness. A subsequent fresh-domain probe
+  did not receive readiness before its deadline; no success is claimed.
+- The task-owned isolated Editor/debugger are no longer running. Their later
+  exit was not captured with a fatal dump, so no exit cause is asserted.
+  No ProcessInfoCollector, transport or cancellation production fix was made.
+- Owner explicitly deferred this investigation and requested committing/pushing
+  the previously qualified 0.2.58 SID release. Release claims remain confined to
+  SID extraction; the native crash stays unresolved. Diagnostics/dumps remain
+  local, outside the tracked release. No other-host upgrade is requested here.
+- Resume evidence: Temp/MonoCrash-20261009 (scope.json, client reports, static
+  and lifecycle audits, author snapshots/hashes) and the isolated C:/Temp copy.
+
+## 2026-10-09 - Process-token Windows SID resolution (point 3)
+
+- Owner requested fully completing plan point 3: determine the named-pipe
+  user's SID from the Unity Editor process token instead of account-name
+  lookup, including accounts whose names cannot be resolved by CloudAP.
+- Source baseline is the clean ca119aa release, package 0.2.57 / relay build.21.
+  Scope is the modern Windows listener and focused verification; legacy and
+  relay sources have no account-name SID lookup. The open test project is the
+  authorized live target. Subsequent owner-authorized host delivery is recorded
+  in the separate entry below.
+- Independently implemented OpenProcessToken(TOKEN_QUERY), TokenUser buffer
+  query and explicit Unicode ConvertSidToStringSidW. No managed Windows
+  security dependency or account-name fallback is introduced. Token handle,
+  token-information allocation and converted string have deterministic cleanup.
+- Token query sizes/errors are checked before reading the SID pointer. The
+  existing user/System ACL and owner/System fallback are preserved.
+- Completed and live-qualified as package 0.2.58; bundled relay stays
+  1.1.0-build.21 with unchanged binaries. Legacy/relay implementation and
+  installed client configuration are unchanged. Source remains uncommitted.
+- Focused qualification passes 66/66: real Windows SID, explicit user/System
+  ACL, production binary/UTF-8 pipe transport, 2,000 SID queries and 100 native
+  pipe lifecycle cycles, Unity Mono and non-Windows conditional compilation,
+  plus 41 generated native failure/Unicode/resource-cleanup checks.
+- Exact prior ca119aa fails six assertions in a name-resolution-failure variant
+  (LookupAccountName ERROR_NONE_MAPPED) in .NET and Unity Mono; current code
+  passes with real token APIs. This is simulation, not physical account coverage.
+  Anonymous impersonation may deny token access; tests preserve that permission
+  boundary and accept null or the original process SID without expanding rights.
+- The initial incorrect anonymous-identity test expectation and standalone Mono
+  fixture dependency errors remain in local failed reports. Final runner uses
+  Unity's unityjit-win32 assemblies and an independent .NET SID oracle for Mono.
+- Live test-project standard script validation has zero errors. Its one
+  unchanged Start() signature heuristic applies a MonoBehaviour rule to the
+  listener interface; actual Unity compilation has zero warnings.
+- Actual refresh/domain reload succeeded without replay; fresh MCP readiness
+  and context confirm 0.2.58, healthy Edit Mode and all 110 assemblies current.
+  A separate transient client inspected the actual Editor pipe's DACL: exactly
+  process-user/SYSTEM full-access entries, no protocol commands or mutations.
+- The initial ACL probe closed before the eager handshake finished, producing
+  one expected Handshake failed: Connection closed during write warning. This
+  owned warning is retained in pre-restart evidence; no Console errors or other
+  warning groups at that snapshot. The helper now reads the handshake before
+  disconnecting; no additional raw ACL probes were run after the crash.
+- A later native Mono crash during new-client process validation left the test
+  Editor unresponsive. Managed frames identify ProcessInfoCollector; selected
+  native frames identify the Mono JIT, not SID extraction or resource release.
+  The cause is unproven. Earlier SID, ACL, reload and compilation evidence is
+  retained in native-crash-before-recovery.json. Owner explicitly approved
+  restarting only the test Editor; PID 109876 exited before PID 127828 launched.
+  The owner personally accepted the Administrator startup dialog and requires
+  all further application launches to use Administrator privileges.
+- Fresh final MCP qualification after restart passes all 18 preservation /
+  health checks, 110 assemblies are current, compiler and Console errors are
+  zero, and all 597 controlled package files match. The two final Console
+  warnings are exact classified Unity startup groups (Administrator launch
+  and existing Input Manager deprecation); no warnings were cleared or broadly
+  ignored. The first probe warning remains in preserved pre-restart evidence.
+- Isolated unchanged ProcessInfoCollector scenarios pass 4/4 in shipped SGen
+  and 4/4 in shipped BDWGC Mono. These executables are x86; Editor's embedded
+  Mono DLL is x64. An isolated embedded-runtime attempt failed at the loader,
+  before managed code, and does not reproduce or explain the Editor crash.
+  Focused standalone Unity Mono SID checks likewise cover shipped x86 Mono;
+  .NET 10 native checks and the actual Editor pipe cover x64 interoperability.
+- Loaded scene, dirty state, selection, Prefab Stage and scene/meta hashes are
+  unchanged. Source/test-package parity and global client-config hash are guarded.
+  No fixture assets, author saves, account edits or Console clearing were used.
+- Evidence: Temp/WindowsSid-20261009 and the test project's
+  Library/UniBridge/WindowsSid-20261009. Actual Microsoft Account / CloudAP /
+  Windows Hello login on such a host is not claimed by these checks.
+
+## 2026-10-09 - UniBridge 0.2.58 host delivery and Domovyk check-in
+
+- Owner requested updating Domovyk and Corgi Engine v10 after successful SID
+  qualification, with a Domovyk commit/check-in. No source Git commit/push or
+  Corgi SCM action was requested. Test project final qualification now passes.
+- Fresh read-only preflight: Domovyk is clean at Plastic changeset 279,
+  embedded 0.2.57, Editor 6000.6.5f1; Corgi is also embedded 0.2.57 with no repo.
+  Both packages match ca119aa baseline, preserving their generated .meta files.
+- Both hosts received exactly six changed package files and seven new focused
+  regression files. All 597 controlled files match the qualified source bytes;
+  seven target-only Unity metadata files are preserved in each host. Manifest,
+  lock, project identity and global client configuration are preserved.
+- Domovyk passes 280/280 host assertions, with 115 current assemblies and zero
+  compiler/Console errors, exceptions or assertions. Its 45 existing warnings
+  were fully checked through 37 groups and unchanged author source hashes.
+  The initial false warning-delta failure from truncated top-30 summaries is
+  retained and explained; order-independent full-group qualification passed.
+- Domovyk Plastic changeset 280 on /main contains only 14 package/context files
+  and one new regression directory. Server contents, all 14 file hashes, exact
+  scope and detailed Ukrainian comment match. Final normal status is empty,
+  machine-readable status is only STATUS 280 Domovyk deepforestgames@cloud.
+  All 250 author scene/metadata hashes, clean/dirty flags, selected object and
+  Prefab Stage match the baseline; no author scene was saved or reopened.
+- Corgi passes 21/21 host assertions, positive readiness and all 140 current
+  assemblies, with 68 tools and no compiler/Console errors. Native Console
+  warnings are 25 before and 20 after refresh; all current 20 messages match
+  earlier known 0.2.57 messages (19 UAC0005 and one UAC0007). Four UAC1015 and a
+  signature warning are no longer visible after compilation, not fixed by SID.
+  Fresh baseline has native counts; full previous compiler message membership
+  comes from the timestamped 0.2.57 capture with baseline package parity.
+  Corgi's 200 author scene/metadata hashes and complete author state match.
+- Each host performed one actual RefreshAssets/domain reload with regular
+  approved build.21 project-scoped MCP recovery, without mutation replay.
+  No host restart, raw ACL probe, Console clear or account/security edit was
+  performed. All helper applications inherited Administrator privileges;
+  Corgi used read-only Unity CLI console_status for authoritative warning counts.
+- Host contexts are finalized. Evidence remains under each project's
+  Library/AgentValidation/UniBridge0258-20261009/delivery-summary.json;
+  Domovyk server-publication-verification.json and Corgi warning-delta.json
+  retain publication and warning detail. Corgi has no SCM; source Git was not
+  committed or pushed in this request.
+
 ## 2026-10-09 - UniBridge 0.2.57 host delivery and publication
 
 - Owner authorized updating Domovyk, installing UniBridge in Corgi Engine v10,

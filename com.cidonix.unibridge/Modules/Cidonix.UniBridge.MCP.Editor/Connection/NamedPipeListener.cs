@@ -43,20 +43,25 @@ namespace Cidonix.UniBridge.MCP.Editor.Connection
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern IntPtr LocalFree(IntPtr hMem);
 
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        static extern bool GetUserName(System.Text.StringBuilder lpBuffer, ref int nSize);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        static extern bool LookupAccountName(
-            string lpSystemName,
-            string lpAccountName,
-            IntPtr Sid,
-            ref int cbSid,
-            System.Text.StringBuilder ReferencedDomainName,
-            ref int cchReferencedDomainName,
-            out int peUse);
+        [DllImport("kernel32.dll")]
+        static extern IntPtr GetCurrentProcess();
 
         [DllImport("advapi32.dll", SetLastError = true)]
+        static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        static extern bool GetTokenInformation(
+            IntPtr tokenHandle,
+            int tokenInformationClass,
+            IntPtr tokenInformation,
+            uint tokenInformationLength,
+            out uint returnLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("advapi32.dll", EntryPoint = "ConvertSidToStringSidW", ExactSpelling = true,
+            SetLastError = true, CharSet = CharSet.Unicode)]
         static extern bool ConvertSidToStringSid(IntPtr pSid, out IntPtr ptrStringSid);
 
         // Named pipe constants
@@ -67,6 +72,22 @@ namespace Cidonix.UniBridge.MCP.Editor.Connection
         const uint PIPE_WAIT = 0x00000000;
         const uint PIPE_UNLIMITED_INSTANCES = 255;
         const uint SDDL_REVISION_1 = 1;
+        const uint TOKEN_QUERY = 0x0008;
+        const int TOKEN_USER_INFORMATION = 1;
+        const int ERROR_INSUFFICIENT_BUFFER = 122;
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct SID_AND_ATTRIBUTES
+        {
+            public IntPtr Sid;
+            public uint Attributes;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct TOKEN_USER
+        {
+            public SID_AND_ATTRIBUTES User;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         struct SECURITY_ATTRIBUTES
@@ -278,62 +299,55 @@ namespace Cidonix.UniBridge.MCP.Editor.Connection
         }
 
         /// <summary>
-        /// Get the current user's SID string using P/Invoke.
+        /// Get the process user's SID directly from its access token.
+        /// Account-name lookup is unreliable for Microsoft Account / CloudAP users.
         /// Returns null if unable to get the SID.
         /// </summary>
         static string GetCurrentUserSid()
         {
+            IntPtr tokenHandle = IntPtr.Zero;
+            IntPtr tokenInformation = IntPtr.Zero;
+            IntPtr stringSid = IntPtr.Zero;
             try
             {
-                // Get current username
-                var username = new System.Text.StringBuilder(256);
-                int usernameSize = username.Capacity;
-                if (!GetUserName(username, ref usernameSize))
+                if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, out tokenHandle))
                     return null;
 
-                string currentUser = username.ToString();
-
-                // First call to get required buffer sizes
-                int sidSize = 0;
-                int domainSize = 0;
-                int peUse;
-                LookupAccountName(null, currentUser, IntPtr.Zero, ref sidSize, null, ref domainSize, out peUse);
-
-                if (sidSize == 0)
+                // A zero-length probe must report the required TokenUser buffer size.
+                uint requiredLength;
+                if (GetTokenInformation(tokenHandle, TOKEN_USER_INFORMATION, IntPtr.Zero, 0, out requiredLength))
                     return null;
 
-                // Allocate buffers and make real call
-                IntPtr sidPtr = Marshal.AllocHGlobal(sidSize);
-                var domain = new System.Text.StringBuilder(domainSize);
+                int sizeError = Marshal.GetLastWin32Error();
+                int tokenUserSize = Marshal.SizeOf(typeof(TOKEN_USER));
+                if (sizeError != ERROR_INSUFFICIENT_BUFFER || requiredLength < (uint)tokenUserSize || requiredLength > int.MaxValue)
+                    return null;
 
-                try
-                {
-                    if (!LookupAccountName(null, currentUser, sidPtr, ref sidSize, domain, ref domainSize, out peUse))
-                        return null;
+                tokenInformation = Marshal.AllocHGlobal((int)requiredLength);
+                uint returnedLength;
+                if (!GetTokenInformation(tokenHandle, TOKEN_USER_INFORMATION, tokenInformation, requiredLength, out returnedLength) ||
+                    returnedLength < (uint)tokenUserSize || returnedLength > requiredLength)
+                    return null;
 
-                    // Convert SID to string
-                    IntPtr stringSidPtr;
-                    if (!ConvertSidToStringSid(sidPtr, out stringSidPtr))
-                        return null;
+                // TOKEN_USER.User.Sid is the first pointer; the buffer owns its memory.
+                IntPtr sid = Marshal.ReadIntPtr(tokenInformation);
+                if (sid == IntPtr.Zero || !ConvertSidToStringSid(sid, out stringSid) || stringSid == IntPtr.Zero)
+                    return null;
 
-                    try
-                    {
-                        // ConvertSidToStringSid returns an ANSI string, not Unicode
-                        return Marshal.PtrToStringAnsi(stringSidPtr);
-                    }
-                    finally
-                    {
-                        LocalFree(stringSidPtr);
-                    }
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(sidPtr);
-                }
+                return Marshal.PtrToStringUni(stringSid);
             }
             catch (Exception)
             {
                 return null;
+            }
+            finally
+            {
+                if (stringSid != IntPtr.Zero)
+                    LocalFree(stringSid);
+                if (tokenInformation != IntPtr.Zero)
+                    Marshal.FreeHGlobal(tokenInformation);
+                if (tokenHandle != IntPtr.Zero)
+                    CloseHandle(tokenHandle);
             }
         }
 

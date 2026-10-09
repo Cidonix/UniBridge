@@ -372,6 +372,13 @@ The relay:
 
 On Windows the Editor bridge uses named pipes. On Linux and macOS it uses Unix domain sockets.
 
+As of 0.2.58, the Windows listener obtains the user SID directly from the
+Editor process token (`OpenProcessToken` / `GetTokenInformation(TokenUser)`),
+instead of looking up an account name. This avoids depending on name resolution
+for Microsoft Account / CloudAP identities. The SID is converted through the
+Unicode API and native resources are released on every exit path. Existing
+user/System ACL entries and the owner/System fallback are preserved.
+
 The relay is installed under the user's home directory:
 
 ```text

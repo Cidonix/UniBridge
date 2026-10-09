@@ -1,4 +1,42 @@
-# UniBridge 0.2.57 Release Notes
+# UniBridge 0.2.58 Release Notes
+
+Release date: 2026-10-09
+
+Windows named-pipe identity is obtained from the Unity Editor process token.
+`TokenUser` determines the user SID without relying on username/account-name
+lookup, including identities handled by Microsoft Account / CloudAP providers.
+SID conversion uses the Unicode Windows API, and all native token/buffer/string
+resources are released on success and failure. The user/System ACL and existing
+owner/System fallback are preserved.
+
+The bundled relay remains `1.1.0-build.21`. This release changes the modern
+Windows Editor listener; legacy adapters and non-Windows socket listeners do
+not require a transport change.
+
+See `Tools~/WindowsSidRegression` for native and failure-path verification.
+
+Qualification passed 66 assertions in .NET 10 and Unity 6000.6.5f1 Mono, including
+41 native failure/Unicode/resource-cleanup cases. The same native suite finds
+six failures on 0.2.57 when account-name resolution is simulated to return
+`ERROR_NONE_MAPPED`. Real SID extraction, user/System ACL, same-user binary/UTF-8
+transport, repeated handle cleanup and non-Windows conditional compilation pass.
+
+Initial live Unity 6000.6.5f1 reload/MCP qualification had all 110 assemblies current and
+no compiler errors/warnings or Console errors. One expected warning from the
+initial ACL probe's early disconnect remains in local Console history. The
+actual Editor pipe DACL grants full
+access to its process-user SID and SYSTEM; authored scenes, metadata and Editor
+selection/state are unchanged. Microsoft Account / CloudAP / Windows Hello login
+on a host using those identities remains separate from the simulated lookup
+failure coverage. No new account configuration or security dependency is needed.
+
+A later transient ACL client's process validation encountered a native Mono
+JIT crash in `ProcessInfoCollector`. After an owner-approved test Editor restart,
+final MCP/preservation checks pass. Two classified Unity startup warnings remain
+(Administrator launch and existing Input Manager deprecation); SID causality for
+the earlier native crash has not been established.
+
+## Previous 0.2.57 Notes
 
 Release date: 2026-10-09
 

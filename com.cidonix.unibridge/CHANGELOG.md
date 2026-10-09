@@ -2,6 +2,44 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.58
+
+### Fixed
+
+- Windows named-pipe ACL identity comes from the Editor's process `TokenUser`,
+  without `GetUserName` or `LookupAccountName` resolution. This removes the
+  account-name dependency for Microsoft Account / CloudAP users.
+- SID conversion explicitly uses the Unicode Windows API. Token query errors
+  and buffer lengths are checked before reading the SID; the token, query
+  buffer and converted string are always released.
+- Existing user/System ACL and owner/System fallback semantics are preserved.
+  The bundled relay remains `1.1.0-build.21`; no relay rebuild is required.
+
+### Added
+
+- Focused production-source native Windows SID, pipe ACL/transport and resource
+  cleanup regression harness under `Tools~/WindowsSidRegression`.
+
+### Validation
+
+- 66 focused assertions pass in .NET 10 and Unity 6000.6.5f1 Mono, including
+  real SID/ACL/transport checks, repeated handle cleanup, non-Windows conditional
+  compilation and 41 generated native failure/Unicode/resource checks.
+- The prior release fails six assertions when `LookupAccountName` is simulated
+  to return `ERROR_NONE_MAPPED`; current production uses real token APIs and
+  passes. This simulates name-resolution failure, not a CloudAP account login.
+- Initial live Unity reload/MCP qualification passed with all 110 assemblies current
+  and no compiler errors/warnings or Console errors. One expected warning from
+  an initial ACL probe's early disconnect is retained in local Console history.
+  The actual Editor pipe DACL has
+  precisely the process-user and SYSTEM full-access entries. Authored scene,
+  metadata, dirty flags, selection and Prefab Stage are preserved.
+- A later transient ACL client's process validation encountered a native Mono
+  JIT crash in ProcessInfoCollector. After an owner-approved test Editor restart,
+  final MCP/preservation checks pass. Two classified Unity startup warnings
+  remain (Administrator launch and existing Input Manager deprecation).
+  SID causality for the earlier native crash has not been established.
+
 ## 0.2.57
 
 ### Fixed

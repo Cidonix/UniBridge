@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.57",
+  "version": "0.2.58",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- Editor readiness and Play/Edit wait timeouts remain failures through checkpoints and reconnect recovery.\n- ReloadCheckpoint retains applied refresh/reopen evidence with completed=false if waiting fails.\n- Relay 1.1.0-build.21 requires affirmative readiness and target state, shares one recovery deadline, and only falls back on explicit unsupported Action.\n- MCP isError reflects nested tool/wait failures; interrupted waits cannot claim completion.\n- Legacy readiness aliases disclose instantaneous probes and fail when busy.\n\n### Added\n\n- Focused production-source EditorWaitRegression harness."
+    "changelog": "### Fixed\n\n- Windows named-pipe user SID is read directly from the Editor process TokenUser, without account-name lookup.\n- Unicode SID conversion, checked token-query buffers and deterministic native resource cleanup.\n- Existing user/System ACL and owner/System fallback preserved; relay remains 1.1.0-build.21.\n\n### Added\n\n- Focused WindowsSidRegression native pipe/SID and cleanup tests."
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {
