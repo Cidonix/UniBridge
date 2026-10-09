@@ -58,26 +58,41 @@ namespace Cidonix.UniBridge.MCP.Editor
     {
         static readonly ConcurrentDictionary<IConnectionTransport, TransportState> States = new();
         static readonly ConcurrentDictionary<string, ConcurrentDictionary<IConnectionTransport, byte>> IdentityToTransports = new();
+        // State and its identity index form one mutation. Lookup/removal and empty-set
+        // pruning share this lock with registration so stale cleanup cannot remove
+        // a newly registered transport or resurrect a transport removed by Stop.
         static readonly object IdentityLock = new();
 
         public static TransportState Register(IConnectionTransport transport, string initialIdentityKey)
         {
-            var state = new TransportState(transport, initialIdentityKey);
-            States[transport] = state;
+            if (transport == null) throw new ArgumentNullException(nameof(transport));
+            if (initialIdentityKey == null) throw new ArgumentNullException(nameof(initialIdentityKey));
+            lock (IdentityLock)
+            {
+                if (States.TryGetValue(transport, out var previous) && previous.IdentityKey != null &&
+                    IdentityToTransports.TryGetValue(previous.IdentityKey, out var previousSet))
+                {
+                    previousSet.TryRemove(transport, out _);
+                    if (previousSet.IsEmpty)
+                        IdentityToTransports.TryRemove(previous.IdentityKey, out _);
+                }
+                var state = new TransportState(transport, initialIdentityKey);
+                States[transport] = state;
 
-            var set = IdentityToTransports.GetOrAdd(initialIdentityKey, _ => new ConcurrentDictionary<IConnectionTransport, byte>());
-            set[transport] = 0;
+                var set = IdentityToTransports.GetOrAdd(initialIdentityKey, _ => new ConcurrentDictionary<IConnectionTransport, byte>());
+                set[transport] = 0;
 
-            return state;
+                return state;
+            }
         }
 
         public static void UpdateIdentityKey(IConnectionTransport transport, string newKey)
         {
-            if (!States.TryGetValue(transport, out var state))
-                return;
-
             lock (IdentityLock)
             {
+                if (!States.TryGetValue(transport, out var state))
+                    return;
+                if (newKey == null) throw new ArgumentNullException(nameof(newKey));
                 var oldKey = state.IdentityKey;
                 if (oldKey != null && IdentityToTransports.TryGetValue(oldKey, out var oldSet))
                 {
@@ -147,11 +162,10 @@ namespace Cidonix.UniBridge.MCP.Editor
 
         public static TransportState Remove(IConnectionTransport transport)
         {
-            if (!States.TryRemove(transport, out var state))
-                return null;
-
             lock (IdentityLock)
             {
+                if (!States.TryRemove(transport, out var state))
+                    return null;
                 var identityKey = state.IdentityKey;
                 if (identityKey == null)
                     return state;
@@ -162,22 +176,24 @@ namespace Cidonix.UniBridge.MCP.Editor
                     if (set.IsEmpty)
                         IdentityToTransports.TryRemove(identityKey, out _);
                 }
+                return state;
             }
-
-            return state;
         }
 
         public static IConnectionTransport[] Clear()
         {
-            var toClose = States.Keys
-                .Concat(IdentityToTransports.Values.SelectMany(set => set.Keys))
-                .Distinct()
-                .ToArray();
+            lock (IdentityLock)
+            {
+                var toClose = States.Keys
+                    .Concat(IdentityToTransports.Values.SelectMany(set => set.Keys))
+                    .Distinct()
+                    .ToArray();
 
-            States.Clear();
-            IdentityToTransports.Clear();
+                States.Clear();
+                IdentityToTransports.Clear();
 
-            return toClose;
+                return toClose;
+            }
         }
     }
 }

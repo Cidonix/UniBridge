@@ -439,39 +439,8 @@ Returns:
 
         static Type ResolveType(string typeName)
         {
-            if (string.IsNullOrWhiteSpace(typeName))
-                return null;
-
-            var direct = Type.GetType(typeName, false);
-            if (direct != null)
-                return direct;
-
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                Type[] types;
-                try
-                {
-                    types = assembly.GetTypes();
-                }
-                catch (ReflectionTypeLoadException ex)
-                {
-                    types = ex.Types.Where(type => type != null).ToArray();
-                }
-                catch
-                {
-                    continue;
-                }
-
-                var match = types.FirstOrDefault(type =>
-                    string.Equals(type.FullName, typeName, StringComparison.Ordinal) ||
-                    string.Equals(type.Name, typeName, StringComparison.Ordinal) ||
-                    string.Equals(type.FullName, typeName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(type.Name, typeName, StringComparison.OrdinalIgnoreCase));
-                if (match != null)
-                    return match;
-            }
-
-            return null;
+            var resolution = LoadedAssemblyCatalog.Resolve(typeName, ignoreCase: true);
+            return !resolution.Partial && resolution.Status == "unique" ? resolution.Type : null;
         }
 
         static bool MatchesType(Type type, string typeName)

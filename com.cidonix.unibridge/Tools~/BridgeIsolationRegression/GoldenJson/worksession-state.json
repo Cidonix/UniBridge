@@ -1,0 +1,75 @@
+{
+  "Version": 2,
+  "SessionId": "golden-session",
+  "Name": "Робоча сесія \"Golden\"",
+  "ProjectRoot": "X:/Golden",
+  "UnityVersion": "6000.6.5f1",
+  "StartedUtc": "2026-10-09T01:02:03.0000000Z",
+  "EndedUtc": null,
+  "Options": {
+    "IncludeProjectSettings": true,
+    "IncludePackageManifests": true,
+    "IncludePackageFiles": false,
+    "MaxFiles": 12000,
+    "MaxSingleCaptureBytes": 2097152,
+    "MaxTotalCaptureBytes": 157286400,
+    "IncludeSceneSemantics": true,
+    "MaxSemanticObjects": 30000
+  },
+  "Baseline": {
+    "FileCount": 2,
+    "CapturedFiles": 1,
+    "CapturedBytes": 9007199254740993,
+    "CaptureTruncated": false,
+    "ScanComplete": true,
+    "Warnings": [
+      "Зразок"
+    ]
+  },
+  "SemanticBaseline": {
+    "Enabled": true,
+    "CapturedUtc": null,
+    "SceneCount": 1,
+    "ObjectCount": 2,
+    "Truncated": false,
+    "SnapshotPath": "semantic.json",
+    "Warnings": []
+  },
+  "Files": {
+    "Assets/A.cs": {
+      "Path": "Assets/A.cs",
+      "Exists": true,
+      "SizeBytes": 21,
+      "LastWriteUtc": null,
+      "Sha256": "aa",
+      "Kind": null,
+      "TextLike": true,
+      "Captured": true,
+      "CapturePath": "captures/aa.cs"
+    },
+    "Assets/A.cs.meta": {
+      "Path": "Assets/A.cs.meta",
+      "Exists": false,
+      "SizeBytes": 0,
+      "LastWriteUtc": null,
+      "Sha256": null,
+      "Kind": null,
+      "TextLike": false,
+      "Captured": false,
+      "CapturePath": null
+    }
+  },
+  "OwnedWrites": {
+    "Assets/A.cs": {
+      "BeforeExists": true,
+      "BeforeSha256": "aa",
+      "AfterExists": true,
+      "AfterSha256": "bb",
+      "OperationId": "op-1",
+      "Source": "golden external writer",
+      "Conflict": false,
+      "Reason": null,
+      "RecordedUtc": "2026-10-09T01:03:04Z"
+    }
+  }
+}

@@ -23,7 +23,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
     /// <summary>
     /// Read-only runtime and profiler snapshot tool for AI Play Mode debugging.
     /// </summary>
-    public static class RuntimeProfiler
+    public static partial class RuntimeProfiler
     {
         const string ToolName = "UniBridge_RuntimeProfiler";
         const int DefaultSampleFrames = 120;
@@ -50,6 +50,7 @@ Actions:
     Sample: In Play Mode by default, sample selected ProfilerRecorder metrics for a bounded number of editor update ticks. Returns compact averages/p95/max/last/spikes and can save full raw samples under Library/UniBridge/RuntimeProfiler.
     Hierarchy: Sample available profiler marker handles for one frame or a short window, returning top marker paths by time plus a synthetic hierarchy and optional saved JSON export.
     Metrics: List supported metric aliases and category/name pairs.
+    RecordedFrames: Read already recorded CPU frames and frame-local threads with actual parent/sample identity, total/self time, and recorded GC allocation metadata. Reads the existing Profiler buffer without enabling recording or loading/clearing captures.
 
 Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC memory spikes stutter frame time profiler hierarchy marker hierarchy frame export ProfilerRecorder runtime state.";
 
@@ -62,6 +63,8 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
             {
                 switch (parameters.Action)
                 {
+                    case RuntimeProfilerAction.RecordedFrames:
+                        return await RecordedFrames(parameters);
                     case RuntimeProfilerAction.Metrics:
                         return Response.Success("Listed runtime profiler metrics.", BuildMetricsList(parameters));
                     case RuntimeProfilerAction.Hierarchy:
@@ -1081,7 +1084,7 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
             var safeName = SanitizeFileName(string.IsNullOrWhiteSpace(name) ? "runtime-sample" : name);
             var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-{safeName}.json";
             var path = Path.Combine(directory, fileName);
-            File.WriteAllText(path, JsonConvert.SerializeObject(payload, Formatting.Indented));
+            File.WriteAllText(path, McpJson.SerializeObject(payload, Formatting.Indented));
             return NormalizePath(path);
         }
 

@@ -529,13 +529,13 @@ Returns success=true for completed audits with data.passed=false when quality ga
                     MaxIssues = 5,
                     MaxSamples = 3
                 });
-                var json = JObject.FromObject(response);
+                var json = McpJson.ObjectFromObject(response);
                 var data = json["data"];
                 var totals = data?["totals"];
-                var warningCount = totals?["warningCount"]?.ToObject<int>() ?? 0;
-                var errorCount = totals?["errorCount"]?.ToObject<int>() ?? 0;
-                var exceptionCount = totals?["exceptionCount"]?.ToObject<int>() ?? 0;
-                var assertCount = totals?["assertCount"]?.ToObject<int>() ?? 0;
+                var warningCount = totals?["warningCount"]?.ToObjectIndependent<int>() ?? 0;
+                var errorCount = totals?["errorCount"]?.ToObjectIndependent<int>() ?? 0;
+                var exceptionCount = totals?["exceptionCount"]?.ToObjectIndependent<int>() ?? 0;
+                var assertCount = totals?["assertCount"]?.ToObjectIndependent<int>() ?? 0;
 
                 if (errorCount > 0 || exceptionCount > 0 || assertCount > 0)
                 {
@@ -1147,7 +1147,7 @@ Returns success=true for completed audits with data.passed=false when quality ga
 
                 if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
                 {
-                    return token.ToObject<int>();
+                    return token.ToObjectIndependent<int>();
                 }
 
                 if (int.TryParse(token.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
@@ -1171,7 +1171,7 @@ Returns success=true for completed audits with data.passed=false when quality ga
 
                 if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
                 {
-                    return token.ToObject<float>();
+                    return token.ToObjectIndependent<float>();
                 }
 
                 if (float.TryParse(token.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
@@ -1195,7 +1195,7 @@ Returns success=true for completed audits with data.passed=false when quality ga
 
                 if (token.Type == JTokenType.Boolean)
                 {
-                    return token.ToObject<bool>();
+                    return token.ToObjectIndependent<bool>();
                 }
 
                 if (bool.TryParse(token.ToString(), out var value))

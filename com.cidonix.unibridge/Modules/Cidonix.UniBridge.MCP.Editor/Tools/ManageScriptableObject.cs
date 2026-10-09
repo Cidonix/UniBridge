@@ -582,7 +582,7 @@ Returns:
                 return false;
             }
 
-            var direct = Type.GetType(nameOrFullName, throwOnError: false);
+            var direct = LoadedAssemblyCatalog.ResolveType(nameOrFullName,throwOnError: false);
             if (IsValidScriptableObjectType(direct))
             {
                 type = direct;
@@ -618,7 +618,7 @@ Returns:
             return TypeCache.GetTypesDerivedFrom<ScriptableObject>()
                 .Where(IsValidScriptableObjectType);
 #else
-            return AppDomain.CurrentDomain.GetAssemblies()
+            return LoadedAssemblyCatalog.GetLoadedAssemblies()
                 .SelectMany(SafeGetTypes)
                 .Where(IsValidScriptableObjectType);
 #endif
@@ -628,7 +628,7 @@ Returns:
         {
             try
             {
-                return assembly.GetTypes();
+                return LoadedAssemblyCatalog.EnumerateTypes(assembly);
             }
             catch (ReflectionTypeLoadException ex)
             {
@@ -787,21 +787,21 @@ Returns:
         {
             if (token.Type == JTokenType.String && int.TryParse(token.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
                 return parsed;
-            return token.ToObject<int>();
+            return token.ToObjectIndependent<int>();
         }
 
         static float ReadFloat(JToken token)
         {
             if (token.Type == JTokenType.String && float.TryParse(token.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
                 return parsed;
-            return token.ToObject<float>();
+            return token.ToObjectIndependent<float>();
         }
 
         static bool ReadBool(JToken token)
         {
             if (token.Type == JTokenType.String && bool.TryParse(token.ToString(), out var parsed))
                 return parsed;
-            return token.ToObject<bool>();
+            return token.ToObjectIndependent<bool>();
         }
 
         static char ReadCharacter(JToken token)
@@ -814,7 +814,7 @@ Returns:
         {
             if (token.Type == JTokenType.Integer)
             {
-                var index = token.ToObject<int>();
+                var index = token.ToObjectIndependent<int>();
                 if (index < 0 || index >= property.enumNames.Length)
                     throw new ArgumentOutOfRangeException(nameof(token), $"Enum index {index} is outside 0..{property.enumNames.Length - 1}.");
                 return index;
@@ -967,7 +967,7 @@ Returns:
             if (targetType == typeof(float))
                 return ReadFloat(token);
             if (targetType == typeof(double))
-                return token.ToObject<double>();
+                return token.ToObjectIndependent<double>();
             if (targetType == typeof(bool))
                 return ReadBool(token);
             if (targetType == typeof(Color))
@@ -1005,7 +1005,7 @@ Returns:
                 return result;
             }
 
-            return token.ToObject(targetType);
+            return token.ToObjectIndependent(targetType);
         }
 
         static object SerializePropertyValue(SerializedProperty property)

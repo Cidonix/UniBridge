@@ -803,7 +803,7 @@ Returns:
                     TopGroupCount = options.MaxConsoleIssues
                 });
 
-                var json = JObject.FromObject(response);
+                var json = McpJson.ObjectFromObject(response);
                 var data = json["data"];
                 if (options.ConsoleSummaryMode == ContextSnapshotConsoleSummaryMode.Compact)
                 {

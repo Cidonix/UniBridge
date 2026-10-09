@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Newtonsoft.Json;
 using Cidonix.UniBridge.MCP.Editor.Settings;
 using UnityEngine;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -105,7 +106,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         /// Save connection info to discovery file
         /// </summary>
         /// <param name="connectionPath">Platform-specific connection path to the named pipe or Unix socket.</param>
-        public static void SaveConnectionInfo(string connectionPath)
+        public static bool SaveConnectionInfo(string connectionPath)
         {
             try
             {
@@ -127,7 +128,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 Directory.CreateDirectory(registryDir);
 
                 string registryFile = GetRegistryFilePath();
-                string json = JsonConvert.SerializeObject(connectionInfo, Formatting.Indented);
+                string json = McpJson.SerializeObject(connectionInfo, Formatting.Indented);
                 File.WriteAllText(registryFile, json, new UTF8Encoding(false));
 
                 #if UNITY_EDITOR_LINUX
@@ -148,10 +149,12 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 #endif
 
                 McpLog.Log($"Saved connection info to {registryFile}");
+                return true;
             }
             catch (Exception ex)
             {
                 McpLog.Warning($"Could not save connection info: {ex.Message}");
+                return false;
             }
         }
 

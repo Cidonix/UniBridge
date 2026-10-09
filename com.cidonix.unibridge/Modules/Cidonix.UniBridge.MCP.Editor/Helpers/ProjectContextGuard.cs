@@ -3,6 +3,7 @@ using System.IO;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -82,7 +83,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
             try
             {
-                var obj = JObject.FromObject(result);
+                var obj = McpJson.ObjectFromObject(result);
                 AttachContext(obj, context);
                 return obj;
             }
@@ -90,7 +91,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             {
                 return new JObject
                 {
-                    ["value"] = JToken.FromObject(result),
+                    ["value"] = McpJson.TokenFromObject(result),
                     [ProjectContextProperty] = context
                 };
             }

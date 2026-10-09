@@ -35,7 +35,7 @@ Args:
     options: Optional refresh, validation, and apply-mode settings.
 
 Returns:
-    success, message, and data with editsApplied, sha256, refresh status, normalized edits, and warnings.";
+    success, message, and data with editsApplied, sha256, refresh status, normalized edits, warnings, and advisory obsoleteApiHints for the final proposed source (basic skips hints).";
 
         /// <summary>
         /// Returns the output schema for this tool.
@@ -51,6 +51,7 @@ Returns:
                 {
                     success = new { type = "boolean", description = "Whether the operation succeeded" },
                     message = new { type = "string", description = "Human-readable message about the operation" },
+                    code = new { type = "string" }, error = new { type = "string" },
                     data = new
                     {
                         type = "object",
@@ -64,11 +65,12 @@ Returns:
                             scheduledRefresh = new { type = "boolean", description = "Whether a refresh was scheduled" },
                             no_op = new { type = "boolean", description = "Whether this was a no-op (no changes made)" },
                             normalizedEdits = new { type = "array", description = "Normalized edit operations that were applied" },
-                            warnings = new { type = "array", description = "Any warnings generated during processing" }
+                            warnings = new { type = "array", description = "Any warnings generated during processing" },
+                            obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema()
                         }
                     }
                 },
-                required = new[] { "success", "message" }
+                required = new[] { "success" }
             };
         }
 
@@ -198,14 +200,14 @@ Returns:
                 scriptParams["action"] = "apply_text_edits";
                 scriptParams["name"] = name;
                 scriptParams["path"] = directory;
-                scriptParams["edits"] = JArray.FromObject(normalizedEdits);
+                scriptParams["edits"] = McpJson.ArrayFromObject(normalizedEdits);
 
                 if (!string.IsNullOrEmpty(parameters.PreconditionSha256))
                 {
                     scriptParams["precondition_sha256"] = parameters.PreconditionSha256;
                 }
 
-                scriptParams["options"] = JObject.FromObject(opts);
+                scriptParams["options"] = McpJson.ObjectFromObject(opts);
 
                 // Call the script router command.
                 var resp = ManageScript.HandleCommand(scriptParams);
@@ -216,11 +218,15 @@ Returns:
 
                 if (respDict.ContainsKey("data") && respDict["data"] != null)
                 {
-                    data = new
+                    var details = new Dictionary<string, object>
                     {
-                        normalizedEdits = normalizedEdits,
-                        applyTextEditsDetailInfo = respDict["data"]
+                        ["normalizedEdits"] = normalizedEdits,
+                        ["applyTextEditsDetailInfo"] = respDict["data"]
                     };
+                    var hints = (McpJson.TokenFromObject(respDict["data"]) as JObject)?["obsoleteApiHints"];
+                    if (hints != null)
+                        details["obsoleteApiHints"] = hints;
+                    data = details;
                 }
                 else
                 {

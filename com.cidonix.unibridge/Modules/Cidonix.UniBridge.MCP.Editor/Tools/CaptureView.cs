@@ -64,6 +64,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 Use this when an agent needs to see the current scene, camera framing, layout, or visual result without relying only on metadata.
 
 Args:
+    Capture2DRegion: WorldRect (xMin/yMin/xMax/yMax) + PixelsPerUnit; optional GridOrigin, Preview, Tiling/TileSize, Stage. No Width/Height/zoom/framing/advancement arguments. Outward rounding on one declared global grid; no fit padding or PPU rescaling. Fixed Z depth [-1000,1000], +Z forward/+Y up. PNG output uses exclusive creation.
     action: CaptureSceneView, CaptureGameView, CaptureGameCamera, CaptureSelection, CaptureObject, CapturePrefabStage, CaptureSceneOverview, CaptureAroundObject, CaptureSeries, CaptureContactSheet, CaptureDiff, ClearCaptures, or ListCameras.
     width, height: PNG dimensions, clamped to 64..4096. CaptureGameView returns the actual Game View screenshot size instead.
     target: Optional GameObject name/path/id to center and frame for Scene View captures. If provided but not found, the capture fails instead of returning an unrelated view.
@@ -117,10 +118,26 @@ Notes:
                             "CaptureContactSheet",
                             "CaptureDiff",
                             "ClearCaptures",
-                            "ListCameras"
+                            "ListCameras",
+                            "Capture2DRegion"
                         },
                         @default = "CaptureSceneView"
                     },
+                    WorldRect = new {
+                        type = "object", description = "Required for Capture2DRegion: exact requested XY world bounds before outward global-grid rounding.",
+                        properties = new { xMin = new { type = "number" }, yMin = new { type = "number" }, xMax = new { type = "number" }, yMax = new { type = "number" } },
+                        required = new[] { "xMin", "yMin", "xMax", "yMax" }, additionalProperties = false
+                    },
+                    PixelsPerUnit = new { type = "number", exclusiveMinimum = 0, description = "Required finite positive capture density for Capture2DRegion; never silently rescaled." },
+                    GridOrigin = new {
+                        type = "object", description = "Capture2DRegion global pixel-grid world origin; defaults to (0,0).",
+                        properties = new { x = new { type = "number" }, y = new { type = "number" } },
+                        required = new[] { "x", "y" }, additionalProperties = false
+                    },
+                    Preview = new { type = "boolean", description = "Capture2DRegion: return the plan without allocating a camera/texture, rendering or writing.", @default = false },
+                    Tiling = new { type = "boolean", description = "Capture2DRegion: explicitly split the master pixel extent into density-preserving tiles.", @default = false },
+                    TileSize = new { type = "integer", minimum = 1, maximum = 4096, description = "Capture2DRegion tile dimension limit; hardware limit may be smaller. Final tiles retain their true dimensions.", @default = 4096 },
+                    Stage = new { type = "string", @enum = new[] { "MainStage", "CurrentPrefabStage" }, @default = "MainStage", description = "Capture2DRegion explicit scene category. MainStage never silently substitutes an open Prefab Stage." },
                     Width = new { type = "integer", description = "PNG width in pixels. Values are clamped between 64 and 4096. CaptureGameView returns the actual Game View screenshot size.", @default = 1280 },
                     Height = new { type = "integer", description = "PNG height in pixels. Values are clamped between 64 and 4096. CaptureGameView returns the actual Game View screenshot size.", @default = 720 },
                     Target = new { type = "string", description = "Scene object name, hierarchy path, or entity/instance ID to center and frame when capturing the Scene View. If provided but not found, the capture fails." },
@@ -193,10 +210,32 @@ Notes:
         [McpTool("UniBridge_CaptureView", Description, Title, Groups = new[] { "core", "vision", "scene", "debug" }, EnabledByDefault = true)]
         public static async Task<object> HandleCommand(JObject rawParameters)
         {
-            var parameters = ParseParameters(rawParameters);
+            CaptureViewParams parameters = null;
 
             try
             {
+                var raw = rawParameters ?? new JObject();
+                var actionToken = GetToken(raw, "Action", "action");
+                if (actionToken != null && actionToken.Type != JTokenType.Null)
+                {
+                    CaptureViewAction action;
+                    if (actionToken.Type == JTokenType.String)
+                    {
+                        if (!Enum.TryParse(actionToken.Value<string>(), true, out action) || !Enum.IsDefined(typeof(CaptureViewAction), action))
+                            return Response.Error($"Unknown capture action '{actionToken}'.");
+                    }
+                    else if (actionToken.Type == JTokenType.Integer && Enum.IsDefined(typeof(CaptureViewAction), actionToken.ToObjectIndependent<int>()))
+                        action = (CaptureViewAction)actionToken.ToObjectIndependent<int>();
+                    else
+                        return Response.Error("Action must identify a supported capture operation.");
+                    if (action == CaptureViewAction.Capture2DRegion)
+                    {
+                        var regionRequest = (JObject)raw.DeepClone();
+                        regionRequest.Remove(ProjectContextGuard.ExpectedProjectRootParameter);
+                        return Region2DCapture.Execute(regionRequest, ResolveOutputDirectory);
+                    }
+                }
+                parameters = ParseParameters(raw);
                 switch (parameters.Action)
                 {
                     case CaptureViewAction.CaptureSceneView:
@@ -226,8 +265,8 @@ Notes:
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[CaptureView] {parameters.Action} failed: {ex}");
-                return Response.Error($"Capture action '{parameters.Action}' failed: {ex.Message}");
+                Debug.LogError($"[CaptureView] {parameters?.Action.ToString() ?? "request"} failed: {ex}");
+                return Response.Error($"Capture action '{parameters?.Action.ToString() ?? "request"}' failed: {ex.Message}");
             }
         }
 
@@ -288,7 +327,7 @@ Notes:
                 return null;
             }
 
-            return token.ToObject<int?>();
+            return token.ToObjectIndependent<int?>();
         }
 
         static bool? GetNullableBool(JObject raw, params string[] names)
@@ -299,7 +338,7 @@ Notes:
                 return null;
             }
 
-            return token.ToObject<bool?>();
+            return token.ToObjectIndependent<bool?>();
         }
 
         static float? GetNullableFloat(JObject raw, params string[] names)
@@ -310,7 +349,7 @@ Notes:
                 return null;
             }
 
-            return token.ToObject<float?>();
+            return token.ToObjectIndependent<float?>();
         }
 
         static TEnum GetEnum<TEnum>(JObject raw, TEnum fallback, params string[] names) where TEnum : struct
@@ -321,9 +360,9 @@ Notes:
                 return fallback;
             }
 
-            if (token.Type == JTokenType.Integer && Enum.IsDefined(typeof(TEnum), token.ToObject<int>()))
+            if (token.Type == JTokenType.Integer && Enum.IsDefined(typeof(TEnum), token.ToObjectIndependent<int>()))
             {
-                return (TEnum)Enum.ToObject(typeof(TEnum), token.ToObject<int>());
+                return (TEnum)Enum.ToObject(typeof(TEnum), token.ToObjectIndependent<int>());
             }
 
             return Enum.TryParse(token.ToString(), ignoreCase: true, out TEnum value) ? value : fallback;
@@ -369,7 +408,7 @@ Notes:
                 TEnum value;
                 if (item.Type == JTokenType.Integer)
                 {
-                    var intValue = item.ToObject<int>();
+                    var intValue = item.ToObjectIndependent<int>();
                     if (!Enum.IsDefined(typeof(TEnum), intValue))
                     {
                         continue;
@@ -474,16 +513,16 @@ Notes:
                     visualContext,
                     renderInfo);
 
-                data["request"] = JToken.FromObject(BuildRequestInfo(parameters));
+                data["request"] = McpJson.TokenFromObject(BuildRequestInfo(parameters));
                 data["view"] = parameters.View.ToString();
                 data["zoom"] = parameters.Zoom.ToString();
                 data["orthographic"] = renderCamera.orthographic;
                 data["framedRenderCamera"] = framedCameraHandle == null
                     ? null
-                    : JToken.FromObject(framedCameraHandle.Info);
-                data["stage"] = targetResult.StageInfo == null ? null : JToken.FromObject(targetResult.StageInfo);
-                data["advance"] = JToken.FromObject(advance.Info);
-                data["overlay"] = JToken.FromObject(new
+                    : McpJson.TokenFromObject(framedCameraHandle.Info);
+                data["stage"] = targetResult.StageInfo == null ? null : McpJson.TokenFromObject(targetResult.StageInfo);
+                data["advance"] = McpJson.TokenFromObject(advance.Info);
+                data["overlay"] = McpJson.TokenFromObject(new
                 {
                     enabled = ShouldRenderOverlay(parameters),
                     separate = parameters.SeparateOverlay == true,
@@ -554,9 +593,9 @@ Notes:
                 visualContext,
                 renderInfo);
 
-            data["request"] = JToken.FromObject(BuildRequestInfo(parameters));
-            data["advance"] = JToken.FromObject(advance.Info);
-            data["overlay"] = JToken.FromObject(new
+            data["request"] = McpJson.TokenFromObject(BuildRequestInfo(parameters));
+            data["advance"] = McpJson.TokenFromObject(advance.Info);
+            data["overlay"] = McpJson.TokenFromObject(new
             {
                 enabled = ShouldRenderOverlay(parameters),
                 separate = parameters.SeparateOverlay == true,
@@ -628,9 +667,9 @@ Notes:
                     visualContext,
                     renderInfo);
 
-                data["request"] = JToken.FromObject(BuildRequestInfo(parameters));
-                data["advance"] = JToken.FromObject(advance.Info);
-                data["gameView"] = JToken.FromObject(new
+                data["request"] = McpJson.TokenFromObject(BuildRequestInfo(parameters));
+                data["advance"] = McpJson.TokenFromObject(advance.Info);
+                data["gameView"] = McpJson.TokenFromObject(new
                 {
                     exactPostRender = true,
                     windowFound = gameViewWindow != null,
@@ -643,7 +682,7 @@ Notes:
                     requestedHeight = parameters.Height,
                     returnedActualSize = true
                 });
-                data["overlay"] = JToken.FromObject(new
+                data["overlay"] = McpJson.TokenFromObject(new
                 {
                     requested = ShouldRenderOverlay(parameters),
                     rendered = false,
@@ -684,7 +723,7 @@ Notes:
                 };
 
                 var response = useGameCamera ? CaptureGameCamera(frameParams) : CaptureSceneView(frameParams);
-                var responseJson = JObject.FromObject(response);
+                var responseJson = McpJson.ObjectFromObject(response);
                 if (responseJson.Value<bool?>("success") == true)
                 {
                     captures.Add(responseJson["data"]);
@@ -786,7 +825,7 @@ Notes:
                         };
 
                         var response = CaptureSceneView(frameParams);
-                        var responseJson = JObject.FromObject(response);
+                        var responseJson = McpJson.ObjectFromObject(response);
                         if (responseJson.Value<bool?>("success") != true)
                         {
                             errors.Add(responseJson);
@@ -2271,7 +2310,7 @@ Notes:
             RenderInfo renderInfo)
         {
             var info = new FileInfo(outputPath);
-            var data = JObject.FromObject(new
+            var data = McpJson.ObjectFromObject(new
             {
                 captureKind,
                 source,
@@ -2308,11 +2347,11 @@ Notes:
                 data["compositeFileSizeBytes"] = compositeInfo.Exists ? compositeInfo.Length : 0;
             }
 
-            data["framedTarget"] = frame?.FocusedTarget == null ? null : JToken.FromObject(BuildGameObjectInfo(frame.FocusedTarget));
-            data["frameBounds"] = frame == null ? null : JToken.FromObject(BuildBoundsInfo(frame.Bounds));
-            data["visibleObjects"] = visualContext == null ? new JArray() : JToken.FromObject(visualContext.VisibleObjects.Select(item => item.Metadata).ToArray());
-            data["nearbyObjects"] = visualContext == null ? new JArray() : JToken.FromObject(visualContext.NearbyObjects.Select(item => item.Metadata).ToArray());
-            data["annotations"] = visualContext == null ? new JArray() : JToken.FromObject(visualContext.OverlayItems.Select(BuildAnnotationInfo).ToArray());
+            data["framedTarget"] = frame?.FocusedTarget == null ? null : McpJson.TokenFromObject(BuildGameObjectInfo(frame.FocusedTarget));
+            data["frameBounds"] = frame == null ? null : McpJson.TokenFromObject(BuildBoundsInfo(frame.Bounds));
+            data["visibleObjects"] = visualContext == null ? new JArray() : McpJson.TokenFromObject(visualContext.VisibleObjects.Select(item => item.Metadata).ToArray());
+            data["nearbyObjects"] = visualContext == null ? new JArray() : McpJson.TokenFromObject(visualContext.NearbyObjects.Select(item => item.Metadata).ToArray());
+            data["annotations"] = visualContext == null ? new JArray() : McpJson.TokenFromObject(visualContext.OverlayItems.Select(BuildAnnotationInfo).ToArray());
             return data;
         }
 

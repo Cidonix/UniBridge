@@ -476,10 +476,10 @@ Returns:
                 }
                 if (type.IsEnum)
                 {
-                    value = token.Type == JTokenType.Integer ? Enum.ToObject(type, token.ToObject<int>()) : Enum.Parse(type, token.ToString(), true);
+                    value = token.Type == JTokenType.Integer ? Enum.ToObject(type, token.ToObjectIndependent<int>()) : Enum.Parse(type, token.ToString(), true);
                     return true;
                 }
-                value = token.ToObject(type);
+                value = token.ToObjectIndependent(type);
                 return true;
             }
             catch
@@ -519,16 +519,16 @@ Returns:
         {
             foreach (var name in names.Where(item => !string.IsNullOrWhiteSpace(item)))
             {
-                var direct = Type.GetType(name, false);
+                var direct = LoadedAssemblyCatalog.ResolveType(name,false);
                 if (direct != null)
                     return direct;
 
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
                 {
                     Type[] types;
                     try
                     {
-                        types = assembly.GetTypes();
+                        types = LoadedAssemblyCatalog.EnumerateTypes(assembly);
                     }
                     catch (ReflectionTypeLoadException ex)
                     {

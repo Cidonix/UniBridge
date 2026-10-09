@@ -163,8 +163,8 @@ Returns:
             if (TryReadColor(parameters["Color"] ?? parameters["color"], out var color))
             {
                 main.startColor = color;
-                mainSerializedPatch["InitialModule.startColor.maxColor"] = JArray.FromObject(new[] { color.r, color.g, color.b, color.a });
-                mainSerializedPatch["InitialModule.startColor.minColor"] = JArray.FromObject(new[] { color.r, color.g, color.b, color.a });
+                mainSerializedPatch["InitialModule.startColor.maxColor"] = McpJson.ArrayFromObject(new[] { color.r, color.g, color.b, color.a });
+                mainSerializedPatch["InitialModule.startColor.minColor"] = McpJson.ArrayFromObject(new[] { color.r, color.g, color.b, color.a });
             }
 
             ApplyMaterial(renderer, parameters);
@@ -509,14 +509,14 @@ Returns:
 
         static Type FindType(string fullName)
         {
-            return AppDomain.CurrentDomain.GetAssemblies()
+            return LoadedAssemblyCatalog.GetLoadedAssemblies()
                 .SelectMany(GetTypesSafe)
                 .FirstOrDefault(type => string.Equals(type.FullName, fullName, StringComparison.Ordinal));
         }
 
         static IEnumerable<Type> GetTypesSafe(Assembly assembly)
         {
-            try { return assembly.GetTypes(); }
+            try { return LoadedAssemblyCatalog.EnumerateTypes(assembly); }
             catch (ReflectionTypeLoadException ex) { return ex.Types.Where(type => type != null); }
             catch { return Array.Empty<Type>(); }
         }
@@ -603,7 +603,7 @@ Returns:
 
                 if (token.Type == JTokenType.Float || token.Type == JTokenType.Integer)
                 {
-                    value = token.ToObject<float>();
+                    value = token.ToObjectIndependent<float>();
                     return true;
                 }
 

@@ -1074,10 +1074,10 @@ Returns:
                     try
                     {
                         Color newColor = new Color(
-                            colArr[0].ToObject<float>(),
-                            colArr[1].ToObject<float>(),
-                            colArr[2].ToObject<float>(),
-                            colArr.Count > 3 ? colArr[3].ToObject<float>() : 1.0f
+                            colArr[0].ToObjectIndependent<float>(),
+                            colArr[1].ToObjectIndependent<float>(),
+                            colArr[2].ToObjectIndependent<float>(),
+                            colArr.Count > 3 ? colArr[3].ToObjectIndependent<float>() : 1.0f
                         );
                         if (mat.HasProperty(propName) && mat.GetColor(propName) != newColor)
                         {
@@ -1099,10 +1099,10 @@ Returns:
                     if (colorArr.Count >= 3)
                     {
                         Color newColor = new Color(
-                            colorArr[0].ToObject<float>(),
-                            colorArr[1].ToObject<float>(),
-                            colorArr[2].ToObject<float>(),
-                            colorArr.Count > 3 ? colorArr[3].ToObject<float>() : 1.0f
+                            colorArr[0].ToObjectIndependent<float>(),
+                            colorArr[1].ToObjectIndependent<float>(),
+                            colorArr[2].ToObjectIndependent<float>(),
+                            colorArr.Count > 3 ? colorArr[3].ToObjectIndependent<float>() : 1.0f
                         );
                         if (mat.HasProperty(propName) && mat.GetColor(propName) != newColor)
                         {
@@ -1128,7 +1128,7 @@ Returns:
                 {
                     try
                     {
-                        float newVal = floatProps["value"].ToObject<float>();
+                        float newVal = floatProps["value"].ToObjectIndependent<float>();
                         if (mat.HasProperty(propName) && mat.GetFloat(propName) != newVal)
                         {
                             mat.SetFloat(propName, newVal);
@@ -1185,7 +1185,7 @@ Returns:
             // Example: Set dynamic friction
             if (properties["dynamicFriction"]?.Type == JTokenType.Float)
             {
-                float dynamicFriction = properties["dynamicFriction"].ToObject<float>();
+                float dynamicFriction = properties["dynamicFriction"].ToObjectIndependent<float>();
                 pmat.dynamicFriction = dynamicFriction;
                 modified = true;
             }
@@ -1193,7 +1193,7 @@ Returns:
             // Example: Set static friction
             if (properties["staticFriction"]?.Type == JTokenType.Float)
             {
-                float staticFriction = properties["staticFriction"].ToObject<float>();
+                float staticFriction = properties["staticFriction"].ToObjectIndependent<float>();
                 pmat.staticFriction = staticFriction;
                 modified = true;
             }
@@ -1201,7 +1201,7 @@ Returns:
             // Example: Set bounciness
             if (properties["bounciness"]?.Type == JTokenType.Float)
             {
-                float bounciness = properties["bounciness"].ToObject<float>();
+                float bounciness = properties["bounciness"].ToObjectIndependent<float>();
                 pmat.bounciness = bounciness;
                 modified = true;
             }
@@ -1384,13 +1384,13 @@ Returns:
 
             if (properties["tileSize"] is JArray tileSize && tileSize.Count >= 2)
             {
-                layer.tileSize = new Vector2(tileSize[0].ToObject<float>(), tileSize[1].ToObject<float>());
+                layer.tileSize = new Vector2(tileSize[0].ToObjectIndependent<float>(), tileSize[1].ToObjectIndependent<float>());
                 modified = true;
             }
 
             if (properties["tileOffset"] is JArray tileOffset && tileOffset.Count >= 2)
             {
-                layer.tileOffset = new Vector2(tileOffset[0].ToObject<float>(), tileOffset[1].ToObject<float>());
+                layer.tileOffset = new Vector2(tileOffset[0].ToObjectIndependent<float>(), tileOffset[1].ToObjectIndependent<float>());
                 modified = true;
             }
 
@@ -1434,7 +1434,7 @@ Returns:
                         part != AvatarMaskBodyPart.LastBodyPart &&
                         prop.Value.Type == JTokenType.Boolean)
                     {
-                        mask.SetHumanoidBodyPartActive(part, prop.Value.ToObject<bool>());
+                        mask.SetHumanoidBodyPartActive(part, prop.Value.ToObjectIndependent<bool>());
                         modified = true;
                     }
                 }
@@ -1503,20 +1503,20 @@ Returns:
             var token = properties?[name];
             if (token == null || token.Type == JTokenType.Null)
                 return false;
-            value = token.ToObject<float>();
+            value = token.ToObjectIndependent<float>();
             return true;
         }
 
         static int ReadInt(JObject properties, string name, int fallback)
         {
             var token = properties?[name];
-            return token == null || token.Type == JTokenType.Null ? fallback : token.ToObject<int>();
+            return token == null || token.Type == JTokenType.Null ? fallback : token.ToObjectIndependent<int>();
         }
 
         static bool ReadBool(JObject properties, string name, bool fallback)
         {
             var token = properties?[name];
-            return token == null || token.Type == JTokenType.Null ? fallback : token.ToObject<bool>();
+            return token == null || token.Type == JTokenType.Null ? fallback : token.ToObjectIndependent<bool>();
         }
 
         static TEnum ReadEnum<TEnum>(JObject properties, string name, TEnum fallback) where TEnum : struct
@@ -1631,41 +1631,41 @@ Returns:
                     return null;
 
                 if (targetType == typeof(string))
-                    return token.ToObject<string>();
+                    return token.ToObjectIndependent<string>();
                 if (targetType == typeof(int))
-                    return token.ToObject<int>();
+                    return token.ToObjectIndependent<int>();
                 if (targetType == typeof(float))
-                    return token.ToObject<float>();
+                    return token.ToObjectIndependent<float>();
                 if (targetType == typeof(bool))
-                    return token.ToObject<bool>();
+                    return token.ToObjectIndependent<bool>();
                 if (targetType == typeof(Vector2) && token is JArray arrV2 && arrV2.Count == 2)
-                    return new Vector2(arrV2[0].ToObject<float>(), arrV2[1].ToObject<float>());
+                    return new Vector2(arrV2[0].ToObjectIndependent<float>(), arrV2[1].ToObjectIndependent<float>());
                 if (targetType == typeof(Vector3) && token is JArray arrV3 && arrV3.Count == 3)
                     return new Vector3(
-                        arrV3[0].ToObject<float>(),
-                        arrV3[1].ToObject<float>(),
-                        arrV3[2].ToObject<float>()
+                        arrV3[0].ToObjectIndependent<float>(),
+                        arrV3[1].ToObjectIndependent<float>(),
+                        arrV3[2].ToObjectIndependent<float>()
                     );
                 if (targetType == typeof(Vector4) && token is JArray arrV4 && arrV4.Count == 4)
                     return new Vector4(
-                        arrV4[0].ToObject<float>(),
-                        arrV4[1].ToObject<float>(),
-                        arrV4[2].ToObject<float>(),
-                        arrV4[3].ToObject<float>()
+                        arrV4[0].ToObjectIndependent<float>(),
+                        arrV4[1].ToObjectIndependent<float>(),
+                        arrV4[2].ToObjectIndependent<float>(),
+                        arrV4[3].ToObjectIndependent<float>()
                     );
                 if (targetType == typeof(Quaternion) && token is JArray arrQ && arrQ.Count == 4)
                     return new Quaternion(
-                        arrQ[0].ToObject<float>(),
-                        arrQ[1].ToObject<float>(),
-                        arrQ[2].ToObject<float>(),
-                        arrQ[3].ToObject<float>()
+                        arrQ[0].ToObjectIndependent<float>(),
+                        arrQ[1].ToObjectIndependent<float>(),
+                        arrQ[2].ToObjectIndependent<float>(),
+                        arrQ[3].ToObjectIndependent<float>()
                     );
                 if (targetType == typeof(Color) && token is JArray arrC && arrC.Count >= 3) // Allow RGB or RGBA
                     return new Color(
-                        arrC[0].ToObject<float>(),
-                        arrC[1].ToObject<float>(),
-                        arrC[2].ToObject<float>(),
-                        arrC.Count > 3 ? arrC[3].ToObject<float>() : 1.0f
+                        arrC[0].ToObjectIndependent<float>(),
+                        arrC[1].ToObjectIndependent<float>(),
+                        arrC[2].ToObjectIndependent<float>(),
+                        arrC.Count > 3 ? arrC[3].ToObjectIndependent<float>() : 1.0f
                     );
                 if (targetType.IsEnum)
                     return Enum.Parse(targetType, token.ToString(), true); // Case-insensitive enum parsing
@@ -1691,7 +1691,7 @@ Returns:
                 }
 
                 // Fallback: Try direct conversion (might work for other simple value types)
-                return token.ToObject(targetType);
+                return token.ToObjectIndependent(targetType);
             }
             catch (Exception ex)
             {

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using Newtonsoft.Json.Linq;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -110,7 +111,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     var unwrapped = new Dictionary<string, object>();
                     foreach (var property in jInner.Properties())
                     {
-                        unwrapped[property.Name] = property.Value?.ToObject<object>();
+                        unwrapped[property.Name] = property.Value?.ToObjectIndependent<object>();
                     }
 
                     unwrapped["op"] = wrapperKey;
@@ -323,8 +324,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             }
             else if (e.ContainsKey("range") && e["range"] is JObject jRange)
             {
-                var start = jRange["start"]?.ToObject<Dictionary<string, object>>();
-                var end = jRange["end"]?.ToObject<Dictionary<string, object>>();
+                var start = jRange["start"]?.ToObjectIndependent<Dictionary<string, object>>();
+                var end = jRange["end"]?.ToObjectIndependent<Dictionary<string, object>>();
 
                 if (start != null && end != null)
                 {

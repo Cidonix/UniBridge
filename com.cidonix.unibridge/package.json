@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.58",
+  "version": "0.2.67",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- Windows named-pipe user SID is read directly from the Editor process TokenUser, without account-name lookup.\n- Unicode SID conversion, checked token-query buffers and deterministic native resource cleanup.\n- Existing user/System ACL and owner/System fallback preserved; relay remains 1.1.0-build.21.\n\n### Added\n\n- Focused WindowsSidRegression native pipe/SID and cleanup tests."
+    "changelog": "### Improved\n\n- Shared loaded-assembly catalog uses runtime identity, generation and weak snapshots; loaded-only type resolution retains partial/dynamic/locationless assemblies and reports ambiguity.\n- ComponentResolver and TypeSchema no longer keep strong type caches; supported collectible contexts can unload.\n- Owning Unity compilation context and bounded immutable PE reference images are shared by obsolete hints and semantic validation, with content hashes, aliases and truthful partial diagnostics.\n- Nineteen consumers use the shared helpers. Standalone CoreCLR is qualified separately from native Unity Mono; no Unity CoreCLR or native crash-causality claim.\n"
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -14,15 +14,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         public string Uri { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets the validation level. Valid values are 'basic' for quick syntax checks or 'standard' for deeper analysis.
+        /// Gets or sets the validation level. Non-basic levels also include advisory semantic obsolete API hints.
         /// </summary>
-        [McpDescription("Validation level ('basic' for quick syntax checks, 'standard' for deeper checks)", Required = false)]
+        [McpDescription("Validation level: basic (fast structural checks; semantic hints skipped), standard (Unity checks and semantic obsolete API hints), comprehensive, or strict. Hints never change validation success/counts.", Required = false)]
         public string Level { get; set; } = "basic";
 
         /// <summary>
-        /// Gets or sets whether to include full diagnostic details in the response. When false, only returns error and warning counts.
+        /// Gets or sets whether to include full validation diagnostic details. Semantic obsolete API hints remain available separately.
         /// </summary>
-        [McpDescription("When true, returns full diagnostics and summary; when false, returns counts only", Required = false)]
+        [McpDescription("When true, returns full validation diagnostics; otherwise counts. Advisory obsoleteApiHints are returned independently for non-basic levels.", Required = false)]
         public bool IncludeDiagnostics { get; set; } = false;
     }
 }

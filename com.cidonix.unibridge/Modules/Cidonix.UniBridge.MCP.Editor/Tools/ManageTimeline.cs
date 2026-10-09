@@ -432,10 +432,10 @@ Returns:
             if (string.IsNullOrWhiteSpace(fullName))
                 return null;
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
             {
                 Type type = null;
-                try { type = assembly.GetType(fullName, false); } catch { }
+                try { type = LoadedAssemblyCatalog.LookupType(assembly,fullName,false); } catch { }
                 if (type != null)
                     return type;
             }

@@ -273,15 +273,10 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                         schedulerCancellationToken)
                     : await handler.ExecuteAsync(parameters);
 
-                result = ProjectContextGuard.AttachProjectContext(result);
-
-                // MCP 2025-06-18 compliance: If tool has output schema, add structuredContent
-                // This allows MCP clients that validate output schemas to receive properly structured data
-                var outputSchema = handler.GetOutputSchema();
-                if (outputSchema != null && result != null)
-                {
-                    result = AddStructuredContent(result);
-                }
+                // Output contracts were cached at registration before any handler ran.
+                // Delivery failure after completion retains execution evidence and must never cause a replay.
+                result = StructuredOutputProjection.Completed(result, toolName,
+                    (handler as IOutputContractHandler)?.OutputContract.HasSchema == true);
 
                 McpLog.Log($"[McpToolRegistry] Tool '{toolName}' completed successfully", new() { Data = new { tool = toolName, result } });
 
@@ -316,34 +311,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         /// Adds structuredContent field to a tool result for MCP 2025-06-18 compliance.
         /// When a tool has an outputSchema, MCP clients expect structuredContent to be present.
         /// </summary>
-        static object AddStructuredContent(object result)
-        {
-            try
-            {
-                // Convert result to JObject so we can add the structuredContent field
-                var resultJson = JObject.FromObject(result);
-
-                // structuredContent should mirror the result data (success, message, data)
-                // This is what MCP clients will validate against the output schema
-                var structuredContent = new JObject();
-
-                if (resultJson.TryGetValue("success", out var success))
-                    structuredContent["success"] = success;
-                if (resultJson.TryGetValue("message", out var message))
-                    structuredContent["message"] = message;
-                if (resultJson.TryGetValue("data", out var data))
-                    structuredContent["data"] = data;
-
-                resultJson["structuredContent"] = structuredContent;
-                return resultJson;
-            }
-            catch (Exception ex)
-            {
-                // If conversion fails, return original result without structuredContent
-                McpLog.Error($"[McpToolRegistry] Failed to add structuredContent: {ex.Message}");
-                return result;
-            }
-        }
+        static object AddStructuredContent(object result) => StructuredOutputProjection.Project(result);
 
         /// <summary>
         /// Gets information about all available tools for MCP clients, including schemas and descriptions.
@@ -580,7 +548,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             var schemaMethods = TypeCache.GetMethodsWithAttribute<McpSchemaAttribute>()
                 .ToDictionary(m => m.GetCustomAttribute<McpSchemaAttribute>().ToolName, m => m);
             var outputSchemaMethods = TypeCache.GetMethodsWithAttribute<McpOutputSchemaAttribute>()
-                .ToDictionary(m => m.GetCustomAttribute<McpOutputSchemaAttribute>().ToolName, m => m);
+                .GroupBy(m => m.GetCustomAttribute<McpOutputSchemaAttribute>().ToolName, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Count() == 1 ? g.Single() : null, StringComparer.Ordinal);
 
             foreach (var method in toolMethods)
             {
@@ -599,24 +568,26 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     }
 
                     var parameterType = GetParameterType(method);
+                    outputSchemaMethods.TryGetValue(toolAttribute.Name, out var outputSchemaMethod);
+                    var outputIssue = outputSchemaMethods.ContainsKey(toolAttribute.Name) && outputSchemaMethod == null
+                        ? "Conflicting explicit output providers for this owner; output contract unavailable." : null;
                     IToolHandler handler;
 
                     if (parameterType == typeof(JObject))
                     {
                         // JObject parameter - look for custom schema method and output schema method
                         schemaMethods.TryGetValue(toolAttribute.Name, out var schemaMethod);
-                        outputSchemaMethods.TryGetValue(toolAttribute.Name, out var outputSchemaMethod);
-                        handler = new JObjectToolHandler(method, toolAttribute, schemaMethod, outputSchemaMethod);
+                        handler = new JObjectToolHandler(method, toolAttribute, schemaMethod, outputSchemaMethod, outputIssue);
                     }
                     else if (parameterType != null)
                     {
                         // Typed parameter - auto-generate schema
-                        handler = new TypedToolHandler(method, toolAttribute, parameterType);
+                        handler = new TypedToolHandler(method, toolAttribute, parameterType, outputSchemaMethod, outputIssue);
                     }
                     else
                     {
                         // No parameters
-                        handler = new SimpleToolHandler(method, toolAttribute);
+                        handler = new SimpleToolHandler(method, toolAttribute, outputSchemaMethod, outputIssue);
                     }
 
                     // Register the tool (name already sanitized in McpToolAttribute)
@@ -658,19 +629,22 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     var genericInterface = type.GetInterfaces()
                         .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IUnityMcpTool<>));
 
+                    outputSchemaMethods.TryGetValue(toolAttribute.Name, out var outputSchemaMethod);
+                    var outputIssue = outputSchemaMethods.ContainsKey(toolAttribute.Name) && outputSchemaMethod == null
+                        ? "Conflicting explicit output providers for this owner; output contract unavailable." : null;
                     IToolHandler handler;
                     if (genericInterface != null)
                     {
                         // Generic interface - create GenericClassToolHandler
                         var parameterType = genericInterface.GetGenericArguments()[0];
                         var instance = Activator.CreateInstance(type);
-                        handler = new GenericClassToolHandler(instance, toolAttribute, parameterType);
+                        handler = new GenericClassToolHandler(instance, toolAttribute, parameterType, outputSchemaMethod, outputIssue);
                     }
                     else if (typeof(IUnityMcpTool).IsAssignableFrom(type))
                     {
                         // Non-generic interface - create ClassToolHandler
                         var instance = Activator.CreateInstance(type) as IUnityMcpTool;
-                        handler = new ClassToolHandler(instance, toolAttribute);
+                        handler = new ClassToolHandler(instance, toolAttribute, outputSchemaMethod, outputIssue);
                     }
                     else
                     {
@@ -712,7 +686,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 if (!k_Tools.ContainsKey(kvp.Key))
                 {
                     McpLog.Warning($"[McpToolRegistry] Output schema method for tool '{kvp.Key}' found but no corresponding tool method. " +
-                                   $"Method: {kvp.Value.DeclaringType?.Name}.{kvp.Value.Name}");
+                                   $"Method: {kvp.Value?.DeclaringType?.Name}.{kvp.Value?.Name}");
                 }
             }
         }

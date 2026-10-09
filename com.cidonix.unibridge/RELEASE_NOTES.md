@@ -1,4 +1,237 @@
-# UniBridge 0.2.58 Release Notes
+# UniBridge 0.2.67 Release Notes
+
+Release date: 2026-10-10
+
+- Shared loaded-assembly catalog uses runtime identity, generation and weak snapshots; loaded-only type resolution retains partial/dynamic/locationless assemblies and reports ambiguity.
+- ComponentResolver and TypeSchema no longer keep strong type caches; supported collectible contexts can unload.
+- Owning Unity compilation context and bounded immutable PE reference images are shared by obsolete hints and semantic validation, with content hashes, aliases and truthful partial diagnostics.
+- Nineteen consumers use the shared helpers. Standalone CoreCLR is qualified separately from native Unity Mono; no Unity CoreCLR or native crash-causality claim.
+
+Standalone production-linked catalog/semantic regression passed 59/59. Actual Unity 6000.6.5f1 Mono passed six native catalog cases and 61 ordinary-MCP runner checks (12 tool responses), plus 83 Profiler runner checks and 2249 unchanged oracle checks over 365 physical raw samples. Fresh MainStage Capture passed 45 runner/37 native fixture/44 strict pixel-oracle checks, including complete decoded RGBA images, tiled seams and GPU parity. Four full compile profiles passed for 244 current Editor sources with zero errors. Normal owned catalog/Profiler/Capture quarantines retained 15/4/6 exact files with GUIDs/hashes; all 9029 original author/dependency files remain exact after cleanup. The complete Test finalizer passed; downstream host delivery is verified separately. Standalone CoreCLR semantic and collectible-context regression is qualified separately. In native Unity Mono the installed strict semantic profile is structural only; owning-context and advisory obsolete hints are qualified for two source files and 301 compiler references. No native Unity CoreCLR, physical Linux/macOS, whole-action schema fidelity, native crash-causality or source Git publication is claimed.
+
+The first MainStage continuity attempt is retained as FAIL because the original scene was already dirty before its native Begin and before any renderer/object/PNG operation. Its exact four fixture files and excluded unexecuted preparations were separately quarantined. The current unsaved Test scene was preserved as a verified Library copy before a typed GUID-backed original-scene reload; its author source and metadata stayed unchanged. The helper itself used four additional owned files during the successful native gate and was removed afterwards. The dirty transition occurred during an unobserved reload/idle interval; no specific causal source is claimed. The original native Begin was never replayed.
+
+## Previous 0.2.66 Notes
+
+Release date: 2026-10-09
+
+- The registry uses explicit output schemas for typed, JObject, primitive and
+  generic handlers. Thirteen core providers have reviewed success, business-error
+  and source action-family contracts; annotations expose their fidelity.
+- Async handlers await Task<T> and ValueTask<T>. Completed output is serialized
+  once, preserves authored structured content and context, and keeps primitive
+  or null results inside an object value field.
+- If output projection fails after a handler completes, the result reports
+  RESULT_PROJECTION_FAILED with handlerCompleted=true and retryOriginal=false.
+  Retained serialized evidence remains available; this does not prove whether
+  every project mutation completed successfully.
+- Relay 1.1.0-build.22 negotiates supported MCP versions and emits outputSchema
+  and outer structuredContent for the June 2025 and newer supported protocols.
+  Older protocols retain text delivery. Query-only recovery remains unchanged.
+
+Qualification includes bounded registry dispatch/serialized response checks and
+independent schema validation, plus isolated relay compatibility/fault tests.
+Qualified in the actual Unity Mono Editor through 27 ordinary registered MCP tool responses and 327 per-check native gates; exact live relay build.22 PID/executable/parent/time/hash observed. DTO, Task<T>, ValueTask<T>, JObject and explicit-interface routes retain their authored text/structured contracts. One owned mutator completed once; RESULT_PROJECTION_FAILED preserves handlerCompleted=true/retryOriginal=false and truthful unavailable projection outcome, with no command replay. The13 reviewed core providers retain source_family_partial; the importer representative is parameter conversion before its handler. Opaque core schemas remain envelope_only and custom explicit schemas explicit_unqualified; wholeActionDataQualified=false. Independent Draft2020-12 validates actual descriptor/response contracts. 9029 protected author files and the whole installed package stayed identical. 9 exact owned fixture/marker/meta bytes are retained in quarantine; one Refresh, 7 post-cleanup gates and actual fresh catalog absence passed. Fresh complete current-source compile09 retains12 module/profile emissions,0errors/0warnings; metadata-only foreign-symbol profiles do not establish physical Linux/macOS or Unity CoreCLR behavior. Initial failed/superseded attempts remain separate evidence. Host delivery/check-in, source Git publication and native crash causality are verified separately.
+
+Host delivery remains subject to exact final package freeze and downstream qualification.
+No complete action-data coverage is claimed for opaque or partial contracts.
+
+## Previous 0.2.65 Notes
+
+Release date: 2026-10-09
+
+- CaptureView Capture2DRegion captures an explicit XY world rectangle at the
+  requested pixels per unit. A global grid rounds outward once; tile dimensions
+  and offsets retain that density without implicit image rescaling.
+- Preview returns the plan without rendering or writing. MainStage and
+  CurrentPrefabStage are explicit scopes; preview scenes stay excluded.
+- PNGs are decoded, dimensions checked, written with CreateNew and read back.
+  GPU readback has a synchronous fallback. Camera/texture/scene cleanup errors
+  produce a truthful partial or blocked result with retained output evidence.
+
+Qualified in the actual Unity 6000.6.5f1 Mono Editor: 201 native runner checks across MainStage, dirty owned PrefabStage and typed URP; 16 ordinary registered MCP capture responses. MainStage retains 45 runner checks, 37 native fixture checks and 44 unchanged strict pixel oracle checks, including every decoded RGBA pixel, full/tiled seams, shifted grids and synchronous/GPU parity. PrefabStage and URP retain independent pattern/MainStage-decoy pixel checks, clean original scene dirtiness/root identities, real hierarchy-camera components/transforms/typed targets, dirty-stage metadata and author-file protection. Editor UI pose/selection are diagnostics and are deliberately not restored. URP qualification uses a separate owned nested blank Unity project with canonical settings configured and serialized before the capture baseline. The existing owned canonical probe CS was explicitly journaled and replaced while its meta/GUID and the 47-file inventory were preserved; its fresh native reload proves the actual loaded package Preview camera setter, native assembly identity, typed URP and exact settings before capture. The capture fixture reuses its already-active typed URP read-only; its native ProjectSettings bytes remain exact. All 9029 Main baseline protected files remain byte-identical; exact owned fixtures and paired metadata are quarantined with verified recovery hashes (6/12/12 files). Offline route qualification: 99 assertions; whole Editor API compilation passed. Initial failed harness/native attempts remain separate evidence and are not counted as PASS. No native crash-causality or Unity CoreCLR qualification is claimed.
+
+Host delivery is verified separately against the exact final package freeze.
+
+## Previous 0.2.64 Notes
+
+Release date: 2026-10-09
+
+- RuntimeProfiler RecordedFrames reads existing CPU history in Edit Mode, using
+  real physical frame/thread/sample identity and ancestry. It never enables
+  recording, switches targets, clears history, loads a capture or selects a frame.
+- Total time and self time use captured nanosecond intervals and clipped direct
+  child interval union. Repeated/punctuation-bearing marker names stay physical.
+- GC allocation bytes come from supported recorded GC.Alloc byte metadata.
+  Missing/disabled metadata and truncated topology stay unknown; extraction
+  limits, missing requested threads and unavailable history report partial/error.
+- Persistent thread IDs are decimal strings and resolved afresh per frame.
+  Filters/Top-N/depth apply after accounting; copied native views are disposed
+  synchronously. Optional full JSON export remains under Library.
+
+Qualified in the actual Unity 6000.6.5f1 Mono Editor: 83 native runner checks and 2405 independent physical Raw/no-merge Hierarchy oracle checks; 391 actual raw samples. RecordedFrames preserves stopped recording, history, targets and author state. Explicit missing-thread, metadata-disabled and extraction-cap results remain partial errors. All 9029 protected files retained; exact owned fixture removed. Offline reader regression: 59 assertions; whole Editor four conditional API profiles compiled without errors. Two initial harness failures (Unity-struct serialization and an unnamed sample predicate) are retained separately. No native crash-causality or Unity CoreCLR qualification is claimed.
+
+Host delivery is verified separately against the exact final package freeze.
+
+## Previous 0.2.63 Notes
+
+Release date: 2026-10-09
+
+Tools~/CommandLatencyRegression provides repeatable, explicitly opted-in Windows
+latency qualification against a configured test project. A run measures actual
+ContextSnapshot and ManageEditor GetState responses with a warm client and fresh
+relay clients in one externally prepared foreground, background or minimized
+state. The controller only observes window state; it never changes focus or
+placement. Results retain request failures and include native process identity,
+package provenance and author file/state checks.
+
+The existing Unity 6000.6.5f1 baseline completed 36 measured calls. All calls
+answered within 100 ms; ContextSnapshot warm/new median times were 3.7/6.2 ms
+in foreground, 70.4/59.3 ms in visible background and 35.1/20.7 ms minimized.
+Three state runs used three independent warm clients and nine short-lived
+relays. Startup/catalog/identity traffic is counted separately from tool RTT.
+The prepared states were independently verified rather than assumed from a
+focus request. Initial setup failures are retained in local evidence.
+
+The seconds-long wake delay did not reproduce in this environment. This release
+therefore adds a qualification tool without changing production wake behavior.
+These measurements do not qualify other operating systems or all Unity versions.
+The relay remains 1.1.0-build.21. Native Mono crash diagnosis remains separate.
+
+See Tools~/CommandLatencyRegression/README.md for the explicit target inputs,
+opt-in, external preparation barrier and bounded reporting contract.
+
+## Previous 0.2.62 Notes
+
+Release date: 2026-10-09
+
+Editor protocol, typed parameters, tool responses, discovery, persisted sessions,
+write receipts, snapshots and tracing now use fresh isolated JSON serializers.
+Project-wide Newtonsoft defaults cannot silently alter their contracts or break
+bridge startup. Explicit private settings and converters remain effective.
+Snapshots retain strict single-value input validation; Runtime Unity ID conversion
+uses its caller's serializer.
+
+Bridge startup commits readiness after every acquisition succeeds and rolls back
+partial failures. Stop independently cleans resources and resolves queued/in-flight
+waiters. Immutable generation state prevents stale client admission after restart.
+Captured cancelled retry callbacks cannot reopen a stopped Bridge. Dispose cancels
+waiting writers and releases the write semaphore after all admitted writers finish.
+
+Qualification: 146 production-linked JSON/lifecycle checks, including
+thirteen pinned byte-golden contracts in three settings modes and actual persisted
+and trace producers. Continuity suites passed 115 UI Toolkit and 83 restore checks.
+Complete current Runtime/Tracing/Editor compilation covered 243 production sources,
+with zero errors or global-coupled JSON sites in twelve conditional profiles.
+Foreign-platform symbols use installed Windows Unity references and qualify
+conditional compilation only. Actual Unity 6000.6.5f1 qualification passed 86
+checks with four fresh MCP relay clients under a throwing global JSON factory.
+The exact original delegate was restored, temporary source/meta pairs removed,
+and all 9029 author/dependency files retained. Native compilation has 110 current
+assemblies with zero errors, stale or missing outputs. The owner confirmed clicking
+an asset during the initial qualification; that selection difference is recorded.
+The current selection was retained across the native tests without a rollback.
+Downstream package gates are performed separately.
+The relay remains 1.1.0-build.21. Native Mono crash diagnosis remains separate.
+
+See Tools~/BridgeIsolationRegression for production provenance, owned native
+fixtures, exact global-delegate restoration and qualification commands.
+
+## Previous 0.2.61 Notes
+
+Release date: 2026-10-09
+
+ManageUIToolkit validates UXML and USS structure before source writes and offers
+DryRun/Preview without checkout, directory creation, writes or imports. A preview
+reports semanticValidation=not_run. Real source creation and UXML patches require
+synchronous Unity import diagnostics, the expected asset type and exact source
+readback before reporting success.
+Import validation is explicitly scoped to unity_import; instantiationValidation
+remains not_run. Runtime bindings/UXML objects and legacy src/path references
+remain supported. Unresolved custom/property tags defer to the importer, without
+executing custom control constructors.
+
+Failed imports report failure. Existing source is restored only if the candidate
+bytes and metadata still match, protecting independent edits. Candidate/original
+recovery bytes remain under Library/UniBridge/UIToolkitWrites. Patch actions also
+require the exact preimage hash from their original UXML read.
+
+Import warnings fail by default. Explicit FailOnImportWarnings=false returns
+completed_with_warnings and diagnostics because Unity may ignore declarations.
+PanelSettings updates save only that asset. The relay remains 1.1.0-build.21.
+Qualification passed 115 production-linked standalone checks, 11 isolated
+fixture-cleanup checks and 206 actual Unity 6000.6.5f1 live checks. All live
+fixtures were removed; 9029 author/dependency files and scene/selection/Prefab
+Stage state were retained. Native compilation had 110 current assemblies with
+zero compiler errors, stale or missing outputs. The first native-negative test
+assumption and corrective probe reports are retained; custom-control import
+acceptance is explicitly distinguished from untested instantiation.
+
+See Tools~/UIToolkitRegression for the complete production-linked and actual
+Unity-import qualification commands and retained evidence requirements.
+
+## Previous 0.2.60 Notes
+
+Release date: 2026-10-09
+
+Editor snapshot restore retains scenes already open instead of reopening the
+first scene as Single. It opens missing scenes additively and closes only planned
+extras; dirty/save guards stop unsafe closes and failed saves.
+
+WorkSession revert requires a complete version-2 baseline, explicit owned-write
+evidence, matching current and capture hashes, and a one-use PlanId from a
+successful dry-run. Blocked and partial outcomes report success=false. Unrelated
+metadata and external edits are protected; pre-restore bytes remain under the
+session's revert-recovery folder for recovery.
+Added assets and their metadata move as a group. A newly appearing companion
+stops removal and returns quarantined assets without replacing concurrent files;
+the guard runs again before automatic refresh resumes.
+
+Script tools record their known output bytes. External writers use BeginWrite
+before writing and CompleteWrite with SHA256 of intended payloads afterward.
+Unity serialized scene saves with unverified mixed author state remain protected
+from automatic revert. Legacy sessions remain usable for review/diff.
+
+Qualification passed 83 production-linked isolated checks (53 WorkSession and
+30 Snapshot cases). Live Unity 6000.6.5f1 qualification passed 51 WorkSession MCP
+checks, 42 automatic Script writer checks, and 18 Snapshot checks including all
+six actual scene cases without skips. The WorkSession phase is explicitly
+classified from the preserved combined report; the other gates are independent.
+
+The actual denied scene save returned partial/success=false and preserved the
+dirty scenes. The test helper cancelled only that run's verified native failure
+dialog; its ownership matcher passed 27 checks, and guarded fixture cleanup
+passed five. Earlier fixture setup/timeout reports remain available as evidence.
+See Tools~/RestoreSafetyRegression for repeatable gates and raw response reports.
+
+The relay remains 1.1.0-build.21. Native Mono crash investigation remains deferred.
+
+## Previous 0.2.59 Notes
+
+Release date: 2026-10-09
+
+Script tools now return advisory semantic obsolete API hints from the running
+Editor's C# assembly context. They identify the bound API and its actual
+ObsoleteAttribute message/severity, include source locations and signatures,
+and resolve an advertised replacement when it is unique. A changed result type
+also explains how to update the receiving type and avoid obsolete conversions.
+
+Use UniBridge_ValidateScript Level=standard, or ScriptIntelligence Analyze /
+ChangeImpact. Edit/create/update results include hints for the resulting source.
+Basic validation skips semantic work; bulk intelligence exposes bounded
+semanticCoverage. Partial/unavailable contexts and ambiguous replacements are
+reported explicitly. Hints do not change validation success or rewrite source.
+
+The relay remains 1.1.0-build.21. The native Mono crash investigation from the
+previous release remains deferred and is not claimed fixed.
+
+Qualification passed 66 production-linked automatic checks and 76 live MCP
+checks in Unity 6000.6.5f1. The live suite verified actual Unity signatures and
+result/conversion changes, previews and failure/no-op responses, current source
+after reload, and explicit bounded coverage. Its owned fixture was removed and
+authored scene/selection state preserved. See Tools~/ObsoleteApiRegression.
+
+## Previous 0.2.58 Notes
 
 Release date: 2026-10-09
 
@@ -1380,3 +1613,8 @@ For setup issues, include:
 - UniBridge version
 - MCP client name
 - The relevant Unity Console error or UniBridge diagnostic summary
+
+
+## 0.2.63 shipping-tool qualification
+
+Shipping-tool qualification also completed 36 actual Unity 6000.6.5f1 calls through the shipped PowerShell entry point, with three warm and nine new relay processes. Maximum RTT was 106.8 ms; no measured timeout or wake defect. All 9722 protected Assets/Packages/ProjectSettings files and actual scene, selection and Prefab Stage state were retained in each run. ContextSnapshot medians: foreground: 3.6/5.8 ms (warm/new); background: 60.7/65.1 ms (warm/new); minimized: 28.1/39.4 ms (warm/new). The independent recorded replay passed 238 assertions over 36 historical measured payloads and twelve startup sequences; it made no new native calls. The initial cached package-version gates and withheld preparation acknowledgment failure remain in local evidence.

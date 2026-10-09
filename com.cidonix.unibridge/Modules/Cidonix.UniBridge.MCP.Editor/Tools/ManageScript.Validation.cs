@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 using Cidonix.UniBridge.MCP.Editor.Settings;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -19,6 +20,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         {
             public bool Ok;
             public ScriptDiagnostic[] Diagnostics = Array.Empty<ScriptDiagnostic>();
+            public ObsoleteApiReport ObsoleteApiHints;
         }
 
         internal sealed class ScriptDiagnostic
@@ -29,14 +31,96 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             public string message;
         }
 
-        internal static ScriptValidationReport ValidateScriptSource(string fileText, string level)
+        internal static ScriptValidationReport ValidateScriptSource(string fileText, string level, string scriptPath = null)
         {
             var chosen = ParseValidationLevel(level);
-            var ok = ValidateScriptSyntax(fileText ?? string.Empty, chosen, out string[] diagsRaw);
+            var ok = ValidateScriptSyntax(fileText ?? string.Empty, chosen, out string[] diagsRaw, scriptPath);
             return new ScriptValidationReport
             {
                 Ok = ok,
-                Diagnostics = ParseDiagnostics(diagsRaw)
+                Diagnostics = ParseDiagnostics(diagsRaw),
+                ObsoleteApiHints = AnalyzeObsoleteApiHints(fileText, chosen, scriptPath)
+            };
+        }
+
+        internal static ObsoleteApiReport AnalyzeObsoleteApiHints(string source, string level, string scriptPath = null)
+        {
+            return AnalyzeObsoleteApiHints(source, ParseValidationLevel(level), scriptPath);
+        }
+
+        static ObsoleteApiReport AnalyzeObsoleteApiHints(string source, ValidationLevel level, string scriptPath)
+        {
+            if (level == ValidationLevel.Basic)
+            {
+                return new ObsoleteApiReport
+                {
+                    status = "skipped",
+                    limitations = new List<string>
+                    {
+                        "Basic validation does not build a semantic context; use standard for deprecated API hints."
+                    }
+                };
+            }
+
+            return Cidonix.UniBridge.MCP.Editor.Helpers.ObsoleteApiHints.AnalyzeSource(source ?? string.Empty, scriptPath);
+        }
+
+        internal static object GetObsoleteApiHintsOutputSchema()
+        {
+            return new
+            {
+                type = "object",
+                description = "Advisory deprecated API usages from the submitted source and the running Editor's assembly context. Never changes validation success, warning/error counts, or source. Empty hints only imply no resolved usages when status is available; partial/unavailable/skipped are coverage limitations.",
+                properties = new
+                {
+                    status = new { type = "string", @enum = new[] { "available", "partial", "unavailable", "skipped" } },
+                    hints = new
+                    {
+                        type = "array",
+                        items = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                symbol = new { type = "string" },
+                                signature = new { type = "string" },
+                                kind = new { type = "string" },
+                                severity = new { type = "string", description = "Severity declared by System.ObsoleteAttribute, independent of validation diagnostics." },
+                                message = new { type = new[] { "string", "null" } },
+                                diagnosticId = new { type = "string" },
+                                binding = new { type = "string" },
+                                line = new { type = "integer", description = "One-based line in the submitted or final proposed source." },
+                                column = new { type = "integer", description = "One-based column in that source." },
+                                length = new { type = "integer" },
+                                oldReturnType = new { type = new[] { "string", "null" } },
+                                replacement = new
+                                {
+                                    type = "object",
+                                    description = "Replacement evidence from metadata; unresolved or ambiguous suggestions are not treated as a verified replacement. A changed return type may require changing the receiving variable or conversion.",
+                                    properties = new
+                                    {
+                                        status = new { type = "string" },
+                                        symbol = new { type = new[] { "string", "null" } },
+                                        signature = new { type = new[] { "string", "null" } },
+                                        newReturnType = new { type = new[] { "string", "null" } },
+                                        returnTypeChanged = new { type = "boolean" },
+                                        guidance = new { type = new[] { "string", "null" } },
+                                        candidates = new { type = "array", items = new { type = "string" } }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    totalHints = new { type = "integer", description = "Usages found within the analysis budget before the result limit." },
+                    truncated = new { type = "boolean" },
+                    bindingErrors = new { type = "integer", description = "Other syntax or binding errors that can limit semantic coverage; these are not added to validation counts." },
+                    limitations = new { type = "array", items = new { type = "string" } },
+                    assemblyName = new { type = new[] { "string", "null" } },
+                    unityVersion = new { type = new[] { "string", "null" } },
+                    sourceFileCount = new { type = "integer" },
+                    referenceCount = new { type = "integer" }
+                },
+                required = new[] { "status", "hints", "totalHints", "truncated", "bindingErrors", "limitations" }
             };
         }
 
@@ -108,7 +192,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         /// <summary>
         /// Advanced syntax validation with detailed diagnostics and configurable strictness.
         /// </summary>
-        static bool ValidateScriptSyntax(string contents, ValidationLevel level, out string[] errors)
+        static bool ValidateScriptSyntax(string contents, ValidationLevel level, out string[] errors,string scriptPath = null)
         {
             var errorList = new List<string>();
             errors = null;
@@ -148,7 +232,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 #if USE_ROSLYN
             if (level == ValidationLevel.Strict)
             {
-                if (!ValidateScriptSemantics(contents, errorList))
+                if (!ValidateScriptSemantics(contents, errorList,scriptPath))
                 {
                     errors = errorList.ToArray();
                     return false;
@@ -302,9 +386,6 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         }
 
 #if USE_ROSLYN
-        static List<MetadataReference> _cachedReferences = null;
-        static DateTime _cacheTime = DateTime.MinValue;
-        static readonly TimeSpan CacheExpiry = TimeSpan.FromMinutes(5);
 
         static bool ValidateScriptSyntaxRoslyn(string contents, ValidationLevel level, List<string> errors)
         {
@@ -344,51 +425,32 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
         }
 
-        static bool ValidateScriptSemantics(string contents, List<string> errors)
+        static bool ValidateScriptSemantics(string contents, List<string> errors,string scriptPath = null)
         {
             try
             {
-                var references = GetCompilationReferences();
-                if (references == null || references.Count == 0)
+                var context = UnityCompilationReferenceContext.Collect(scriptPath);
+                var trees = context.GetSourceTrees(contents, scriptPath);
+                foreach (var limitation in context.Limitations.Take(20)) errors.Add("WARNING: " + limitation);
+                foreach (var issue in context.References.Issues.Take(20)) errors.Add("WARNING: " + issue.Category + ": " + issue.Path + " (" + issue.Detail + ").");
+                if (context.Partial || context.References.References.Count == 0)
                 {
-                    errors.Add("WARNING: Could not load compilation references for semantic validation");
-                    return true;
+                    errors.Add("ERROR: Complete owning-assembly references and source context are unavailable for strict semantic validation.");
+                    return false;
                 }
-
-                var syntaxTree = CSharpSyntaxTree.ParseText(contents);
-                var compilation = CSharpCompilation.Create(
-                    "TempValidation",
-                    new[] { syntaxTree },
-                    references,
-                    new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
-                );
-
-                var diagnostics = compilation.GetDiagnostics();
-
+                var compilation = CSharpCompilation.Create(context.Owner?.name ?? "TempValidation", trees,
+                    context.References.References, context.CompilationOptions);
                 bool hasErrors = false;
-                foreach (var diagnostic in diagnostics)
+                foreach (var diagnostic in compilation.GetDiagnostics())
                 {
-                    if (diagnostic.Severity == DiagnosticSeverity.Error)
-                    {
-                        hasErrors = true;
-                        var location = diagnostic.Location.GetLineSpan();
-                        string locationInfo = location.IsValid ?
-                            $" (Line {location.StartLinePosition.Line + 1}, Column {location.StartLinePosition.Character + 1})" : "";
-
-                        string diagnosticId = !string.IsNullOrEmpty(diagnostic.Id) ? $" [{diagnostic.Id}]" : "";
-                        errors.Add($"ERROR: {diagnostic.GetMessage()}{diagnosticId}{locationInfo}");
-                    }
-                    else if (diagnostic.Severity == DiagnosticSeverity.Warning)
-                    {
-                        var location = diagnostic.Location.GetLineSpan();
-                        string locationInfo = location.IsValid ?
-                            $" (Line {location.StartLinePosition.Line + 1}, Column {location.StartLinePosition.Character + 1})" : "";
-
-                        string diagnosticId = !string.IsNullOrEmpty(diagnostic.Id) ? $" [{diagnostic.Id}]" : "";
-                        errors.Add($"WARNING: {diagnostic.GetMessage()}{diagnosticId}{locationInfo}");
-                    }
+                    if (diagnostic.Severity != DiagnosticSeverity.Error && diagnostic.Severity != DiagnosticSeverity.Warning) continue;
+                    var location = diagnostic.Location.GetLineSpan();
+                    string locationInfo = location.IsValid ? $" (Line {location.StartLinePosition.Line + 1}, Column {location.StartLinePosition.Character + 1})" : "";
+                    string diagnosticId = string.IsNullOrEmpty(diagnostic.Id) ? "" : $" [{diagnostic.Id}]";
+                    var severity = diagnostic.Severity == DiagnosticSeverity.Error ? "ERROR" : "WARNING";
+                    errors.Add($"{severity}: {diagnostic.GetMessage()}{diagnosticId}{locationInfo}");
+                    hasErrors |= diagnostic.Severity == DiagnosticSeverity.Error;
                 }
-
                 return !hasErrors;
             }
             catch (Exception ex)
@@ -398,69 +460,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
         }
 
-        static List<MetadataReference> GetCompilationReferences()
-        {
-            if (_cachedReferences != null && DateTime.Now - _cacheTime < CacheExpiry)
-            {
-                return _cachedReferences;
-            }
-
-            try
-            {
-                var references = new List<MetadataReference>
-                {
-                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
-                    MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location)
-                };
-
-                try
-                {
-                    references.Add(MetadataReference.CreateFromFile(typeof(UnityEngine.Debug).Assembly.Location));
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"Could not load UnityEngine assembly: {ex.Message}");
-                }
-
 #if UNITY_EDITOR
-                try
-                {
-                    references.Add(MetadataReference.CreateFromFile(typeof(UnityEditor.Editor).Assembly.Location));
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"Could not load UnityEditor assembly: {ex.Message}");
-                }
-
-                try
-                {
-                    var assemblies = CompilationPipeline.GetAssemblies();
-                    foreach (var assembly in assemblies)
-                    {
-                        if (File.Exists(assembly.outputPath))
-                        {
-                            references.Add(MetadataReference.CreateFromFile(assembly.outputPath));
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"Could not load Unity project assemblies: {ex.Message}");
-                }
 #endif
-
-                _cachedReferences = references;
-                _cacheTime = DateTime.Now;
-
-                return references;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Failed to get compilation references: {ex.Message}");
-                return new List<MetadataReference>();
-            }
-        }
 #else
         static bool ValidateScriptSyntaxRoslyn(string contents, ValidationLevel level, List<string> errors)
         {

@@ -1,0 +1,19 @@
+{
+  "SessionId": "golden-session",
+  "TokenId": "golden-token",
+  "Source": "Known payload",
+  "StartedUtc": "2026-10-09T01:02:03Z",
+  "Completed": false,
+  "Before": {
+    "Assets/A.cs": {
+      "Exists": true,
+      "Sha256": "aa",
+      "Error": null
+    },
+    "Assets/New.cs": {
+      "Exists": false,
+      "Sha256": null,
+      "Error": null
+    }
+  }
+}

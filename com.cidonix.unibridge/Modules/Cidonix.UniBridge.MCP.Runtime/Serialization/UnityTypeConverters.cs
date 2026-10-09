@@ -456,7 +456,7 @@ namespace Cidonix.UniBridge.MCP.Runtime.Serialization
                 JObject jo = JObject.Load(reader);
                 if (jo.TryGetValue("instanceID", out JToken idToken) && idToken.Type == JTokenType.Integer)
                 {
-                    long instanceId = idToken.ToObject<long>();
+                    long instanceId = idToken.ToObject<long>(serializer);
                     UnityEngine.Object obj = UnityObjectId.GetObjectFromId(instanceId);
                     if (obj != null && objectType.IsAssignableFrom(obj.GetType()))
                     {

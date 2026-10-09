@@ -492,9 +492,9 @@ Returns:
             if (ComponentResolver.TryResolve(typeName, out var componentType, out _))
                 return componentType;
 
-            var resolved = Type.GetType(typeName, throwOnError: false) ??
-                           AppDomain.CurrentDomain.GetAssemblies()
-                               .Select(assembly => assembly.GetType(typeName, throwOnError: false))
+            var resolved = LoadedAssemblyCatalog.ResolveType(typeName,throwOnError: false) ??
+                           LoadedAssemblyCatalog.GetLoadedAssemblies()
+                               .Select(assembly => LoadedAssemblyCatalog.LookupType(assembly,typeName,throwOnError: false))
                                .FirstOrDefault(type => type != null);
 
             if (resolved != null && typeof(Component).IsAssignableFrom(resolved))

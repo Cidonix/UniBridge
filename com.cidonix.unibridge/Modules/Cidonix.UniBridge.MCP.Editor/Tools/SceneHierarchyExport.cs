@@ -309,7 +309,7 @@ Returns:
                 light2DCount += ToJArray(obj.TryGetValue("light2D", out var light2D) ? light2D : null).Count;
 
                 var prefab = obj.TryGetValue("prefab", out var prefabValue) ? ToJObject(prefabValue) : null;
-                if (prefab?["isPartOfPrefabInstance"]?.ToObject<bool?>() == true)
+                if (prefab?["isPartOfPrefabInstance"]?.ToObjectIndependent<bool?>() == true)
                 {
                     prefabInstanceCount++;
                 }
@@ -459,7 +459,7 @@ Returns:
                     Path = obj["path"]?.ToString(),
                     IndexedPath = obj["indexedPath"]?.ToString(),
                     Name = obj["name"]?.ToString(),
-                    ObjectId = obj["objectId"]?.ToObject<long?>()
+                    ObjectId = obj["objectId"]?.ToObjectIndependent<long?>()
                 }),
                 maxGroups,
                 maxSamples);
@@ -604,7 +604,7 @@ Returns:
                 return new JArray();
             }
 
-            return value is JArray array ? array : JArray.FromObject(value);
+            return value is JArray array ? array : McpJson.ArrayFromObject(value);
         }
 
         static JObject ToJObject(object value)
@@ -614,7 +614,7 @@ Returns:
                 return null;
             }
 
-            return value as JObject ?? JObject.FromObject(value);
+            return value as JObject ?? McpJson.ObjectFromObject(value);
         }
 
         static void Increment(IDictionary<string, int> counts, string key)
@@ -699,7 +699,7 @@ Returns:
             return new
             {
                 parentPath = obj["parentPath"]?.ToString(),
-                siblingIndex = obj["siblingIndex"]?.ToObject<int?>(),
+                siblingIndex = obj["siblingIndex"]?.ToObjectIndependent<int?>(),
                 renderers = NormalizeRenderers(obj),
                 prefab = NormalizePrefab(obj),
                 light2D = NormalizeLight2D(obj)
@@ -969,7 +969,7 @@ Returns:
             }
             else
             {
-                File.WriteAllText(path, JsonConvert.SerializeObject(exportDocument, Formatting.Indented));
+                File.WriteAllText(path, McpJson.SerializeObject(exportDocument, Formatting.Indented));
             }
 
             var info = new FileInfo(path);
@@ -989,14 +989,14 @@ Returns:
             {
                 ["recordType"] = "metadata",
                 ["schema"] = Schema,
-                ["createdUtc"] = exportDocument.TryGetValue("createdUtc", out var created) ? JToken.FromObject(created) : JValue.CreateNull(),
-                ["project"] = JToken.FromObject(exportDocument["project"]),
+                ["createdUtc"] = exportDocument.TryGetValue("createdUtc", out var created) ? McpJson.TokenFromObject(created) : JValue.CreateNull(),
+                ["project"] = McpJson.TokenFromObject(exportDocument["project"]),
                 ["unityVersion"] = Application.unityVersion,
-                ["scenes"] = JToken.FromObject(exportDocument["scenes"]),
-                ["stableOrder"] = JToken.FromObject(exportDocument["stableOrder"]),
-                ["include"] = JToken.FromObject(exportDocument["include"]),
-                ["summary"] = exportDocument.TryGetValue("summary", out var summary) ? JToken.FromObject(summary) : JValue.CreateNull(),
-                ["totalObjects"] = JToken.FromObject(exportDocument["totalObjects"])
+                ["scenes"] = McpJson.TokenFromObject(exportDocument["scenes"]),
+                ["stableOrder"] = McpJson.TokenFromObject(exportDocument["stableOrder"]),
+                ["include"] = McpJson.TokenFromObject(exportDocument["include"]),
+                ["summary"] = exportDocument.TryGetValue("summary", out var summary) ? McpJson.TokenFromObject(summary) : JValue.CreateNull(),
+                ["totalObjects"] = McpJson.TokenFromObject(exportDocument["totalObjects"])
             };
             writer.WriteLine(metadata.ToString(Formatting.None));
 
@@ -1004,7 +1004,7 @@ Returns:
             {
                 foreach (var obj in objects)
                 {
-                    var line = JObject.FromObject(obj);
+                    var line = McpJson.ObjectFromObject(obj);
                     line["recordType"] = "object";
                     writer.WriteLine(line.ToString(Formatting.None));
                 }

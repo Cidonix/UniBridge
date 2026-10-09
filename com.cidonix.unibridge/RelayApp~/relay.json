@@ -1,14 +1,14 @@
 {
-    "name": "unibridge-relay",
-    "version": "1.1.0-build.21",
-    "protocolVersion": "1.0",
-    "capabilities": [
-        "mcp"
-    ],
-    "platforms": [
-        "win-x64",
-        "linux-x64",
-        "osx-x64",
-        "osx-arm64"
-    ]
+  "name": "unibridge-relay",
+  "version": "1.1.0-build.22",
+  "protocolVersion": "1.0",
+  "capabilities": [
+    "mcp"
+  ],
+  "platforms": [
+    "win-x64",
+    "linux-x64",
+    "osx-x64",
+    "osx-arm64"
+  ]
 }

@@ -321,7 +321,7 @@ namespace Cidonix.UniBridge.Tracing
                 {
                     var merged = new JObject { ["message"] = opts.Message };
                     if (data != null)
-                        merged.Merge(data is JObject joMsg ? joMsg : JObject.FromObject(data));
+                        merged.Merge(data is JObject joMsg ? joMsg : TraceJson.ObjectFromObject(data));
                     data = merged;
                 }
 
@@ -339,7 +339,7 @@ namespace Cidonix.UniBridge.Tracing
                     parentSpanId = opts.ParentSpanId,
                     sessionId = opts.SessionId,
                     durationMs = durationMs,
-                    data = processed != null ? (processed is JObject jo ? jo : JObject.FromObject(processed)) : null,
+                    data = processed != null ? (processed is JObject jo ? jo : TraceJson.ObjectFromObject(processed)) : null,
                     recurring = opts.Recurring ? true : null,
                     exception = opts.Exception,
                 };
@@ -387,7 +387,7 @@ namespace Cidonix.UniBridge.Tracing
         object ProcessArtifact(object data, string spanId)
         {
             var json = data is JObject jObj ? jObj.ToString(Newtonsoft.Json.Formatting.None)
-                : Newtonsoft.Json.JsonConvert.SerializeObject(data);
+                : TraceJson.SerializeObject(data);
             if (json.Length <= m_ArtifactThreshold)
                 return data;
 

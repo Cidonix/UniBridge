@@ -408,23 +408,23 @@ Returns:
             parameters["BackgroundColor"] ??= "#0B0F16";
 
             var created = new List<object>();
-            var cameraResult = JObject.FromObject(CreateCamera(parameters));
+            var cameraResult = McpJson.ObjectFromObject(CreateCamera(parameters));
             created.Add(cameraResult["data"]);
 
             var cameraName = GetString(parameters, "Name", "name") ?? "UniBridge 2D Camera";
             var pixelParams = (JObject)parameters.DeepClone();
             pixelParams["Target"] = cameraName;
-            var ppcResult = JObject.FromObject(AddPixelPerfectCamera(pixelParams));
+            var ppcResult = McpJson.ObjectFromObject(AddPixelPerfectCamera(pixelParams));
             created.Add(ppcResult["data"]);
 
             if (FindType("UnityEngine.Rendering.Universal.Light2D", "Light2D") != null)
             {
-                var lightResult = JObject.FromObject(AddLight2D(new JObject
+                var lightResult = McpJson.ObjectFromObject(AddLight2D(new JObject
                 {
                     ["Name"] = "Global Light 2D",
                     ["Light2DType"] = "Global",
                     ["Intensity"] = GetFloat(parameters, 1f, "Intensity", "intensity"),
-                    ["Color"] = GetToken(parameters, "Color", "color") ?? JToken.FromObject("#FFFFFF")
+                    ["Color"] = GetToken(parameters, "Color", "color") ?? McpJson.TokenFromObject("#FFFFFF")
                 }));
                 created.Add(lightResult["data"]);
             }
@@ -749,7 +749,7 @@ Returns:
             var root = ResolveOrCreateTarget(new JObject { ["Name"] = GetString(parameters, "Name", "name") ?? "UniBridge Product Preview Rig" }, GetString(parameters, "Name", "name") ?? "UniBridge Product Preview Rig");
             var created = new List<object>();
 
-            var cameraResponse = JObject.FromObject(CreateCamera(new JObject
+            var cameraResponse = McpJson.ObjectFromObject(CreateCamera(new JObject
             {
                 ["Name"] = "Preview Camera",
                 ["Parent"] = SceneObjectLocator.GetHierarchyPath(root),
@@ -790,7 +790,7 @@ Returns:
                 ["Color"] = color,
                 ["Shadows"] = "Soft"
             });
-            created.Add(JObject.FromObject(result)["data"]);
+            created.Add(McpJson.ObjectFromObject(result)["data"]);
         }
 
         static void AssignVolumeProfile(Component volume, string profilePath)
@@ -1327,9 +1327,9 @@ Returns:
                 else if (property.PropertyType == typeof(Vector3))
                     converted = ParseVector3(value) ?? Vector3.zero;
                 else if (property.PropertyType.IsEnum)
-                    converted = value.Type == JTokenType.Integer ? Enum.ToObject(property.PropertyType, value.ToObject<int>()) : Enum.Parse(property.PropertyType, value.ToString(), true);
+                    converted = value.Type == JTokenType.Integer ? Enum.ToObject(property.PropertyType, value.ToObjectIndependent<int>()) : Enum.Parse(property.PropertyType, value.ToString(), true);
                 else
-                    converted = value.ToObject(property.PropertyType);
+                    converted = value.ToObjectIndependent(property.PropertyType);
 
                 property.SetValue(target, converted);
                 return true;
@@ -1445,7 +1445,7 @@ Returns:
                 if (existing != null)
                     return existing;
 
-                var response = JObject.FromObject(ManageGameObject.HandleCommand(new JObject
+                var response = McpJson.ObjectFromObject(ManageGameObject.HandleCommand(new JObject
                 {
                     ["action"] = "AddComponent",
                     ["target"] = targetId.ToString(CultureInfo.InvariantCulture),
@@ -1892,53 +1892,10 @@ Returns:
         {
             foreach (var name in names.Where(item => !string.IsNullOrWhiteSpace(item)))
             {
-                var direct = Type.GetType(name, false);
-                if (direct != null)
-                    return direct;
-
-                var assemblyQualified = ResolveAssemblyQualifiedType(name);
-                if (assemblyQualified != null)
-                    return assemblyQualified;
-
-                var componentName = StripAssemblyQualifier(name);
-                if (ComponentResolver.TryResolve(componentName, out var componentType, out _))
-                    return componentType;
-
-#if UNITY_EDITOR
-                var typeCacheMatch = TypeCache.GetTypesDerivedFrom<Component>()
-                    .FirstOrDefault(type =>
-                        string.Equals(type.FullName, componentName, StringComparison.Ordinal) ||
-                        string.Equals(type.Name, componentName, StringComparison.Ordinal));
-                if (typeCacheMatch != null)
-                    return typeCacheMatch;
-#endif
-
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    Type[] types;
-                    try
-                    {
-                        types = assembly.GetTypes();
-                    }
-                    catch (ReflectionTypeLoadException ex)
-                    {
-                        types = ex.Types.Where(type => type != null).ToArray();
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-
-                    var match = types.FirstOrDefault(type =>
-                        string.Equals(type.FullName, name, StringComparison.Ordinal) ||
-                        string.Equals(type.Name, name, StringComparison.Ordinal) ||
-                        string.Equals(type.FullName, name, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(type.Name, name, StringComparison.OrdinalIgnoreCase));
-                    if (match != null)
-                        return match;
-                }
+                if (!name.Contains(",") && ComponentResolver.TryResolve(name, out var component, out _)) return component;
+                var resolution = LoadedAssemblyCatalog.Resolve(name, ignoreCase: true);
+                if (!resolution.Partial && resolution.Status == "unique") return resolution.Type;
             }
-
             return null;
         }
 
@@ -1950,28 +1907,9 @@ Returns:
 
         static Type ResolveAssemblyQualifiedType(string name)
         {
-            var comma = name.IndexOf(',');
-            if (comma < 0)
-                return null;
-
-            var typeName = name.Substring(0, comma).Trim();
-            var assemblyName = name.Substring(comma + 1).Trim();
-            var nextComma = assemblyName.IndexOf(',');
-            if (nextComma >= 0)
-                assemblyName = assemblyName.Substring(0, nextComma).Trim();
-
-            if (string.IsNullOrWhiteSpace(typeName) || string.IsNullOrWhiteSpace(assemblyName))
-                return null;
-
-            try
-            {
-                var assembly = Assembly.Load(new AssemblyName(assemblyName));
-                return assembly.GetType(typeName, false, ignoreCase: true);
-            }
-            catch
-            {
-                return null;
-            }
+            if (string.IsNullOrWhiteSpace(name) || !name.Contains(",")) return null;
+            var resolution = LoadedAssemblyCatalog.Resolve(name, ignoreCase: true);
+            return !resolution.Partial && resolution.Status == "unique" ? resolution.Type : null;
         }
 
         static Vector3? ParseVector3(JToken token)
@@ -2019,7 +1957,7 @@ Returns:
             if (token == null || token.Type == JTokenType.Null)
                 return fallback;
             if (token.Type == JTokenType.Integer)
-                return token.ToObject<int>();
+                return token.ToObjectIndependent<int>();
             if (token.Type == JTokenType.String)
             {
                 var text = token.ToString().Trim();

@@ -8,6 +8,7 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using Cidonix.UniBridge.MCP.Runtime.Serialization; // For Converters
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -200,14 +201,14 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     {"objectIdString", objectId.ToString(CultureInfo.InvariantCulture)},
 
                     // Manually extract known-safe properties. Avoid Quaternion 'rotation' and 'lossyScale'.
-                    {"position", CreateTokenFromValue(tr.position, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
-                    {"localPosition", CreateTokenFromValue(tr.localPosition, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
-                    {"eulerAngles", CreateTokenFromValue(tr.eulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject()}, // Use Euler angles
-                    {"localEulerAngles", CreateTokenFromValue(tr.localEulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
-                    {"localScale", CreateTokenFromValue(tr.localScale, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
-                    {"right", CreateTokenFromValue(tr.right, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
-                    {"up", CreateTokenFromValue(tr.up, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
-                    {"forward", CreateTokenFromValue(tr.forward, typeof(Vector3))?.ToObject<object>() ?? new JObject()},
+                    {"position", CreateTokenFromValue(tr.position, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()},
+                    {"localPosition", CreateTokenFromValue(tr.localPosition, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()},
+                    {"eulerAngles", CreateTokenFromValue(tr.eulerAngles, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()}, // Use Euler angles
+                    {"localEulerAngles", CreateTokenFromValue(tr.localEulerAngles, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()},
+                    {"localScale", CreateTokenFromValue(tr.localScale, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()},
+                    {"right", CreateTokenFromValue(tr.right, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()},
+                    {"up", CreateTokenFromValue(tr.up, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()},
+                    {"forward", CreateTokenFromValue(tr.forward, typeof(Vector3))?.ToObjectIndependent<object>() ?? new JObject()},
                     {"parentInstanceID", parentObjectId},
                     {"parentInstanceIDString", parentObjectId.ToString(CultureInfo.InvariantCulture)},
                     {"rootInstanceID", rootObjectId},
@@ -670,23 +671,23 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     return list;
 
                 case JTokenType.Integer:
-                    return token.ToObject<long>(); // Use long for safety
+                    return token.ToObjectIndependent<long>(); // Use long for safety
                 case JTokenType.Float:
-                    return token.ToObject<double>(); // Use double for safety
+                    return token.ToObjectIndependent<double>(); // Use double for safety
                 case JTokenType.String:
-                    return token.ToObject<string>();
+                    return token.ToObjectIndependent<string>();
                 case JTokenType.Boolean:
-                    return token.ToObject<bool>();
+                    return token.ToObjectIndependent<bool>();
                 case JTokenType.Date:
-                    return token.ToObject<DateTime>();
+                    return token.ToObjectIndependent<DateTime>();
                 case JTokenType.Guid:
-                    return token.ToObject<Guid>();
+                    return token.ToObjectIndependent<Guid>();
                 case JTokenType.Uri:
-                    return token.ToObject<Uri>();
+                    return token.ToObjectIndependent<Uri>();
                 case JTokenType.TimeSpan:
-                    return token.ToObject<TimeSpan>();
+                    return token.ToObjectIndependent<TimeSpan>();
                 case JTokenType.Bytes:
-                    return token.ToObject<byte[]>();
+                    return token.ToObjectIndependent<byte[]>();
                 case JTokenType.Null:
                     return null;
                 case JTokenType.Undefined:

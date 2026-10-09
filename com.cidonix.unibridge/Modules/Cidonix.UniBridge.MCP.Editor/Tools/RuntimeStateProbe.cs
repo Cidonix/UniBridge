@@ -1505,7 +1505,7 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
         static int DistinctValueCount(IEnumerable<AssertionObservation> observations)
         {
             return observations
-                .Select(observation => JsonConvert.SerializeObject(observation.Value, Formatting.None))
+                .Select(observation => McpJson.SerializeObject(observation.Value, Formatting.None))
                 .Distinct(StringComparer.Ordinal)
                 .Count();
         }
@@ -1658,7 +1658,7 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                     : token.ToString(Formatting.None);
             }
 
-            return value is string str ? str : JsonConvert.SerializeObject(value, Formatting.None);
+            return value is string str ? str : McpJson.SerializeObject(value, Formatting.None);
         }
 
         static string NormalizeOperator(string value)
@@ -2002,7 +2002,7 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
                            + SanitizeFileName(NormalizeName(name, "runtime-state-probe"))
                            + ".json";
             var path = Path.Combine(directory, fileName);
-            File.WriteAllText(path, JsonConvert.SerializeObject(payload, Formatting.Indented));
+            File.WriteAllText(path, McpJson.SerializeObject(payload, Formatting.Indented));
             return path.Replace('\\', '/');
         }
 
@@ -2442,7 +2442,7 @@ Search aliases: UniBridge Unity runtime state probe runtime assert watch assert 
 
             public void Add(int sampleIndex, object value)
             {
-                var token = JsonConvert.SerializeObject(value, Formatting.None);
+                var token = McpJson.SerializeObject(value, Formatting.None);
                 if (SampleCount == 0)
                 {
                     FirstValue = value;

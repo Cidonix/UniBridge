@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using UnityEngine;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -63,7 +64,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             {
                 try
                 {
-                    var file = JsonConvert.DeserializeObject<ProjectIdentityFile>(File.ReadAllText(settingsPath));
+                    var file = McpJson.DeserializeObject<ProjectIdentityFile>(File.ReadAllText(settingsPath));
                     if (file != null && TryNormalizeProjectId(file.project_id, out var normalizedId))
                     {
                         var projectName = string.IsNullOrWhiteSpace(file.project_name)
@@ -115,7 +116,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 updated_date = now
             };
 
-            var json = JsonConvert.SerializeObject(file, Formatting.Indented);
+            var json = McpJson.SerializeObject(file, Formatting.Indented);
             File.WriteAllText(settingsPath, json, new UTF8Encoding(false));
             return CreateSnapshot(projectId, projectName, ProjectRoot, settingsPath);
         }

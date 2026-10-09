@@ -118,7 +118,7 @@ namespace Cidonix.UniBridge.Tracing
                         m_DirEnsured = true;
                     }
 
-                    var json = JsonConvert.SerializeObject(evt, Formatting.None,
+                    var json = TraceJson.SerializeObject(evt, Formatting.None,
                         new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
 
                     var bytes = Encoding.UTF8.GetBytes(json + "\n");

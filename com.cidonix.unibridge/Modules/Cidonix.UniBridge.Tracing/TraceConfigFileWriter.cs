@@ -41,7 +41,7 @@ namespace Cidonix.UniBridge.Tracing
                     }
                 };
 
-                var json = JsonConvert.SerializeObject(config, Formatting.Indented,
+                var json = TraceJson.SerializeObject(config, Formatting.Indented,
                     new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
 
                 if (!Directory.Exists(logDir))

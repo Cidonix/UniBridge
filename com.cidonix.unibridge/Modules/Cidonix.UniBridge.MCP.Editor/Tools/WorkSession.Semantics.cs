@@ -14,6 +14,24 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 {
     public static partial class WorkSession
     {
+        static string GetLoadedRestoreBlocker(string path)
+        {
+            var assetPath = path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) ? path.Substring(0, path.Length - 5) : path;
+            for (var i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (scene.isDirty && string.Equals(scene.path, assetPath, StringComparison.OrdinalIgnoreCase))
+                    return "The selected scene has unsaved Editor changes; file revert would invalidate those changes.";
+            }
+            var stage = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+            if (stage != null && stage.scene.isDirty && string.Equals(stage.assetPath, assetPath, StringComparison.OrdinalIgnoreCase))
+                return "The selected prefab has unsaved Prefab Stage changes.";
+            var assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+            if (assets != null && assets.Any(asset => asset != null && EditorUtility.IsDirty(asset)))
+                return "The selected asset has unsaved Editor changes.";
+            return null;
+        }
+
         static SessionSemanticBaseline CaptureSemanticBaseline(ScanOptions options, string sessionId, out List<string> warnings)
         {
             warnings = new List<string>();
@@ -32,7 +50,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 var snapshot = CaptureSceneSemantics(options);
                 var path = GetSemanticBaselineFile(sessionId);
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllText(path, JsonConvert.SerializeObject(snapshot, Formatting.None));
+                File.WriteAllText(path, McpJson.SerializeObject(snapshot, Formatting.None));
 
                 warnings.AddRange(snapshot.Warnings ?? new List<string>());
                 return new SessionSemanticBaseline
@@ -98,7 +116,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
             try
             {
-                var baseline = JsonConvert.DeserializeObject<SceneSemanticCollection>(File.ReadAllText(baselinePath));
+                var baseline = McpJson.DeserializeObject<SceneSemanticCollection>(File.ReadAllText(baselinePath));
                 var current = CaptureSceneSemantics(state.Options ?? new ScanOptions(), lightweight);
                 var comparison = CompareSceneSemantics(baseline, current, Math.Max(1, maxChanges), lightweight);
                 var warnings = new List<string>();

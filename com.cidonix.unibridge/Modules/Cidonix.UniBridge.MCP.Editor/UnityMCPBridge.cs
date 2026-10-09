@@ -7,6 +7,7 @@ using Cidonix.UniBridge.MCP.Editor.Settings;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
 using UnityEditor;
 using UnityEngine;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor
 {
@@ -118,7 +119,7 @@ namespace Cidonix.UniBridge.MCP.Editor
         public static void PrintToolSchemas()
         {
             var tools = McpToolRegistry.GetAvailableTools();
-            var prettyJson = JsonConvert.SerializeObject(tools, Formatting.Indented);
+            var prettyJson = McpJson.SerializeObject(tools, Formatting.Indented);
 
             EditorGUIUtility.systemCopyBuffer = prettyJson;
             Debug.Log($"=== MCP Tool Schemas ({tools.Length} tools) ===\n{prettyJson}");

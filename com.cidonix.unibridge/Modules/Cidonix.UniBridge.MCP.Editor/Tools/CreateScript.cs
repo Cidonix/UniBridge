@@ -32,7 +32,7 @@ Rules:
     The path must stay under Assets/ and must end with .cs.
 
 Returns:
-    success, message, and data with the created script URI, path, and refresh status.";
+    success, message, and data with the created script URI, path, refresh status, and advisory obsoleteApiHints for the proposed source (basic validation skips hints).";
 
         /// <summary>
         /// Returns the output schema for this tool.
@@ -41,7 +41,17 @@ Returns:
         [McpOutputSchema("UniBridge_CreateScript")]
         public static object GetOutputSchema()
         {
-            return new {type = "object", properties = new {success = new {type = "boolean", description = "Whether the operation succeeded"}, message = new {type = "string", description = "Human-readable message about the operation"}, data = new {type = "object", description = "Script creation data", properties = new {uri = new {type = "string", description = "Unity URI of the created script"}, path = new {type = "string", description = "Relative path of the created script"}, scheduledRefresh = new {type = "boolean", description = "Whether a refresh was scheduled"}}}}, required = new[] {"success", "message"}};
+            return new { type = "object", properties = new
+            {
+                success = new { type = "boolean" }, message = new { type = "string" },
+                code = new { type = "string" }, error = new { type = "string" },
+                data = new { type = "object", properties = new
+                {
+                    uri = new { type = "string" }, path = new { type = "string" },
+                    scheduledRefresh = new { type = "boolean" },
+                    obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema()
+                } }
+            }, required = new[] { "success" } };
         }
 
         /// <summary>

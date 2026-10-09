@@ -9,6 +9,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -66,8 +67,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
             var options = new Options
             {
-                IncludeInactive = findParams?["search_inactive"]?.ToObject<bool>() ?? false,
-                SearchInChildren = findParams?["search_in_children"]?.ToObject<bool>() ?? false
+                IncludeInactive = findParams?["search_inactive"]?.ToObjectIndependent<bool>() ?? false,
+                SearchInChildren = findParams?["search_in_children"]?.ToObjectIndependent<bool>() ?? false
             };
 
             var searchTerm = findParams?["search_term"]?.ToString() ?? TokenToTarget(targetToken);

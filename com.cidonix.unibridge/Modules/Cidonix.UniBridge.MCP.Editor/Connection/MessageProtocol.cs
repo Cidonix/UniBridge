@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Connection
 {
@@ -35,7 +36,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Connection
             if (tools != null && toolsHash != null)
             {
                 handshake["toolsHash"] = toolsHash;
-                handshake["tools"] = JArray.FromObject(tools);
+                handshake["tools"] = McpJson.ArrayFromObject(tools);
             }
             return handshake.ToString(Formatting.None) + "\n";
         }

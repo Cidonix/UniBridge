@@ -1,0 +1,11 @@
+{
+  "connection_type": "named_pipe",
+  "connection_path": "audit-only",
+  "created_date": "2026-10-09T01:02:03.0000000Z",
+  "project_path": "X:/Golden/Assets",
+  "project_id": "00000000-0000-0000-0000-000000000001",
+  "project_name": "Домовик Golden",
+  "project_root": "X:/Golden",
+  "protocol_version": "2.0",
+  "editor_pid": 4242
+}

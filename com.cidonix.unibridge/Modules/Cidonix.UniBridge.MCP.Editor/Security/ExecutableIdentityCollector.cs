@@ -153,7 +153,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Security
                     }
                 }
 
-                var json = JsonConvert.SerializeObject(entries);
+                var json = McpJson.SerializeObject(entries);
                 SessionState.SetString(SessionStateKey, json);
             }
             catch (Exception ex)
@@ -174,7 +174,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Security
                 if (string.IsNullOrEmpty(json))
                     return;
 
-                var entries = JsonConvert.DeserializeObject<List<CachedIdentityEntry>>(json);
+                var entries = McpJson.DeserializeObject<List<CachedIdentityEntry>>(json);
                 if (entries == null)
                     return;
 

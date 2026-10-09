@@ -468,10 +468,10 @@ Args:
 
         static ThemeStyleSheet TryGetUIBuilderTheme(string uxmlPath)
         {
-            var builderDocumentType = Type.GetType("Unity.UI.Builder.BuilderDocument, Unity.UI.Builder.Editor");
+            var builderDocumentType = LoadedAssemblyCatalog.ResolveType("Unity.UI.Builder.BuilderDocument, Unity.UI.Builder.Editor");
             if (builderDocumentType == null)
-                builderDocumentType = AppDomain.CurrentDomain.GetAssemblies()
-                    .Select(assembly => assembly.GetType("Unity.UI.Builder.BuilderDocument"))
+                builderDocumentType = LoadedAssemblyCatalog.GetLoadedAssemblies()
+                    .Select(assembly => LoadedAssemblyCatalog.LookupType(assembly,"Unity.UI.Builder.BuilderDocument"))
                     .FirstOrDefault(type => type != null);
             if (builderDocumentType == null)
                 return null;

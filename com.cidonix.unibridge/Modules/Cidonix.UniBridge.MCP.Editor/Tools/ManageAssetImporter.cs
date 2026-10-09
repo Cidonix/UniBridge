@@ -473,31 +473,31 @@ Returns:
 
                 if (targetType == typeof(bool))
                 {
-                    value = token.ToObject<bool>();
+                    value = token.ToObjectIndependent<bool>();
                     return true;
                 }
 
                 if (targetType == typeof(int))
                 {
-                    value = token.ToObject<int>();
+                    value = token.ToObjectIndependent<int>();
                     return true;
                 }
 
                 if (targetType == typeof(long))
                 {
-                    value = token.ToObject<long>();
+                    value = token.ToObjectIndependent<long>();
                     return true;
                 }
 
                 if (targetType == typeof(float))
                 {
-                    value = token.ToObject<float>();
+                    value = token.ToObjectIndependent<float>();
                     return true;
                 }
 
                 if (targetType == typeof(double))
                 {
-                    value = token.ToObject<double>();
+                    value = token.ToObjectIndependent<double>();
                     return true;
                 }
 
@@ -505,7 +505,7 @@ Returns:
                 {
                     if (token.Type == JTokenType.Integer)
                     {
-                        value = Enum.ToObject(targetType, token.ToObject<int>());
+                        value = Enum.ToObject(targetType, token.ToObjectIndependent<int>());
                         return true;
                     }
 
@@ -568,7 +568,7 @@ Returns:
                     return true;
                 }
 
-                value = token.ToObject(targetType, JsonSerializer.CreateDefault());
+                value = token.ToObject(targetType, McpJson.CreateSerializer());
                 return true;
             }
             catch (Exception ex)
@@ -933,50 +933,13 @@ Returns:
         {
             type = null;
             error = null;
-
-            var trimmed = typeName?.Trim();
-            if (string.IsNullOrWhiteSpace(trimmed))
-            {
-                error = "ImporterType cannot be empty.";
-                return false;
-            }
-
-            type = Type.GetType(trimmed, throwOnError: false);
-            if (IsValidImporterType(type))
-                return true;
-
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                Type[] types;
-                try
-                {
-                    types = assembly.GetTypes();
-                }
-                catch (ReflectionTypeLoadException ex)
-                {
-                    types = ex.Types.Where(t => t != null).ToArray();
-                }
-
-                var matches = types
-                    .Where(t => IsValidImporterType(t))
-                    .Where(t => string.Equals(t.Name, trimmed, StringComparison.Ordinal) ||
-                                string.Equals(t.FullName, trimmed, StringComparison.Ordinal))
-                    .ToArray();
-
-                if (matches.Length == 1)
-                {
-                    type = matches[0];
-                    return true;
-                }
-
-                if (matches.Length > 1)
-                {
-                    error = $"ImporterType '{trimmed}' is ambiguous: {string.Join(", ", matches.Select(t => t.FullName))}.";
-                    return false;
-                }
-            }
-
-            error = $"ImporterType '{trimmed}' was not found or does not inherit UnityEditor.AssetImporter.";
+            if (string.IsNullOrWhiteSpace(typeName)) { error = "ImporterType cannot be empty."; return false; }
+            var resolution = LoadedAssemblyCatalog.Resolve(typeName.Trim(), IsValidImporterType);
+            if (resolution.Partial) { error = "ImporterType lookup is incomplete: " + string.Join("; ", resolution.Issues.Select(issue => issue.Category + " (" + issue.Detail + ")")); return false; }
+            if (resolution.Status == "unique") { type = resolution.Type; return true; }
+            error = resolution.Status == "ambiguous"
+                ? $"ImporterType '{typeName}' is ambiguous: {string.Join(", ", resolution.Candidates.Select(candidate => candidate.AssemblyQualifiedName))}."
+                : $"ImporterType '{typeName}' was not found or does not inherit UnityEditor.AssetImporter.";
             return false;
         }
 
@@ -1057,7 +1020,7 @@ Returns:
         static Vector2 ReadVector2(JToken token)
         {
             if (token is JArray array)
-                return new Vector2(array[0].ToObject<float>(), array[1].ToObject<float>());
+                return new Vector2(array[0].ToObjectIndependent<float>(), array[1].ToObjectIndependent<float>());
 
             return new Vector2(token.Value<float>("x"), token.Value<float>("y"));
         }
@@ -1065,7 +1028,7 @@ Returns:
         static Vector3 ReadVector3(JToken token)
         {
             if (token is JArray array)
-                return new Vector3(array[0].ToObject<float>(), array[1].ToObject<float>(), array[2].ToObject<float>());
+                return new Vector3(array[0].ToObjectIndependent<float>(), array[1].ToObjectIndependent<float>(), array[2].ToObjectIndependent<float>());
 
             return new Vector3(token.Value<float>("x"), token.Value<float>("y"), token.Value<float>("z"));
         }
@@ -1073,7 +1036,7 @@ Returns:
         static Vector4 ReadVector4(JToken token)
         {
             if (token is JArray array)
-                return new Vector4(array[0].ToObject<float>(), array[1].ToObject<float>(), array[2].ToObject<float>(), array[3].ToObject<float>());
+                return new Vector4(array[0].ToObjectIndependent<float>(), array[1].ToObjectIndependent<float>(), array[2].ToObjectIndependent<float>(), array[3].ToObjectIndependent<float>());
 
             return new Vector4(token.Value<float>("x"), token.Value<float>("y"), token.Value<float>("z"), token.Value<float>("w"));
         }
@@ -1083,10 +1046,10 @@ Returns:
             if (token is JArray array)
             {
                 return new Color(
-                    array[0].ToObject<float>(),
-                    array[1].ToObject<float>(),
-                    array[2].ToObject<float>(),
-                    array.Count > 3 ? array[3].ToObject<float>() : 1f);
+                    array[0].ToObjectIndependent<float>(),
+                    array[1].ToObjectIndependent<float>(),
+                    array[2].ToObjectIndependent<float>(),
+                    array.Count > 3 ? array[3].ToObjectIndependent<float>() : 1f);
             }
 
             return new Color(
@@ -1099,7 +1062,7 @@ Returns:
         static Rect ReadRect(JToken token)
         {
             if (token is JArray array)
-                return new Rect(array[0].ToObject<float>(), array[1].ToObject<float>(), array[2].ToObject<float>(), array[3].ToObject<float>());
+                return new Rect(array[0].ToObjectIndependent<float>(), array[1].ToObjectIndependent<float>(), array[2].ToObjectIndependent<float>(), array[3].ToObjectIndependent<float>());
 
             return new Rect(token.Value<float>("x"), token.Value<float>("y"), token.Value<float>("width"), token.Value<float>("height"));
         }

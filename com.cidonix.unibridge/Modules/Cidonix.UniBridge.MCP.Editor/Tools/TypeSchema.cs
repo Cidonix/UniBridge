@@ -283,7 +283,7 @@ Returns:
 
         static object InspectGameObject(TypeSchemaParams parameters)
         {
-            var targetToken = string.IsNullOrWhiteSpace(parameters.Target) ? null : JToken.FromObject(parameters.Target);
+            var targetToken = string.IsNullOrWhiteSpace(parameters.Target) ? null : McpJson.TokenFromObject(parameters.Target);
             if (targetToken == null)
                 return Response.Error("InspectGameObject requires Target.");
 
@@ -352,14 +352,14 @@ Returns:
                 properties,
                 serializedProperties,
                 writableNames = fields.Concat(properties)
-                    .Select(item => JObject.FromObject(item))
+                    .Select(item => McpJson.ObjectFromObject(item))
                     .Where(item => item.Value<bool?>("writable") ?? false)
                     .Select(item => item.Value<string>("name"))
                     .Where(name => !string.IsNullOrWhiteSpace(name))
                     .Distinct(StringComparer.Ordinal)
                     .ToArray(),
                 serializedPropertyPaths = serializedProperties
-                    .Select(item => JObject.FromObject(item))
+                    .Select(item => McpJson.ObjectFromObject(item))
                     .Where(item => item.Value<bool?>("editable") ?? false)
                     .Select(item => item.Value<string>("path"))
                     .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -631,7 +631,7 @@ Returns:
                 propertyCount,
                 properties = properties.ToArray(),
                 writableProperties = properties
-                    .Select(item => JObject.FromObject(item))
+                    .Select(item => McpJson.ObjectFromObject(item))
                     .Where(item => item.Value<bool?>("writable") ?? false)
                     .Select(item => item.Value<string>("name"))
                     .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -774,30 +774,31 @@ Returns:
                 truncated,
                 entries
             };
-            File.WriteAllText(fullPath, JObject.FromObject(payload).ToString());
+            File.WriteAllText(fullPath, McpJson.ObjectFromObject(payload).ToString());
             return fullPath.Replace('\\', '/');
         }
 
         static string ComputeTypeIndexFingerprint()
         {
             var hash = 1469598103934665603UL;
-            foreach (var assembly in GetIndexedAssemblies())
+            foreach (var descriptor in LoadedAssemblyCatalog.Capture().Assemblies
+                .Where(item => !item.IsDynamic && !ShouldSkipTypeIndexAssembly(item.SimpleName)))
             {
-                hash = HashString(hash, SafeAssemblyName(assembly));
-                hash = HashString(hash, SafeAssemblyLocation(assembly));
-                hash = HashString(hash, SafeAssemblyMvid(assembly));
-                hash = HashString(hash, SafeAssemblyWriteStamp(assembly));
+                hash = HashString(hash, descriptor.FullName);
+                hash = HashString(hash, descriptor.ModuleVersionId);
+                hash = HashString(hash, descriptor.ContextName);
+                hash = HashString(hash, descriptor.RuntimeId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                hash = HashString(hash, SafeAssemblyLocation(descriptor.Assembly));
+                hash = HashString(hash, SafeAssemblyWriteStamp(descriptor.Assembly));
             }
-
             return hash.ToString("x16");
         }
 
         static IEnumerable<Assembly> GetIndexedAssemblies()
         {
-            return AppDomain.CurrentDomain.GetAssemblies()
-                .Where(assembly => assembly != null && !assembly.IsDynamic)
-                .Where(assembly => !ShouldSkipTypeIndexAssembly(SafeAssemblyName(assembly)))
-                .OrderBy(SafeAssemblyName, StringComparer.OrdinalIgnoreCase);
+            return LoadedAssemblyCatalog.Capture().Assemblies
+                .Where(descriptor => !descriptor.IsDynamic && !ShouldSkipTypeIndexAssembly(descriptor.SimpleName))
+                .Select(descriptor => descriptor.Assembly);
         }
 
         static bool ShouldSkipTypeIndexAssembly(string assemblyName)
@@ -824,14 +825,7 @@ Returns:
 
         static string SafeAssemblyLocation(Assembly assembly)
         {
-            try
-            {
-                return assembly == null || assembly.IsDynamic ? string.Empty : assembly.Location ?? string.Empty;
-            }
-            catch
-            {
-                return string.Empty;
-            }
+            return LoadedAssemblyCatalog.TryGetPhysicalMetadataPath(assembly).Path ?? string.Empty;
         }
 
         static string SafeAssemblyMvid(Assembly assembly)
@@ -1080,7 +1074,7 @@ Returns:
 
             var emitted = 0;
             foreach (var property in serializedProperties
-                         .Select(item => JObject.FromObject(item))
+                         .Select(item => McpJson.ObjectFromObject(item))
                          .Where(item => item.Value<bool?>("editable") ?? false)
                          .Where(item => !string.Equals(item.Value<string>("path"), "m_Script", StringComparison.Ordinal))
                          .Where(item => SampleValueForSerializedProperty(item) != null))
@@ -1157,7 +1151,7 @@ Returns:
 
         static JObject BuildPatchExampleParameters(PatchToolContext context, string path, object value)
         {
-            var patch = new JObject { [path] = JToken.FromObject(value) };
+            var patch = new JObject { [path] = McpJson.TokenFromObject(value) };
             if (context.tool == "UniBridge_ManageGameObject")
             {
                 return new JObject
@@ -1281,12 +1275,12 @@ Returns:
 
         static IEnumerable<Type> GetAllLoadedTypes()
         {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
             {
                 Type[] types;
                 try
                 {
-                    types = assembly.GetTypes();
+                    types = LoadedAssemblyCatalog.EnumerateTypes(assembly);
                 }
                 catch (ReflectionTypeLoadException ex)
                 {
@@ -1304,21 +1298,19 @@ Returns:
 
         static Type ResolveType(string name, TypeSchemaKind kind)
         {
-            if (string.IsNullOrWhiteSpace(name))
-                return null;
-
+            if (string.IsNullOrWhiteSpace(name)) return null;
             var trimmed = name.Trim();
-            var direct = Type.GetType(trimmed) ?? Type.GetType(trimmed.Replace('.', '+'));
-            if (direct != null && MatchesKind(direct, kind))
-                return direct;
-
-            return EnumerateTypes(kind)
-                .FirstOrDefault(type =>
-                    string.Equals(type.FullName, trimmed, StringComparison.Ordinal) ||
-                    string.Equals(type.Name, trimmed, StringComparison.Ordinal) ||
-                    string.Equals(type.FullName, trimmed, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(type.Name, trimmed, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(type.FullName?.Replace('+', '.'), trimmed, StringComparison.OrdinalIgnoreCase));
+            if (trimmed.Contains(","))
+            {
+                var qualified = LoadedAssemblyCatalog.Resolve(trimmed, candidate => MatchesKind(candidate, kind), ignoreCase: true);
+                return !qualified.Partial && qualified.Status == "unique" ? qualified.Type : null;
+            }
+            var candidates = EnumerateTypes(kind).Where(type =>
+                string.Equals(type.FullName, trimmed, StringComparison.Ordinal) || string.Equals(type.Name, trimmed, StringComparison.Ordinal)).Distinct().ToArray();
+            if (candidates.Length == 0) candidates = EnumerateTypes(kind).Where(type =>
+                string.Equals(type.FullName, trimmed, StringComparison.OrdinalIgnoreCase) || string.Equals(type.Name, trimmed, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type.FullName?.Replace('+', '.'), trimmed, StringComparison.OrdinalIgnoreCase)).Distinct().ToArray();
+            return candidates.Length == 1 ? candidates[0] : null;
         }
 
         static bool MatchesKind(Type type, TypeSchemaKind kind)

@@ -9,6 +9,7 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -547,7 +548,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
         static int ReadInt(JToken token)
         {
-            return token.ToObject<int>();
+            return token.ToObjectIndependent<int>();
         }
 
         static int ReadLayerMask(JToken token)
@@ -570,7 +571,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return 0;
 
             if (token.Type == JTokenType.Integer)
-                return token.ToObject<int>();
+                return token.ToObjectIndependent<int>();
 
             if (token.Type == JTokenType.String)
             {
@@ -673,19 +674,19 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
         static bool ReadBool(JToken token)
         {
-            return token.ToObject<bool>();
+            return token.ToObjectIndependent<bool>();
         }
 
         static float ReadFloat(JToken token)
         {
-            return token.ToObject<float>();
+            return token.ToObjectIndependent<float>();
         }
 
         static char ReadCharacter(JToken token)
         {
             if (token.Type == JTokenType.Integer)
             {
-                return Convert.ToChar(token.ToObject<int>());
+                return Convert.ToChar(token.ToObjectIndependent<int>());
             }
 
             var text = token.ToString();
@@ -803,7 +804,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         {
             if (token.Type == JTokenType.Integer)
             {
-                var index = token.ToObject<int>();
+                var index = token.ToObjectIndependent<int>();
                 if (index >= 0 && index < property.enumNames.Length)
                 {
                     return index;
@@ -856,7 +857,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
             if (token.Type == JTokenType.Integer)
             {
-                return CastObjectReference(UnityApiAdapter.GetObjectFromId(token.ToObject<long>()), expectedType);
+                return CastObjectReference(UnityApiAdapter.GetObjectFromId(token.ToObjectIndependent<long>()), expectedType);
             }
 
             if (token.Type == JTokenType.String)
@@ -1058,7 +1059,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return null;
 
             var trimmed = typeName.Trim();
-            var direct = Type.GetType(trimmed, false);
+            var direct = LoadedAssemblyCatalog.ResolveType(trimmed,false);
             if (direct != null)
                 return direct;
 
@@ -1067,12 +1068,12 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             {
                 var assemblyName = trimmed.Substring(0, separator).Trim();
                 var fullName = trimmed.Substring(separator + 1).Trim();
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
                 {
                     if (!string.Equals(assembly.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    var assemblyType = assembly.GetType(fullName, false);
+                    var assemblyType = LoadedAssemblyCatalog.LookupType(assembly,fullName,false);
                     if (assemblyType != null)
                         return assemblyType;
                 }
@@ -1261,13 +1262,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return null;
             }
 
-            var direct = Type.GetType(typeName, false);
+            var direct = LoadedAssemblyCatalog.ResolveType(typeName,false);
             if (direct != null)
             {
                 return direct;
             }
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
             {
                 foreach (var type in GetTypesSafe(assembly))
                 {
@@ -1286,7 +1287,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         {
             try
             {
-                return assembly.GetTypes();
+                return LoadedAssemblyCatalog.EnumerateTypes(assembly);
             }
             catch (ReflectionTypeLoadException ex)
             {
@@ -1358,13 +1359,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         {
             if (token is JArray array)
             {
-                return index < array.Count ? array[index].ToObject<int>() : defaultValue;
+                return index < array.Count ? array[index].ToObjectIndependent<int>() : defaultValue;
             }
 
             if (token is JObject obj)
             {
                 return obj.TryGetValue(property, StringComparison.OrdinalIgnoreCase, out var value)
-                    ? value.ToObject<int>()
+                    ? value.ToObjectIndependent<int>()
                     : defaultValue;
             }
 
@@ -1639,7 +1640,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
             if (token.Type == JTokenType.Integer)
             {
-                return (WrapMode)token.ToObject<int>();
+                return (WrapMode)token.ToObjectIndependent<int>();
             }
 
             return Enum.TryParse(token.ToString(), true, out WrapMode value) ? value : fallback;
@@ -1661,7 +1662,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             try
             {
                 var value = token.Type == JTokenType.Integer
-                    ? Enum.ToObject(property.PropertyType, token.ToObject<int>())
+                    ? Enum.ToObject(property.PropertyType, token.ToObjectIndependent<int>())
                     : Enum.Parse(property.PropertyType, token.ToString(), true);
                 property.SetValue(gradient, value);
             }
@@ -1980,7 +1981,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return 0;
 
             if (token.Type == JTokenType.Integer)
-                return token.ToObject<int>();
+                return token.ToObjectIndependent<int>();
 
             if (token.Type == JTokenType.String)
             {

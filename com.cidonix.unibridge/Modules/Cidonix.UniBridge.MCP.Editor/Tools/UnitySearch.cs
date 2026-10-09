@@ -1110,12 +1110,12 @@ Returns:
 
         static IEnumerable<Type> GetAllLoadedTypes()
         {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
             {
                 Type[] types;
                 try
                 {
-                    types = assembly.GetTypes();
+                    types = LoadedAssemblyCatalog.EnumerateTypes(assembly);
                 }
                 catch (ReflectionTypeLoadException ex)
                 {

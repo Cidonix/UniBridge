@@ -73,17 +73,19 @@ Search aliases: script search, script usages, code usages, caller scan, member c
 
 Actions:
     Catalog: List scripts and compiled types with path, kind, assembly, and Unity role. Set IncludeMembers=true only when you need member summaries.
-    Analyze: Detail one script by path, GUID, query, or type name.
+    Analyze: Detail one script by path, GUID, query, or type name, including semantic obsolete API hints.
     ReadTypes: Return source and summaries for requested type names.
     References: Search C# source files for a type/member/text/regex pattern.
     Usages: Find scenes, prefabs, and assets that reference a script asset GUID.
     MemberUsages: Find serialized uses of a specific script member in Unity assets: UnityEvent method bindings, AnimationEvent function names, and serialized fields.
     CodeUsages: Find C# source call sites and type/member references before risky renames, deletes, or signature changes. This is syntax-based and read-only.
     ChangeImpact: Compare current script source with ProposedSource/ProposedPath and estimate API, serialized, Unity callback, and reload risk before applying edits.
-    Hotspots: Scan scripts for TODO/FIXME, missing compiled types, file/class mismatches, obsolete Unity APIs, and large files.
+    Hotspots: Scan scripts for TODO/FIXME, missing compiled types, file/class mismatches, semantic obsolete API usages, and large files. Semantic coverage is bounded by MaxSemanticScripts and an 8 second request budget; inspect semanticCoverage for partial results.
     Assemblies: Summarize Unity compilation assemblies and script counts.
     Selection: Analyze selected MonoScript assets.
     Metrics: Return aggregate script counts by kind, assembly, folder, and Unity callback.
+
+ObsoleteApiHints are advisory and use real System.ObsoleteAttribute metadata from the current Editor/assembly. They include source locations, actual signatures and uniquely resolved advertised replacements with result type changes. Ambiguous/unresolved replacements and incomplete contexts are explicit; no automatic replacement is performed. Set IncludeObsoleteApiHints=false to skip this analysis.
 
 This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApplyEdits, UniBridge_ApplyTextEdits, and UniBridge_ValidateScript for script editing workflows.";
 
@@ -91,6 +93,8 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
         public static object HandleCommand(ScriptIntelligenceParams parameters)
         {
             parameters ??= new ScriptIntelligenceParams();
+            parameters.SemanticScriptsAnalyzed = 0;
+            parameters.SemanticWatch = null;
 
             try
             {
@@ -404,6 +408,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             return Response.Success($"Change impact for '{record.Path}': {riskLevel}.", new
             {
                 action = "ChangeImpact",
+                obsoleteApiHints = AnalyzeObsoleteProposal(proposedSource, record.Path, p),
                 target = BuildScriptSummary(record, p, false, false),
                 input = new
                 {
@@ -490,10 +495,19 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             var records = FindScriptRecords(p).ToList();
             var maxItems = Clamp(p.Limit <= 0 ? DefaultLimit : p.Limit, 1, MaxLimit);
             var issues = new List<object>();
+            var semanticReports = new List<object>();
+            int scanned = 0, semanticSkipped = 0;
+            bool semanticPartial = false;
 
             foreach (var record in records)
             {
+                scanned++;
                 var analysis = AnalyzeSource(record);
+                var obsolete = GetObsoleteHints(record, p);
+                if (obsolete.status == "skipped") semanticSkipped++;
+                if (obsolete.status != "available") semanticPartial = true;
+                if (obsolete.status != "skipped")
+                    semanticReports.Add(new { path = record.Path, obsolete.status, obsolete.totalHints, obsolete.truncated, obsolete.bindingErrors, obsolete.limitations });
                 foreach (var issue in BuildIssues(record, analysis, p))
                 {
                     issues.Add(issue);
@@ -508,7 +522,16 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             return Response.Success($"Found {issues.Count} script hotspot(s).", new
             {
                 action = "Hotspots",
-                scanned = records.Count,
+                scanned,
+                candidates = records.Count,
+                semanticCoverage = new
+                {
+                    status = !p.IncludeObsoleteApiHints ? "skipped" : semanticPartial || scanned < records.Count ? "partial" : "available",
+                    analyzed = p.SemanticScriptsAnalyzed,
+                    skipped = semanticSkipped + records.Count - scanned,
+                    reports = semanticReports,
+                    guidance = "Narrow Query/Path or run Analyze for each unexamined script to complete semantic coverage."
+                },
                 returned = issues.Count,
                 truncated = issues.Count >= maxItems,
                 issues
@@ -806,6 +829,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     inspectorFieldCount = analysis.InspectorFields.Count
                 },
                 issues = BuildIssues(record, analysis, p),
+                obsoleteApiHints = GetObsoleteHints(record, p),
                 usages = includeUsages ? FindScriptAssetUsages(record, p) : null,
                 source = includeSource ? TruncateText(record.GetSourceText(), sourceLimit) : null
             };
@@ -1207,9 +1231,9 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     break;
             }
 
-            AddPatternIssues(source, record, issues, @"\bGetInstanceID\s*\(", "obsoleteUnityApi", "Object.GetInstanceID is obsolete in Unity 6. Prefer EntityId helpers where possible.");
-            AddPatternIssues(source, record, issues, @"\bFindObjectsSortMode\b", "obsoleteUnityApi", "FindObjectsSortMode is obsolete in Unity 6. Prefer FindObjectsByType overloads without sort mode.");
-            AddPatternIssues(source, record, issues, @"\busedByComposite\b", "obsoleteUnityApi", "Collider2D.usedByComposite is obsolete. Prefer compositeOperation.");
+            foreach (var hint in GetObsoleteHints(record, p).hints)
+                issues.Add(BuildIssue(hint.severity, "obsoleteApi", record, hint.line,
+                    hint.signature + ": " + hint.message + (hint.replacement.status == "resolved" ? " Replacement: " + hint.replacement.signature + ". " + hint.replacement.guidance : "")));
 
             if (analysis.LineCount > 800)
                 issues.Add(BuildIssue("info", "largeFile", record, 1, $"Large script ({analysis.LineCount} lines). Consider focused reads before editing."));
@@ -1222,6 +1246,22 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             }
 
             return issues;
+        }
+
+        static ObsoleteApiReport GetObsoleteHints(ScriptRecord record, ScriptIntelligenceParams p)
+        {
+            return record.ObsoleteReport ??= AnalyzeObsoleteProposal(record.GetSourceText() ?? string.Empty, record.Path, p);
+        }
+
+        static ObsoleteApiReport AnalyzeObsoleteProposal(string source, string path, ScriptIntelligenceParams p)
+        {
+            if (!p.IncludeObsoleteApiHints)
+                return new ObsoleteApiReport { status = "skipped", limitations = { "Semantic obsolete API hints were disabled for this request." } };
+            p.SemanticWatch ??= System.Diagnostics.Stopwatch.StartNew();
+            if (p.SemanticScriptsAnalyzed >= Clamp(p.MaxSemanticScripts, 1, 25) || p.SemanticWatch.ElapsedMilliseconds >= 8000)
+                return new ObsoleteApiReport { status = "skipped", limitations = { "The request semantic script/time budget was reached. Analyze this script separately for hints." } };
+            p.SemanticScriptsAnalyzed++;
+            return ObsoleteApiHints.AnalyzeSource(source, path);
         }
 
         static List<object> FindScriptAssetUsages(ScriptRecord target, ScriptIntelligenceParams p)
@@ -3316,6 +3356,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             public long SizeBytes;
             public DateTime? ModifiedUtc;
             public SourceAnalysis Analysis;
+            public ObsoleteApiReport ObsoleteReport;
             string m_SourceText;
 
             public string GetSourceText()

@@ -8,7 +8,7 @@ It gives AI coding agents real tools to work inside Unity Editor projects: inspe
 
 UniBridge is currently distributed as a packaged Unity Editor tool through Patreon.
 
-This repository is used as a public project page for overview, documentation links, release notes, and issue tracking. The Unity package source, release archives, and relay binaries are not published in this repository.
+This repository contains the Unity package source, bundled relay binaries, documentation, release notes, and issue tracking. Packaged builds and updates are distributed through Patreon under the proprietary license below.
 
 ## What UniBridge Does
 
@@ -29,6 +29,17 @@ This repository is used as a public project page for overview, documentation lin
   and preserves MCP error flags instead of wrapping failed waits in success.
 - Resolves the Windows named-pipe user SID from the Editor process token,
   without depending on account-name resolution.
+- Gives semantic obsolete API hints with actual symbols, signatures and
+  advertised replacement/result type guidance from the current Unity assembly.
+- Guards work-session reverts with explicit write receipts, current/baseline
+  fingerprints and one-use previews; preserves dirty scenes during Editor restore.
+- Validates UXML/USS structure before writing and reports actual import diagnostics,
+  with source readback and guards that preserve concurrent edits.
+- Isolates Editor JSON and tracing from project-wide Newtonsoft defaults; cleans
+  partial Bridge startup and pending writers across stop/restart boundaries.
+
+- Provides opted-in, read-only Windows MCP latency qualification with warm and
+  fresh clients in externally prepared foreground, background or minimized states.
 
 ## Requirements
 

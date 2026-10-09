@@ -449,10 +449,10 @@ Returns:
         static object ConvertValue(JToken value, Type targetType)
         {
             if (targetType.IsEnum)
-                return value.Type == JTokenType.Integer ? Enum.ToObject(targetType, value.ToObject<int>()) : Enum.Parse(targetType, value.ToString(), true);
+                return value.Type == JTokenType.Integer ? Enum.ToObject(targetType, value.ToObjectIndependent<int>()) : Enum.Parse(targetType, value.ToString(), true);
             if (targetType == typeof(UnityEngine.Object) || typeof(UnityEngine.Object).IsAssignableFrom(targetType))
                 return ResolveObjectReference(value.ToString());
-            return value.ToObject(targetType);
+            return value.ToObjectIndependent(targetType);
         }
 
         static object SummarizeComponent(Component component)
@@ -753,16 +753,16 @@ Returns:
         {
             foreach (var fullName in fullNames.Where(name => !string.IsNullOrWhiteSpace(name)))
             {
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
                 {
                     Type type = null;
-                    try { type = assembly.GetType(fullName, false); } catch { }
+                    try { type = LoadedAssemblyCatalog.LookupType(assembly,fullName,false); } catch { }
                     if (type != null)
                         return type;
 
                     try
                     {
-                        type = assembly.GetTypes().FirstOrDefault(candidate =>
+                        type = LoadedAssemblyCatalog.EnumerateTypes(assembly).FirstOrDefault(candidate =>
                             string.Equals(candidate.FullName, fullName, StringComparison.OrdinalIgnoreCase) ||
                             string.Equals(candidate.Name, fullName, StringComparison.OrdinalIgnoreCase));
                     }

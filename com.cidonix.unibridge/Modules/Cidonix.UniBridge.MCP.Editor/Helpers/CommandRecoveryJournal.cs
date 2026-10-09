@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -325,7 +326,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             }
             catch
             {
-                return JsonConvert.SerializeObject(new { status = "error", error = "Command returned an invalid protocol response." });
+                return McpJson.SerializeObject(new { status = "error", error = "Command returned an invalid protocol response." });
             }
         }
     }

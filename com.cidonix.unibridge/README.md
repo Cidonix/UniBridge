@@ -13,6 +13,97 @@ through an approval-based connection flow.
 
 ## Package Contents
 
+## Shared assembly and compilation catalogs
+
+Loaded type queries use assemblies already visible to the runtime. Full identity and runtime instance distinguish collisions; changing generations and partial reflection failures are reported. Queries do not explicitly load assemblies or construct user types. Runtime reflection may resolve dependency metadata.
+
+Semantic consumers prefer the source file's owning Unity assembly and its actual compiler references. Bounded immutable PE images preserve aliases and content identity; unavailable references make context partial. Advisory obsolete hints preserve existing validation results. Strict Roslyn validation requires a complete owning context when that profile is enabled.
+
+Collectible unloading is qualified separately in standalone CoreCLR. Native Unity Mono qualification covers recorded runtime catalog cases and owning-context behavior; strict validation remains structural when the Roslyn profile is disabled. Modern continuity receipts verify negotiated protocol and complete text/structured/isError agreement within the stated output-schema scope.
+
+## MCP output contracts
+
+The registry resolves explicit output-schema providers before invoking typed,
+JObject, primitive and generic extension handlers. It also awaits `Task<T>` and
+`ValueTask<T>` results before projecting their output. Parameter conversion
+failures occur before handler invocation and remain tool errors.
+
+Inspect `annotations.uniBridgeOutput` for contract provenance and fidelity.
+`source_family_partial` means a core provider's declared response families have
+been reviewed against source and controlled serialized branches; it does not
+claim native execution of every action. `envelope_only` is an open object fallback
+for opaque results, including tools without a reviewed explicit provider.
+`explicit_unqualified` preserves an extension's declared schema without claiming
+complete action coverage. Inferred schemas follow the isolated serializer's
+contract metadata and remain conservative around converters or dynamic data.
+
+The common schema admits business errors (`success=false`, `code`, `error`),
+Bridge errors (`status=error` or `failed`, `error`) and strict projection failures.
+An already authored object `structuredContent` stays intact; complete text output,
+context and metadata remain available. Primitive/null results use an object
+`value` field. A non-object authored structured value produces a delivery error.
+
+When a completed handler cannot be serialized/projected, the error carries
+`RESULT_PROJECTION_FAILED` and `executionEvidence.handlerCompleted=true`,
+`retryOriginal=false`. Its outcome may be unavailable; retained serialized
+evidence is included when present. Do not repeat the original mutating command
+to repair an output error. Command recovery remains query-only.
+
+Relay `1.1.0-build.22` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
+and `2025-11-25`: a supported requested version is used, otherwise the latest
+supported version is returned. Outer `structuredContent` and advertised
+`outputSchema` are enabled for June 2025 and newer supported versions; older
+versions keep text responses. Relay-local status/recovery/errors have object
+output contracts. Malformed MCP name/arguments are JSON-RPC parameter errors;
+execution/conversion failures are `tools/call` results with `isError=true`.
+
+The qualification fixtures exercise actual registry dispatch and completed CLR
+producers, independent JSON Schema positives/negatives, and isolated relay peers.
+They are validation fixtures rather than production tools. Native Unity action
+coverage and downstream host delivery are recorded separately.
+
+## Capture a 2D world region
+
+Use `UniBridge_CaptureView Action=Capture2DRegion` with
+`WorldRect={xMin,yMin,xMax,yMax}` and finite positive `PixelsPerUnit`.
+`GridOrigin={x,y}` defaults to zero. `Preview=true` returns outward-rounded
+pixel extents, effective world bounds and tile offsets without rendering.
+Set `Tiling=true` and `TileSize` to split large captures while retaining density.
+Set `Stage=MainStage` or `CurrentPrefabStage` explicitly. `OutputDirectory` and `FileName` identify
+the external PNG destination; existing outputs are never overwritten.
+Transparent PNG pixel parity depends on the actual pipeline and effects;
+world-grid geometry alone cannot qualify every material or postprocess.
+
+## Recorded Profiler frames
+
+`UniBridge_RuntimeProfiler Action=RecordedFrames` reads already recorded CPU
+history without starting recording. Set FrameIndex/FrameCount and persistent
+ThreadIds as needed. Real ancestry, inclusive/self time and recorded GC.Alloc
+bytes are returned, with explicit partial/unavailable coverage. Metadata that
+was not captured is unknown. Set SaveToFile=false for a read-only invocation.
+MarkerFilters, ExcludeMarkerFilters, Top-N and depth affect presentation after
+accounting; capped raw topology cannot supply reliable self time.
+
+Command-latency qualification in 0.2.63 measures actual MCP handler responses
+against an explicitly approved test project in an externally prepared Windows
+window state. The observed baseline did not reproduce a seconds-long wake delay.
+See `Tools~/CommandLatencyRegression`; production wake scheduling is unchanged.
+
+JSON in 0.2.62 uses independent serializers throughout the Editor and its tracing
+dependency. Bridge startup/stop preserve resource ownership across partial failure,
+stale callbacks and pending response writes. See `Tools~/BridgeIsolationRegression`
+for production-linked and native qualification, and `RELEASE_NOTES.md` for evidence.
+
+UI Toolkit source authoring in 0.2.61 separates structural preview from actual
+Unity import. Import errors, rejected warnings and failed readback return failure;
+concurrent edits are protected. See `Documentation~/unibridge.md` and
+`Tools~/UIToolkitRegression` for the contract and qualification.
+
+Restore safety in 0.2.60 uses explicit owned-write receipts and one-use revert
+previews. Unknown or subsequently edited files are protected, partial failures
+are reported as failures, and Editor snapshots retain already-loaded scenes.
+See `Documentation~/unibridge.md` for `BeginWrite` / `CompleteWrite` and `PlanId`.
+
 - Unity Editor MCP bridge and Project Settings UI.
 - Local relay binaries for Windows x64, Linux x64, macOS x64, and macOS arm64.
 - Agent-facing tools for project context, search, assets, scripts, scenes,
@@ -107,6 +198,22 @@ same time when each project has its own MCP server entry and its own
 AI agent/MCP client so it reloads the available Unity projects.
 
 ## Documentation
+
+### Semantic Obsolete API Hints In 0.2.59
+
+Standard/deeper script validation and script edit results include
+`obsoleteApiHints`. ScriptIntelligence Analyze/ReadTypes/Selection/ChangeImpact
+and Hotspots use the same current Unity assembly context. Hints identify real
+bound `System.ObsoleteAttribute` symbols, locations, messages and signatures;
+an advertised replacement is resolved only when unique. Changed result types
+include receiving-type and obsolete conversion guidance. No source is rewritten.
+
+Basic validation reports semantic analysis as `skipped`. Inspect
+`status`, `limitations` and `truncated`; an empty partial result is incomplete
+coverage. Bulk ScriptIntelligence exposes `semanticCoverage`, with a default
+five-script/eight-second semantic budget; narrow the query or Analyze remaining
+scripts separately. `IncludeObsoleteApiHints=false` skips intelligence hints.
+The relay stays `1.1.0-build.21`. Focused tests: `Tools~/ObsoleteApiRegression`.
 
 ### Windows Named-Pipe Identity In 0.2.58
 

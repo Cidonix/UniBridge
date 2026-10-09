@@ -51,7 +51,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Preview restore without changing Editor state. Default false.", Required = false, Default = false)]
         public bool? DryRun { get; set; }
 
-        [McpDescription("Restore loaded scenes and active scene from the snapshot. Default true.", Required = false, Default = true)]
+        [McpDescription("Restore saved loaded scenes and active scene. Already loaded target scenes are retained without reopening or saving. Snapshots with untitled scenes cannot reconstruct their scene identity. Default true.", Required = false, Default = true)]
         public bool? RestoreScenes { get; set; }
 
         [McpDescription("Restore the Scene View camera from the snapshot. Default true.", Required = false, Default = true)]
@@ -84,10 +84,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Open scene paths from the snapshot that are not currently loaded. Default true.", Required = false, Default = true)]
         public bool? OpenMissingScenes { get; set; }
 
-        [McpDescription("Save dirty loaded scenes before a restore that may reload/close scenes. Default false.", Required = false, Default = false)]
+        [McpDescription("Save dirty extra scenes before closing them. A failed save or untitled dirty extra scene blocks restore; retained target scenes are never saved automatically. Default false.", Required = false, Default = false)]
         public bool? SaveDirtyScenes { get; set; }
 
-        [McpDescription("Allow scene restore even when dirty scenes would be reloaded/closed. Default false.", Required = false, Default = false)]
+        [McpDescription("Explicitly allow discarding unsaved changes when closing dirty extra scenes. Does not bypass SaveDirtyScenes failures or dirty Prefab Stage protection. Default false.", Required = false, Default = false)]
         public bool? AllowDirtySceneReload { get; set; }
 
         [McpDescription("Maximum snapshots returned by List. Default 50.", Required = false)]

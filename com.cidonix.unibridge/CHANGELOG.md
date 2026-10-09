@@ -2,6 +2,229 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.67
+
+### Improved
+
+- Shared loaded-assembly catalog uses runtime identity, generation and weak snapshots; loaded-only type resolution retains partial/dynamic/locationless assemblies and reports ambiguity.
+- ComponentResolver and TypeSchema no longer keep strong type caches; supported collectible contexts can unload.
+- Owning Unity compilation context and bounded immutable PE reference images are shared by obsolete hints and semantic validation, with content hashes, aliases and truthful partial diagnostics.
+- Nineteen consumers use the shared helpers. Standalone CoreCLR is qualified separately from native Unity Mono; no Unity CoreCLR or native crash-causality claim.
+
+## 0.2.66
+
+### Fixed
+
+- The registry uses explicit output schemas for typed, JObject, primitive and
+  generic handlers. Thirteen core providers have reviewed success, business-error
+  and source action-family contracts; annotations expose their fidelity.
+- Async handlers await Task<T> and ValueTask<T>. Completed output is serialized
+  once, preserves authored structured content and context, and keeps primitive
+  or null results inside an object value field.
+- If output projection fails after a handler completes, the result reports
+  RESULT_PROJECTION_FAILED with handlerCompleted=true and retryOriginal=false.
+  Retained serialized evidence remains available; this does not prove whether
+  every project mutation completed successfully.
+- Relay 1.1.0-build.22 negotiates supported MCP versions and emits outputSchema
+  and outer structuredContent for the June 2025 and newer supported protocols.
+  Older protocols retain text delivery. Query-only recovery remains unchanged.
+
+## 0.2.65
+
+### Added
+
+- CaptureView Capture2DRegion captures an explicit XY world rectangle at the
+  requested pixels per unit. A global grid rounds outward once; tile dimensions
+  and offsets retain that density without implicit image rescaling.
+- Preview returns the plan without rendering or writing. MainStage and
+  CurrentPrefabStage are explicit scopes; preview scenes stay excluded.
+- PNGs are decoded, dimensions checked, written with CreateNew and read back.
+  GPU readback has a synchronous fallback. Camera/texture/scene cleanup errors
+  produce a truthful partial or blocked result with retained output evidence.
+
+## 0.2.64
+
+### Added
+
+- RuntimeProfiler RecordedFrames reads existing CPU history in Edit Mode, using
+  real physical frame/thread/sample identity and ancestry. It never enables
+  recording, switches targets, clears history, loads a capture or selects a frame.
+- Total time and self time use captured nanosecond intervals and clipped direct
+  child interval union. Repeated/punctuation-bearing marker names stay physical.
+- GC allocation bytes come from supported recorded GC.Alloc byte metadata.
+  Missing/disabled metadata and truncated topology stay unknown; extraction
+  limits, missing requested threads and unavailable history report partial/error.
+- Persistent thread IDs are decimal strings and resolved afresh per frame.
+  Filters/Top-N/depth apply after accounting; copied native views are disposed
+  synchronously. Optional full JSON export remains under Library.
+
+## 0.2.63
+
+### Added
+
+- Portable, explicitly opted-in Windows MCP command-latency qualification under
+  Tools~/CommandLatencyRegression. It observes one externally prepared window
+  state and never changes focus, placement, recording, scenes or assets.
+- The configured root, project ID, Editor executable/version and installed
+  package are verified before measured calls. Reports disclose warm versus
+  short-lived clients, real handler payloads, timed-out requests and protected
+  file/state checks. Runs require fresh target-local evidence directories.
+
+### Qualification
+
+- The Unity 6000.6.5f1 baseline completed 36 measured tool calls in foreground,
+  visible background and minimized states. ContextSnapshot median round trips
+  for warm/new clients were respectively 3.7/6.2, 70.4/59.3 and 35.1/20.7 ms;
+  every measured tool call completed within 100 ms. Each state used an
+  independent warm connection and three new relay processes.
+- No production wake change is justified by that observation. It qualifies
+  this measured environment; it does not promise all OS or Editor combinations.
+  Initial harness/startup/window preparation failures remain in local evidence.
+  Production command scheduling and relay build 21 remain unchanged.
+
+### Shipping-tool qualification
+
+Shipping-tool qualification also completed 36 actual Unity 6000.6.5f1 calls through the shipped PowerShell entry point, with three warm and nine new relay processes. Maximum RTT was 106.8 ms; no measured timeout or wake defect. All 9722 protected Assets/Packages/ProjectSettings files and actual scene, selection and Prefab Stage state were retained in each run. ContextSnapshot medians: foreground: 3.6/5.8 ms (warm/new); background: 60.7/65.1 ms (warm/new); minimized: 28.1/39.4 ms (warm/new). The independent recorded replay passed 238 assertions over 36 historical measured payloads and twelve startup sequences; it made no new native calls. The initial cached package-version gates and withheld preparation acknowledgment failure remain in local evidence.
+
+## 0.2.62
+
+### Fixed
+
+- Editor JSON protocol, parameters/results, discovery, persisted work sessions,
+  snapshots and tracing use independent per-operation serializers. Project-wide
+  Newtonsoft defaults cannot replace their resolvers, converters or contracts.
+  Explicit caller settings/converters remain supported; the Runtime Unity ID
+  converter honors its supplied serializer.
+- Bridge publishes readiness only after startup completes. Partial failure
+  independently cleans listeners, cancellation, discovery and update hooks.
+- Stop drains queued and in-flight waiters even after partial startup. Generation
+  guards prevent stale admissions and accepted clients from using new state.
+- Transport registration, identity changes, removal and clear serialize their
+  state/index updates, preventing stale cleanup from losing replacement entries
+  or recreating removed transports.
+- Stopped/disposed Bridges reject captured cancelled startup callbacks. Active
+  response writers retain their semaphore until cleanup; Dispose cancels waiting
+  writers and releases resources after the last admitted writer exits.
+
+## 0.2.61
+
+### Added
+
+- ManageUIToolkit ValidateUxml/ValidateUss and DryRun/Preview on source creation
+  and UXML patch actions. Structured diagnostics disclose structural-only
+  validation; previews perform no checkout, directory creation, write or import.
+- Synchronous Unity import logs, StyleSheet error/warning flags, typed asset
+  loading and exact UTF-8 source readback determine successful source writes.
+  Import warnings are rejected by default; explicit FailOnImportWarnings=false
+  reports completed_with_warnings and preserves the warning diagnostics.
+
+### Fixed
+
+- Wrong extensions, invalid XML/DTD/namespace and malformed USS cannot silently
+  create unusable files or report successful asset creation.
+- Import failure reports success=false. Existing known source is restored only
+  while candidate bytes and metadata remain unchanged; concurrent edits remain
+  untouched and recovery copies are retained under Library/UniBridge.
+- AddElement, SetClasses and SetInlineStyle require the hash of the original
+  UXML read, preventing a newer independent edit from becoming their baseline.
+- Documented legacy src/path references and runtime binding/UXML objects remain
+  supported. Unresolved custom/property tags defer to Unity import; source
+  validation does not instantiate controls or invoke their constructors.
+- Inline declaration parsing respects strings, functions, comments and custom
+  property case. The default stylesheet uses the actual -unity-font-style name.
+- PanelSettings updates save only that asset instead of saving unrelated dirty
+  assets. The bundled relay remains 1.1.0-build.21.
+
+### Validation
+
+- Passed 115 production-linked standalone checks compiling the full unchanged
+  ManageUIToolkit and both helpers. Actual Unity-import qualification is recorded
+  separately by Tools~/UIToolkitRegression; structural previews do not claim it.
+- Passed 206 actual Unity 6000.6.5f1 live checks, including valid runtime binding
+  import, three genuine UXML dependency/template errors, USS errors/warnings,
+  default warning refusal and explicit warning acceptance. Eleven isolated
+  cleanup cases passed; all live fixtures were removed and 9029 protected author
+  files plus scene/selection/Prefab Stage state remained unchanged. Native
+  compilation had 110 fresh assemblies, zero errors/stale/missing outputs.
+
+## 0.2.60
+
+### Added
+
+- Version-2 WorkSession baselines record scan completeness and fingerprint the
+  exact captured byte stream. Incomplete scans and corrupt/missing captures
+  cannot authorize file reverts. Legacy sessions remain reviewable.
+- Durable explicit owned-write receipts compare pre-write state with baseline
+  or the previous owned write, and actual bytes with the expected payload hash.
+  External writes use BeginWrite/CompleteWrite; script tools record known bytes.
+- Revert requires the one-use PlanId from a successful dry-run of the same
+  selection and fingerprints. Current files are checked again during execution;
+  exclusive handles protect replacements, and recovery bytes are retained.
+
+### Fixed
+
+- EditorSnapshot Restore retains already-loaded scenes, opens missing scenes
+  additively and closes only planned extras. Dirty scenes/Prefab Stages are
+  protected and failed scene saves stop restoration before closing scenes.
+- Blocked and partial restoration report success=false with explicit status
+  and completed-operation details. Unknown and concurrent changes remain protected.
+- Automatic metadata selection applies only to added assets; independently
+  modified metadata is not implicitly reverted. RevertAll preserves unowned paths.
+- Added asset/metadata groups compensate interrupted removal without replacing
+  concurrent files, including companions that appear before refresh resumes.
+- Unknown serialized save payloads stay protected; a post-save readback does
+  not establish authorship. The bundled relay remains 1.1.0-build.21.
+
+### Validation
+
+- Passed 83 production-linked isolated checks (53 WorkSession and 30 Snapshot),
+  51 live WorkSession MCP checks, 42 automatic Script writer checks, and 18 live
+  Snapshot checks including all six actual scene cases without skips.
+- The owned native save-failure dialog matcher passed 27 checks; fixture cleanup
+  passed five. Raw responses and earlier failed test setup/timeout reports are
+  retained. Repeatable gates are under Tools~/RestoreSafetyRegression.
+
+## 0.2.59
+
+### Added
+
+- Advisory semantic obsolete API hints in standard/deeper script validation,
+  create/update/edit responses (including previews and validation failures),
+  and ScriptIntelligence Analyze/ReadTypes/Selection/ChangeImpact/Hotspots.
+- Real bound System.ObsoleteAttribute symbols, source lines/columns,
+  warning/error metadata, signatures and uniquely resolved replacements
+  advertised by the API message. Changed result types and obsolete conversions
+  back to the old type receive explicit guidance. Source is never rewritten.
+- Current owning Unity assembly references, defines, compiler options and
+  peer sources replace stale target assembly metadata. Bounded metadata caching
+  rechecks file mtime/length; missing/ambiguous context is explicit.
+- Production-linked standalone semantic regression suite in
+  Tools~/ObsoleteApiRegression. Basic validation stays inexpensive and reports
+  semantic analysis as skipped; bulk scans expose semantic coverage/budgets.
+
+### Fixed
+
+- ScriptIntelligence no longer guesses that GetInstanceID, FindObjectsSortMode
+  or usedByComposite are obsolete merely because their names occur in text.
+  Comments, strings, unrelated methods and active compiler definitions are
+  handled through the actual semantic model.
+- Existing validation success/error counts and file mutation policies are
+  unchanged by advisory hints. The bundled relay remains 1.1.0-build.21.
+
+### Validation
+
+- 66/66 production-linked checks pass (65 semantic scenarios plus whole helper
+  compilation against installed Unity 6000.6.5f1 API/.NET 4.8). Standalone
+  execution uses .NET 10 and records actual dependency versions; it is separate
+  from Editor runtime evidence.
+- 76/76 live MCP checks pass in Unity 6000.6.5f1: actual GetInstanceID to
+  GetEntityId result/conversion guidance, custom metadata, defines, suppressed
+  warnings, previews, source freshness across reload, rejection/no-op/failure
+  reports and explicit bulk coverage. The owned fixture/metadata is removed;
+  scenes, selection and author files are preserved, with healthy final compilation.
+- The deferred native Mono crash remains a separate investigation; no crash
+  fix is claimed by this release.
+
 ## 0.2.58
 
 ### Fixed

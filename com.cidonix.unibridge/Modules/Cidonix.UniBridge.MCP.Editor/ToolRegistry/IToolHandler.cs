@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 {
@@ -181,7 +182,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     return defaultValue;
 
                 var token = parameters[parameterName];
-                return token?.ToObject(parameterType) ?? defaultValue;
+                return token?.ToObjectIndependent(parameterType) ?? defaultValue;
             }
 
             // For complex types, deserialize the entire JObject
@@ -225,7 +226,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
     /// <summary>
     /// Handler for tools with typed parameters (auto-generated schemas).
     /// </summary>
-    class TypedToolHandler : IToolHandler
+    class TypedToolHandler : IToolHandler, IOutputContractHandler
     {
         readonly MethodInfo m_Method;
         readonly Type m_ParameterType;
@@ -233,13 +234,16 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         readonly ParameterInfo m_ParameterInfo;
 
         public McpToolAttribute Attribute { get; }
+        public OutputContract OutputContract { get; }
 
-        public TypedToolHandler(MethodInfo method, McpToolAttribute attribute, Type parameterType)
+        public TypedToolHandler(MethodInfo method, McpToolAttribute attribute, Type parameterType, MethodInfo outputSchemaMethod = null, string outputIssue = null)
         {
             m_Method = method ?? throw new ArgumentNullException(nameof(method));
             Attribute = attribute ?? throw new ArgumentNullException(nameof(attribute));
             m_ParameterType = parameterType ?? throw new ArgumentNullException(nameof(parameterType));
             m_ReturnType = method.ReturnType;
+            AsyncToolResult.ValidateMethod(method);
+            OutputContract = OutputContractProvider.Resolve(attribute.Name, method, outputSchemaMethod, registrationIssue: outputIssue);
 
             // Store parameter info for default value support
             var parameters = method.GetParameters();
@@ -257,7 +261,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
             // If method is async (returns Task<object>), return it directly
             // Otherwise wrap sync result
-            return result is Task<object> task ? task : Task.FromResult(result);
+            return AsyncToolResult.Await(result, m_ReturnType);
         }
 
         public object GetInputSchema()
@@ -295,7 +299,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             return SchemaGenerator.GenerateSchema(m_ParameterType);
         }
 
-        public object GetOutputSchema() => SchemaGenerator.GenerateSchema(m_ReturnType);
+        public object GetOutputSchema() => OutputContract.Schema?.DeepClone();
 
         static string GetJsonTypeForPrimitive(Type type)
         {
@@ -334,7 +338,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
     /// <summary>
     /// Handler for tools with JObject parameters (custom schemas).
     /// </summary>
-    class JObjectToolHandler : IToolHandler
+    class JObjectToolHandler : IToolHandler, IOutputContractHandler
     {
         readonly MethodInfo m_Method;
         readonly MethodInfo m_SchemaMethod;
@@ -342,20 +346,23 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         readonly Type m_ReturnType;
 
         public McpToolAttribute Attribute { get; }
+        public OutputContract OutputContract { get; }
 
-        public JObjectToolHandler(MethodInfo method, McpToolAttribute attribute, MethodInfo schemaMethod = null, MethodInfo outputSchemaMethod = null)
+        public JObjectToolHandler(MethodInfo method, McpToolAttribute attribute, MethodInfo schemaMethod = null, MethodInfo outputSchemaMethod = null, string outputIssue = null)
         {
             m_Method = method ?? throw new ArgumentNullException(nameof(method));
             Attribute = attribute ?? throw new ArgumentNullException(nameof(attribute));
             m_SchemaMethod = schemaMethod; // Can be null
             m_OutputSchemaMethod = outputSchemaMethod; // Can be null
             m_ReturnType = method.ReturnType;
+            AsyncToolResult.ValidateMethod(method);
+            OutputContract = OutputContractProvider.Resolve(attribute.Name, method, outputSchemaMethod, registrationIssue: outputIssue);
         }
 
         public Task<object> ExecuteAsync(JObject parameters)
         {
             var result = m_Method.Invoke(null, new object[] { parameters });
-            return result is Task<object> task ? task : Task.FromResult(result);
+            return AsyncToolResult.Await(result, m_ReturnType);
         }
 
         public object GetInputSchema()
@@ -376,25 +383,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             return GetDefaultSchema();
         }
 
-        public object GetOutputSchema()
-        {
-            // First, try custom output schema method if available
-            if (m_OutputSchemaMethod != null)
-            {
-                try
-                {
-                    return m_OutputSchemaMethod.Invoke(null, null);
-                }
-                catch (Exception)
-                {
-                    // Fall back to auto-generation if custom method fails
-                }
-            }
-
-            // Fallback: Auto-generate schema from return type (handles ShouldGenerate logic internally)
-            return SchemaGenerator.GenerateSchema(m_ReturnType);
-        }
-
+        public object GetOutputSchema() => OutputContract.Schema?.DeepClone();
 
         static object GetDefaultSchema()
         {
@@ -411,24 +400,27 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
     /// <summary>
     /// Handler for tools with no parameters.
     /// </summary>
-    class SimpleToolHandler : IToolHandler
+    class SimpleToolHandler : IToolHandler, IOutputContractHandler
     {
         readonly MethodInfo m_Method;
         readonly Type m_ReturnType;
 
         public McpToolAttribute Attribute { get; }
+        public OutputContract OutputContract { get; }
 
-        public SimpleToolHandler(MethodInfo method, McpToolAttribute attribute)
+        public SimpleToolHandler(MethodInfo method, McpToolAttribute attribute, MethodInfo outputSchemaMethod = null, string outputIssue = null)
         {
             m_Method = method ?? throw new ArgumentNullException(nameof(method));
             Attribute = attribute ?? throw new ArgumentNullException(nameof(attribute));
             m_ReturnType = method.ReturnType;
+            AsyncToolResult.ValidateMethod(method);
+            OutputContract = OutputContractProvider.Resolve(attribute.Name, method, outputSchemaMethod, registrationIssue: outputIssue);
         }
 
         public Task<object> ExecuteAsync(JObject parameters)
         {
             var result = m_Method.Invoke(null, Array.Empty<object>());
-            return result is Task<object> task ? task : Task.FromResult(result);
+            return AsyncToolResult.Await(result, m_ReturnType);
         }
 
         public object GetInputSchema()
@@ -442,26 +434,32 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             };
         }
 
-        public object GetOutputSchema() => SchemaGenerator.GenerateSchema(m_ReturnType);
+        public object GetOutputSchema() => OutputContract.Schema?.DeepClone();
     }
 
     /// <summary>
     /// Handler for class-based tools that implement IUnityMcpTool.
     /// </summary>
-    class ClassToolHandler : IToolHandler
+    class ClassToolHandler : IToolHandler, IOutputContractHandler
     {
         readonly IUnityMcpTool m_ToolInstance;
+        readonly MethodInfo m_ExecuteMethod;
 
         public McpToolAttribute Attribute { get; }
+        public OutputContract OutputContract { get; }
 
-        public ClassToolHandler(IUnityMcpTool toolInstance, McpToolAttribute attribute)
+        public ClassToolHandler(IUnityMcpTool toolInstance, McpToolAttribute attribute, MethodInfo outputSchemaMethod = null, string outputIssue = null)
         {
             m_ToolInstance = toolInstance ?? throw new ArgumentNullException(nameof(toolInstance));
             Attribute = attribute ?? throw new ArgumentNullException(nameof(attribute));
+            m_ExecuteMethod = AsyncToolResult.InterfaceExecute(toolInstance, null);
+            AsyncToolResult.ValidateMethod(m_ExecuteMethod);
+            OutputContract = OutputContractProvider.Resolve(attribute.Name, m_ExecuteMethod, outputSchemaMethod,
+                toolInstance, outputSchemaMethod == null ? () => m_ToolInstance.GetOutputSchema() : null, outputIssue);
         }
 
         public Task<object> ExecuteAsync(JObject parameters) =>
-            m_ToolInstance.ExecuteAsync(parameters);
+            AsyncToolResult.Await(m_ToolInstance.ExecuteAsync(parameters), m_ExecuteMethod.ReturnType);
 
         public object GetInputSchema()
         {
@@ -487,64 +485,42 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             };
         }
 
-        public object GetOutputSchema()
-        {
-            try
-            {
-                // Try to get custom output schema from the tool instance
-                var customOutputSchema = m_ToolInstance.GetOutputSchema();
-                if (customOutputSchema != null)
-                    return customOutputSchema;
-            }
-            catch (Exception)
-            {
-                // Fall back to auto-generation if custom method fails
-            }
-
-            // Fallback: Try to auto-generate from Execute method return type
-            return SchemaGenerator.GenerateOutputSchemaFromMethod(m_ToolInstance);
-        }
+        public object GetOutputSchema() => OutputContract.Schema?.DeepClone();
 
     }
 
     /// <summary>
     /// Handler for class-based tools that implement IUnityMcpTool with strongly-typed parameters.
     /// </summary>
-    class GenericClassToolHandler : IToolHandler
+    class GenericClassToolHandler : IToolHandler, IOutputContractHandler
     {
         readonly object m_ToolInstance;
+        readonly MethodInfo m_ExecuteMethod;
         readonly Type m_ParameterType;
 
         public McpToolAttribute Attribute { get; }
+        public OutputContract OutputContract { get; }
 
-        public GenericClassToolHandler(object toolInstance, McpToolAttribute attribute, Type parameterType)
+        public GenericClassToolHandler(object toolInstance, McpToolAttribute attribute, Type parameterType, MethodInfo outputSchemaMethod = null, string outputIssue = null)
         {
             m_ToolInstance = toolInstance ?? throw new ArgumentNullException(nameof(toolInstance));
             Attribute = attribute ?? throw new ArgumentNullException(nameof(attribute));
             m_ParameterType = parameterType ?? throw new ArgumentNullException(nameof(parameterType));
+            m_ExecuteMethod = AsyncToolResult.InterfaceExecute(toolInstance, parameterType);
+            AsyncToolResult.ValidateMethod(m_ExecuteMethod);
+            var instanceProvider = toolInstance.GetType().GetMethod("GetOutputSchema", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            OutputContract = OutputContractProvider.Resolve(attribute.Name, m_ExecuteMethod, outputSchemaMethod,
+                toolInstance, instanceProvider == null || outputSchemaMethod != null ? null : () => instanceProvider.Invoke(toolInstance, null), outputIssue);
         }
 
         public Task<object> ExecuteAsync(JObject parameters)
         {
             var typedParam = ToolExecutionHelper.DeserializeParameter(parameters, m_ParameterType);
-
-            // Use reflection to call ExecuteAsync method with typed parameter
-            var executeMethod = m_ToolInstance.GetType().GetMethod("ExecuteAsync", new[] { m_ParameterType });
-            var result = executeMethod?.Invoke(m_ToolInstance, new[] { typedParam });
-
-            // The result should be Task<object>
-            if (result is Task<object> taskResult)
-            {
-                return taskResult;
-            }
-
-            // Fallback for unexpected return type
-            return Task.FromResult(result);
+            return AsyncToolResult.Await(m_ExecuteMethod.Invoke(m_ToolInstance, new[] { typedParam }), m_ExecuteMethod.ReturnType);
         }
 
         public object GetInputSchema() => SchemaGenerator.GenerateSchema(m_ParameterType);
 
-        public object GetOutputSchema() =>
-            SchemaGenerator.GenerateOutputSchemaFromMethod(m_ToolInstance, "Execute", new[] { m_ParameterType });
+        public object GetOutputSchema() => OutputContract.Schema?.DeepClone();
     }
 }

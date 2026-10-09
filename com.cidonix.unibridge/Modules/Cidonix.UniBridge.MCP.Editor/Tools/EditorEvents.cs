@@ -312,7 +312,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 (item.message == null || item.message.IndexOf(query.messageContains, StringComparison.OrdinalIgnoreCase) < 0))
                 return false;
 
-            var dto = JObject.FromObject(item.ToDto());
+            var dto = McpJson.ObjectFromObject(item.ToDto());
 
             if (!string.IsNullOrWhiteSpace(query.playModeState))
             {

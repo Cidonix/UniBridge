@@ -31,15 +31,49 @@ namespace Cidonix.UniBridge.MCP.Editor
     {
         // Connection layer
         IConnectionListener listener;
-        bool isRunning;
+        volatile bool isRunning;
         readonly object startStopLock = new();
         bool isBatchMode; // captured on main thread in Start(), safe to read from background threads
         CancellationTokenSource cts;
         Task listenerTask;
+        volatile bool disposed;
+        int generationNumber;
+        volatile BridgeGeneration currentGeneration;
+
+        sealed class BridgeGeneration
+        {
+            public readonly int Number;
+            public readonly IConnectionListener Listener;
+            public readonly CancellationToken Token;
+            public readonly McpToolInfo[] Tools;
+            public readonly string ToolsHash;
+            public readonly CommandRecoveryJournal Recovery;
+            public readonly JObject RecoveryHandshake;
+            public readonly ValidationConfig Validation;
+            public readonly bool IsBatchMode;
+            public readonly ConcurrentDictionary<IConnectionTransport, byte> Transports = new();
+
+            public BridgeGeneration(int number, IConnectionListener listener, CancellationToken token,
+                McpToolInfo[] tools, string toolsHash, CommandRecoveryJournal recovery,
+                JObject recoveryHandshake, ValidationConfig validation, bool batchMode)
+            {
+                Number = number;
+                Listener = listener;
+                Token = token;
+                Tools = tools;
+                ToolsHash = toolsHash;
+                Recovery = recovery;
+                RecoveryHandshake = recoveryHandshake;
+                Validation = validation;
+                IsBatchMode = batchMode;
+            }
+        }
 
         // Command processing
         int processingCommands;
         readonly ConcurrentDictionary<string, (Command command, TaskCompletionSource<string> tcs, IConnectionTransport client, CancellationToken cancellationToken)> commandQueue = new();
+        readonly ConcurrentDictionary<string, TaskCompletionSource<string>> commandWaiters = new();
+        const string StoppedResponse = "{\"status\":\"error\",\"error\":\"Bridge stopped\"}";
 
         // Lifecycle
         bool initScheduled;
@@ -68,6 +102,9 @@ namespace Cidonix.UniBridge.MCP.Editor
 
         // Write serialization — multiple async responses and heartbeats may complete concurrently
         readonly SemaphoreSlim transportWriteLock = new(1, 1);
+        readonly CancellationTokenSource writeShutdown = new();
+        int activeTransportWrites;
+        bool writeResourcesDisposed;
 
         // Per-connection analytics tracking
         readonly ConcurrentDictionary<IConnectionTransport, McpSessionTracker> transportSessionTrackers = new();
@@ -208,26 +245,34 @@ namespace Cidonix.UniBridge.MCP.Editor
 
         public Bridge(bool autoScheduleStart = true)
         {
-            AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
-            AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
-            EditorApplication.quitting += Stop;
-            EditorApplication.playModeStateChanged += _ => ScheduleInitRetry();
-            McpToolRegistry.ToolsChanged += OnToolsChanged;
-
-            // Load validation configuration
-            validationConfig = ValidatedConfigs.Unity;
-
-            if (autoScheduleStart)
+            try
             {
-                // Defer start until the editor is idle and not compiling
-                ScheduleInitRetry();
+                // Load before subscribing so a failed configuration acquisition cannot
+                // retain an otherwise unreachable bridge through static events.
+                validationConfig = ValidatedConfigs.Unity;
+                AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+                AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
+                EditorApplication.quitting += Stop;
+                EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+                McpToolRegistry.ToolsChanged += OnToolsChanged;
 
-                // Add a safety net update hook in case delayCall is missed during reload churn
-                if (!ensureUpdateHooked)
+                if (autoScheduleStart)
                 {
-                    ensureUpdateHooked = true;
-                    EditorApplication.update += EnsureStartedOnEditorIdle;
+                    // Defer start until the editor is idle and not compiling
+                    ScheduleInitRetry();
+
+                    // Add a safety net update hook in case delayCall is missed during reload churn
+                    if (!ensureUpdateHooked)
+                    {
+                        ensureUpdateHooked = true;
+                        EditorApplication.update += EnsureStartedOnEditorIdle;
+                    }
                 }
+            }
+            catch
+            {
+                Dispose();
+                throw;
             }
         }
 
@@ -235,6 +280,8 @@ namespace Cidonix.UniBridge.MCP.Editor
         {
             lock (startStopLock)
             {
+                if (disposed)
+                    return;
                 if (isRunning && listener != null)
                 {
                     McpLog.Log($"UniBridge MCP bridge already running on {currentConnectionPath}");
@@ -243,124 +290,138 @@ namespace Cidonix.UniBridge.MCP.Editor
 
                 Stop();
 
-                // Reload validation configuration (settings may have changed)
-                validationConfig = ValidatedConfigs.Unity;
-
+                IConnectionListener startedListener = null;
+                CancellationTokenSource startedCancellation = null;
+                CommandRecoveryJournal startedRecovery = null;
+                Task startedTask = null;
+                var startSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                bool discoveryAttempted = false;
                 try
                 {
-                    // Create platform-specific listener
-                    listener = ConnectionFactory.CreateListener();
-
-                    // Get connection path for this project
-                    currentConnectionPath = ServerDiscovery.GetConnectionPath();
-
+                    var startedValidation = ValidatedConfigs.Unity;
+                    startedListener = ConnectionFactory.CreateListener();
+                    var startedPath = ServerDiscovery.GetConnectionPath();
+                    var startedBatchMode = Application.isBatchMode;
                     LogBreadcrumb("Start");
-
-                    // Start listening
-                    listener.Start(currentConnectionPath);
-
-                    isRunning = true;
-                    isBatchMode = Application.isBatchMode;
-                    string connectionType = ConnectionFactory.GetConnectionTypeName();
-                    string platform = Application.platform.ToString();
-                    McpLog.Log($"MCP Bridge V2 started using {connectionType} at {currentConnectionPath} (OS={platform})");
-
-                    // Save discovery file (written once; deleted on shutdown)
-                    ServerDiscovery.SaveConnectionInfo(currentConnectionPath);
-
-                    // Pre-warm tools cache so handshake can include tools immediately
                     ComputeToolsSnapshotAndHash();
-
-                    // SessionState is a Unity main-thread API. Capture the session epoch and
-                    // immutable handshake metadata before starting the background listener.
-                    commandRecovery = new CommandRecoveryJournal(
+                    startedRecovery = new CommandRecoveryJournal(
                         key => SessionState.GetString(key, string.Empty),
                         (key, value) => SessionState.SetString(key, value));
-                    commandRecoveryHandshake = new JObject
+                    var startedHandshake = new JObject
                     {
                         ["version"] = 1,
                         ["mode"] = "query-only",
-                        ["sessionId"] = commandRecovery.SessionId,
+                        ["sessionId"] = startedRecovery.SessionId,
                         ["retentionSeconds"] = CommandRecoveryJournal.RetentionSeconds
                     };
 
-                    // Start background listener with cooperative cancellation
-                    cts = new CancellationTokenSource();
-                    listenerTask = Task.Run(() => ListenerLoopAsync(cts.Token));
+                    startedListener.Start(startedPath);
+                    startedCancellation = new CancellationTokenSource();
+                    var generation = new BridgeGeneration(++generationNumber, startedListener,
+                        startedCancellation.Token, s_ToolsSnapshot, s_CurrentToolsHash,
+                        startedRecovery, startedHandshake, startedValidation, startedBatchMode);
                     EditorApplication.update += ProcessCommands;
+                    // The worker cannot accept or observe published state until every
+                    // acquisition succeeds. It owns this generation's immutable resources.
+                    startedTask = Task.Run(async () =>
+                    {
+                        if (await startSignal.Task.ConfigureAwait(false))
+                            await ListenerLoopAsync(generation).ConfigureAwait(false);
+                    });
+                    discoveryAttempted = true;
+                    if (!ServerDiscovery.SaveConnectionInfo(startedPath))
+                        throw new InvalidOperationException("Connection discovery could not be published.");
 
-                    // Ensure lifecycle events are (re)subscribed
-                    try { AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload; } catch { }
-                    try { AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload; } catch { }
-                    try { AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload; } catch { }
-                    try { AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload; } catch { }
-                    try { EditorApplication.quitting -= Stop; } catch { }
-                    try { EditorApplication.quitting += Stop; } catch { }
+                    listener = startedListener;
+                    cts = startedCancellation;
+                    listenerTask = startedTask;
+                    commandRecovery = startedRecovery;
+                    commandRecoveryHandshake = startedHandshake;
+                    validationConfig = startedValidation;
+                    currentConnectionPath = startedPath;
+                    isBatchMode = startedBatchMode;
+                    currentGeneration = generation;
+                    isRunning = true;
+                    startSignal.TrySetResult(true);
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"Failed to start MCP Bridge: {ex.Message}");
                     isRunning = false;
-                    commandRecovery?.Deactivate();
+                    currentGeneration = null;
+                    startSignal.TrySetResult(false);
+                    try { EditorApplication.update -= ProcessCommands; } catch { }
+                    try { startedRecovery?.Deactivate(); } catch { }
+                    try { startedCancellation?.Cancel(); } catch { }
+                    try { startedListener?.Stop(); } catch { }
+                    try { startedListener?.Dispose(); } catch { }
+                    try { startedCancellation?.Dispose(); } catch { }
+                    if (discoveryAttempted)
+                        try { ServerDiscovery.DeleteDiscoveryFiles(); } catch { }
+                    listener = null;
+                    cts = null;
+                    listenerTask = null;
+                    commandRecovery = null;
+                    commandRecoveryHandshake = null;
+                    currentConnectionPath = null;
+                    s_ToolsSnapshot = null;
+                    s_CurrentToolsHash = null;
+                    Debug.LogError($"Failed to start MCP Bridge: {ex.Message}");
+                    return;
                 }
+                try { McpLog.Log($"MCP Bridge V2 started using {ConnectionFactory.GetConnectionTypeName()} at {currentConnectionPath} (OS={Application.platform})"); } catch { }
             }
         }
 
         public void Stop()
         {
             Task toWait = null;
+            CancellationTokenSource toDispose = null;
+            IConnectionTransport[] toClose = Array.Empty<IConnectionTransport>();
             lock (startStopLock)
             {
-                if (!isRunning)
-                    return;
-
-                try
+                var generation = currentGeneration;
+                bool hadResources = isRunning || generation != null || listener != null || cts != null || listenerTask != null;
+                isRunning = false;
+                currentGeneration = null;
+                CancelScheduledStart();
+                try { EditorApplication.update -= ProcessCommands; } catch { }
+                try { commandRecovery?.Deactivate(); } catch { }
+                commandRecovery = null;
+                commandRecoveryHandshake = null;
+                toDispose = cts;
+                cts = null;
+                try { toDispose?.Cancel(); } catch { }
+                try { listener?.Stop(); } catch { }
+                try { listener?.Dispose(); } catch { }
+                listener = null;
+                toWait = listenerTask;
+                listenerTask = null;
+                currentConnectionPath = null;
+                s_CurrentToolsHash = null;
+                s_ToolsSnapshot = null;
+                if (hadResources)
                 {
-                    isRunning = false;
-                    commandRecovery?.Deactivate();
-
-                    // Delete discovery files
-                    ServerDiscovery.DeleteDiscoveryFiles();
-
-                    // Quiesce background listener
-                    var cancel = cts;
-                    cts = null;
-                    try { cancel?.Cancel(); } catch { }
-
-                    try { listener?.Stop(); } catch { }
-                    try { listener?.Dispose(); } catch { }
-                    listener = null;
-
-                    toWait = listenerTask;
-                    listenerTask = null;
+                    try { ServerDiscovery.DeleteDiscoveryFiles(); } catch { }
+                    IConnectionTransport[] registered = Array.Empty<IConnectionTransport>();
+                    try { registered = TransportStore.Clear(); } catch { }
+                    toClose = registered.Concat(generation?.Transports.Keys ?? Enumerable.Empty<IConnectionTransport>()).Distinct().ToArray();
+                    try { ConnectionCensus.Clear(); } catch { }
                 }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"Error stopping UniBridge MCP bridge: {ex.Message}");
-                }
+                // Queue admission uses this same lock. A stopped generation cannot
+                // add a waiter after this drain, even if a read completed during Stop.
+                foreach (var queued in commandQueue.Values)
+                    queued.tcs.TrySetResult(StoppedResponse);
+                commandQueue.Clear();
+                foreach (var waiter in commandWaiters.Values)
+                    waiter.TrySetResult(StoppedResponse);
+                commandWaiters.Clear();
             }
-
-            // Close all active clients (including displaced ones — their OS-level
-            // sockets must be closed so the MCP server detects the disconnect)
-            var toClose = TransportStore.Clear();
-            ConnectionCensus.Clear();
-            McpLog.ClearOnceKeys();
+            try { McpLog.ClearOnceKeys(); } catch { }
             foreach (var c in toClose)
             {
-                try { c.Close(); c.Dispose(); } catch { }
+                try { c.Close(); } catch { }
+                try { c.Dispose(); } catch { }
             }
-
-            // Unblock any pending command waiters since ProcessCommands won't run after Stop()
-            foreach (var kvp in commandQueue.Values)
-            {
-                kvp.tcs.TrySetResult(JsonConvert.SerializeObject(new
-                {
-                    status = "error",
-                    error = "Bridge stopped"
-                }));
-            }
-            commandQueue.Clear();
-
             if (toWait != null)
             {
                 // Wait for listener task to complete (increased timeout for slower CI machines)
@@ -368,13 +429,18 @@ namespace Cidonix.UniBridge.MCP.Editor
                 // the accept() call may take a moment to return after the socket is closed
                 try { toWait.Wait(1000); } catch { }
             }
-
-            try { EditorApplication.update -= ProcessCommands; } catch { }
-            McpLog.Log("UniBridge MCP bridge stopped.");
+            try { toDispose?.Dispose(); } catch { }
+            try { McpLog.Log("UniBridge MCP bridge stopped."); } catch { }
         }
 
         public void Dispose()
         {
+            lock (startStopLock)
+            {
+                if (disposed) return;
+                disposed = true;
+                try { writeShutdown.Cancel(); } catch { }
+            }
             try { Stop(); } catch { }
             try { EditorApplication.update -= EnsureStartedOnEditorIdle; } catch { }
             try { EditorApplication.update -= ProcessCommands; } catch { }
@@ -382,48 +448,83 @@ namespace Cidonix.UniBridge.MCP.Editor
             try { AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload; } catch { }
             try { AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload; } catch { }
             try { McpToolRegistry.ToolsChanged -= OnToolsChanged; } catch { }
-            try { transportWriteLock.Dispose(); } catch { }
+            try { EditorApplication.playModeStateChanged -= OnPlayModeStateChanged; } catch { }
+            DisposeWriteResourcesWhenIdle();
+        }
+
+        void DisposeWriteResourcesWhenIdle()
+        {
+            lock (startStopLock)
+            {
+                if (!disposed || activeTransportWrites != 0 || writeResourcesDisposed)
+                    return;
+                writeResourcesDisposed = true;
+                try { transportWriteLock.Dispose(); } catch { }
+                try { writeShutdown.Dispose(); } catch { }
+            }
+        }
+
+        void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            ScheduleInitRetry();
+        }
+
+        void CancelScheduledStart()
+        {
+            initScheduled = false;
+            nextStartAt = 0;
+            ensureUpdateHooked = false;
+            try { EditorApplication.update -= EnsureStartedOnEditorIdle; } catch { }
+            try { EditorTask.delayCall -= InitializeAfterCompilation; } catch { }
         }
 
         void ScheduleInitRetry()
         {
-            if (initScheduled) return;
-            initScheduled = true;
-            nextStartAt = EditorApplication.timeSinceStartup + 0.20f;
-            if (!ensureUpdateHooked)
+            lock (startStopLock)
             {
-                ensureUpdateHooked = true;
-                EditorApplication.update += EnsureStartedOnEditorIdle;
+                if (disposed) return;
+                if (initScheduled) return;
+                initScheduled = true;
+                nextStartAt = EditorApplication.timeSinceStartup + 0.20f;
+                if (!ensureUpdateHooked)
+                {
+                    ensureUpdateHooked = true;
+                    EditorApplication.update += EnsureStartedOnEditorIdle;
+                }
+                EditorTask.delayCall += InitializeAfterCompilation;
             }
-            EditorTask.delayCall += InitializeAfterCompilation;
         }
 
         // Safety net: ensure the bridge starts shortly after domain reload when editor is idle
         void EnsureStartedOnEditorIdle()
         {
-            // Do nothing while compiling
-            if (IsCompiling()) return;
-
-            // If already running, remove the hook
-            if (isRunning)
+            lock (startStopLock)
             {
-                EditorApplication.update -= EnsureStartedOnEditorIdle;
-                ensureUpdateHooked = false;
-                return;
-            }
-            // Debounced start: wait until the scheduled time
-            if (nextStartAt > 0 && EditorApplication.timeSinceStartup < nextStartAt) return;
-            if (isStarting) return;
+                if (disposed || !ensureUpdateHooked) return;
+                // Do nothing while compiling
+                if (IsCompiling()) return;
 
-            isStarting = true;
-            // Attempt start; if it succeeds, remove the hook to avoid overhead
-            try { Start(); }
-            finally { isStarting = false; }
+                // If already running, remove the hook
+                if (isRunning)
+                {
+                    EditorApplication.update -= EnsureStartedOnEditorIdle;
+                    ensureUpdateHooked = false;
+                    return;
+                }
+                // Debounced start: wait until the scheduled time
+                if (nextStartAt > 0 && EditorApplication.timeSinceStartup < nextStartAt) return;
+                if (isStarting) return;
 
-            if (isRunning)
-            {
-                EditorApplication.update -= EnsureStartedOnEditorIdle;
-                ensureUpdateHooked = false;
+                isStarting = true;
+                // Attempt start; if it succeeds, remove the hook to avoid overhead
+                try { Start(); }
+                finally { isStarting = false; }
+
+                if (isRunning)
+                {
+                    EditorApplication.update -= EnsureStartedOnEditorIdle;
+                    ensureUpdateHooked = false;
+                }
             }
         }
 
@@ -433,30 +534,94 @@ namespace Cidonix.UniBridge.MCP.Editor
         /// </summary>
         void InitializeAfterCompilation()
         {
-            initScheduled = false;
-
-            // Play-mode friendly: allow starting in play mode; only defer while compiling
-            if (IsCompiling())
+            lock (startStopLock)
             {
-                ScheduleInitRetry();
-                return;
-            }
+                if (disposed || !initScheduled) return;
+                initScheduled = false;
 
-            if (!isRunning)
-            {
-                Start();
-                // If a race prevented start, retry later
-                if (!isRunning) ScheduleInitRetry();
+                // Play-mode friendly: allow starting in play mode; only defer while compiling
+                if (IsCompiling())
+                {
+                    ScheduleInitRetry();
+                    return;
+                }
+
+                if (!isRunning)
+                {
+                    Start();
+                    // If a race prevented start, retry later
+                    if (!isRunning) ScheduleInitRetry();
+                }
             }
         }
 
-        async Task ListenerLoopAsync(CancellationToken token)
+        bool IsCurrentGeneration(BridgeGeneration generation)
         {
-            while (isRunning && !token.IsCancellationRequested)
+            return generation != null && !disposed && isRunning &&
+                ReferenceEquals(currentGeneration, generation) && !generation.Token.IsCancellationRequested;
+        }
+
+        void RunForGeneration(BridgeGeneration generation, CancellationToken token, Action action)
+        {
+            lock (startStopLock)
             {
+                token.ThrowIfCancellationRequested();
+                if (!IsCurrentGeneration(generation))
+                    throw new OperationCanceledException("Bridge generation stopped.", token);
+                action();
+            }
+        }
+
+        CancellationTokenSource CreateTransportCancellation(BridgeGeneration generation)
+        {
+            lock (startStopLock)
+            {
+                if (!IsCurrentGeneration(generation))
+                    throw new OperationCanceledException("Bridge generation stopped.", generation.Token);
+                // Stop cannot cancel/dispose the owning source between the
+                // generation check and registering this linked token.
+                return CancellationTokenSource.CreateLinkedTokenSource(generation.Token);
+            }
+        }
+
+        bool TryQueueCommand(BridgeGeneration generation, string commandId, Command command,
+            TaskCompletionSource<string> completion, IConnectionTransport transport, CancellationToken token)
+        {
+            lock (startStopLock)
+            {
+                if (!IsCurrentGeneration(generation) || token.IsCancellationRequested || !transport.IsConnected)
+                {
+                    completion.TrySetResult(StoppedResponse);
+                    return false;
+                }
+                commandWaiters[commandId] = completion;
+                commandQueue[commandId] = (command, completion, transport, token);
+                return true;
+            }
+        }
+
+        static void CloseAndDisposeTransport(IConnectionTransport transport)
+        {
+            try { transport?.Close(); } catch { }
+            try { transport?.Dispose(); } catch { }
+        }
+
+        async Task ListenerLoopAsync(BridgeGeneration generation)
+        {
+            var token = generation.Token;
+            while (IsCurrentGeneration(generation))
+            {
+                IConnectionTransport clientTransport = null;
+                bool handedOff = false;
                 try
                 {
-                    IConnectionTransport clientTransport = await listener.AcceptClientAsync(token);
+                    clientTransport = await generation.Listener.AcceptClientAsync(token);
+                    lock (startStopLock)
+                    {
+                        if (!IsCurrentGeneration(generation))
+                            break;
+                        generation.Transports[clientTransport] = 0;
+                    }
 
                     // Capture peer PID immediately while the socket is still connected.
                     // Deferring this to the background thread risks ENOTCONN if the peer disconnects.
@@ -468,7 +633,11 @@ namespace Cidonix.UniBridge.MCP.Editor
                     OnConnectionAttempt?.Invoke(connId);
 
                     // Fire and forget each client connection
-                    _ = Task.Run(() => HandleClientAsync(clientTransport, token), token);
+                    var acceptedTransport = clientTransport;
+                    // Always run the owner, even if cancellation wins before scheduling;
+                    // it must dispose a transport already returned by AcceptClientAsync.
+                    _ = Task.Run(() => HandleClientAsync(acceptedTransport, generation));
+                    handedOff = true;
                 }
                 catch (OperationCanceledException)
                 {
@@ -476,9 +645,17 @@ namespace Cidonix.UniBridge.MCP.Editor
                 }
                 catch (Exception ex)
                 {
-                    if (isRunning && !token.IsCancellationRequested)
+                    if (IsCurrentGeneration(generation))
                     {
                         McpLog.LogDelayed($"Listener error: {ex.Message}", LogType.Error);
+                    }
+                }
+                finally
+                {
+                    if (!handedOff && clientTransport != null)
+                    {
+                        generation.Transports.TryRemove(clientTransport, out _);
+                        CloseAndDisposeTransport(clientTransport);
                     }
                 }
             }
@@ -518,7 +695,7 @@ namespace Cidonix.UniBridge.MCP.Editor
         {
             try
             {
-                string message = JsonConvert.SerializeObject(new
+                string message = McpJson.SerializeObject(new
                 {
                     type = "duplicate_connection",
                     reason
@@ -535,35 +712,39 @@ namespace Cidonix.UniBridge.MCP.Editor
             }
         }
 
-        async Task HandleClientAsync(IConnectionTransport transport, CancellationToken token)
+        async Task HandleClientAsync(IConnectionTransport transport, BridgeGeneration generation)
         {
+            var token = generation.Token;
             using (transport)
             {
-                // Per-transport CTS: cancelled in finally when this client disconnects.
-                // Linked with the listener token so it also cancels if the listener stops.
-                // Used to cancel background validation/approval for this specific transport.
-                using var transportCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                var transportToken = transportCts.Token;
-
-                transport.OnDisconnected += () =>
+                if (!IsCurrentGeneration(generation))
                 {
-                    var state = TransportStore.GetState(transport);
-                    if (state != null)
-                    {
-                        var identityKey = state.IdentityKey;
-                        var record = ConnectionStore.GetConnectionByIdentity(identityKey);
-                        var clientInfo = record?.Info?.ClientInfo ?? state.ClientInfo;
-                        if (clientInfo != null)
-                        {
-                            string displayName = string.IsNullOrEmpty(clientInfo.Title) ? clientInfo.Name : clientInfo.Title;
-                            McpLog.LogDelayed($"Client disconnected: {displayName} v{clientInfo.Version}");
-                        }
-                    }
-                };
-
+                    generation.Transports.TryRemove(transport, out _);
+                    return;
+                }
+                CancellationTokenSource transportCts = null;
                 Task heartbeatTask = Task.CompletedTask;
                 try
                 {
+                    // Acquisition shares Stop's generation lock; cleanup also owns
+                    // any failure before the handshake or state registration.
+                    transportCts = CreateTransportCancellation(generation);
+                    var transportToken = transportCts.Token;
+                    transport.OnDisconnected += () =>
+                    {
+                        var state = TransportStore.GetState(transport);
+                        if (state != null)
+                        {
+                            var identityKey = state.IdentityKey;
+                            var record = ConnectionStore.GetConnectionByIdentity(identityKey);
+                            var clientInfo = record?.Info?.ClientInfo ?? state.ClientInfo;
+                            if (clientInfo != null)
+                            {
+                                string displayName = string.IsNullOrEmpty(clientInfo.Title) ? clientInfo.Name : clientInfo.Title;
+                                McpLog.LogDelayed($"Client disconnected: {displayName} v{clientInfo.Version}");
+                            }
+                        }
+                    };
                     McpLog.LogDelayed($"Client connected: {transport.ConnectionId}");
 
                     // === EAGER HANDSHAKE ===
@@ -574,10 +755,10 @@ namespace Cidonix.UniBridge.MCP.Editor
                     try
                     {
                         // Include pre-warmed tools in handshake to eliminate discovery round trips
-                        var handshake = JObject.Parse(MessageProtocol.CreateHandshakeMessage(s_ToolsSnapshot, s_CurrentToolsHash));
-                        handshake["commandRecovery"] = commandRecoveryHandshake?.DeepClone();
+                        var handshake = JObject.Parse(MessageProtocol.CreateHandshakeMessage(generation.Tools, generation.ToolsHash));
+                        handshake["commandRecovery"] = generation.RecoveryHandshake?.DeepClone();
                         await WriteWithLockAsync(transport, handshake.ToString(Formatting.None), transportToken);
-                        McpLog.LogDelayed($"Sent handshake (unity-mcp protocol v2.0, tools={s_ToolsSnapshot?.Length ?? 0})");
+                        McpLog.LogDelayed($"Sent handshake (unity-mcp protocol v2.0, tools={generation.Tools?.Length ?? 0})");
                     }
                     catch (Exception ex)
                     {
@@ -591,7 +772,7 @@ namespace Cidonix.UniBridge.MCP.Editor
 
                     // Register with temporary identity key (updated when validation completes)
                     string connectionIdentityKey = $"pending-{transport.ConnectionId}";
-                    TransportStore.Register(transport, connectionIdentityKey);
+                    RunForGeneration(generation, transportToken, () => TransportStore.Register(transport, connectionIdentityKey));
 
                     // Notify listeners on main thread that a client connected
                     EditorTask.delayCall += () => OnClientConnectionChanged?.Invoke();
@@ -603,7 +784,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                     // Launch background validation + approval (fire-and-forget)
                     // This runs concurrently with the message loop below.
                     // isBatchMode was captured on main thread in Start().
-                    _ = ValidateAndApproveAsync(transport, transportToken, isBatchMode);
+                    _ = ValidateAndApproveAsync(transport, transportToken, generation);
 
                     // Transport-level heartbeat — sends command_in_progress every 1.5s as a
                     // connection liveness signal. The MCP server (unity-connection.ts) skips
@@ -633,23 +814,24 @@ namespace Cidonix.UniBridge.MCP.Editor
                         catch { /* transport disposed — stop silently */ }
                     }, transportToken);
 
-                    while (isRunning && !token.IsCancellationRequested && transport.IsConnected)
+                    while (IsCurrentGeneration(generation) && !transportToken.IsCancellationRequested && transport.IsConnected)
                     {
                         try
                         {
                             // Read and parse on the I/O thread (Command is a plain POCO — no Unity deps)
                             // No timeout — idle connections are normal (client sends commands sporadically).
                             // The loop exits when the pipe closes or the listener stops.
-                            string commandText = await MessageProtocol.ReadMessageAsync(transport, timeoutMs: -1);
+                            string commandText = await MessageProtocol.ReadMessageAsync(transport, timeoutMs: -1, cancellationToken: transportToken);
+                            transportToken.ThrowIfCancellationRequested();
                             Command command;
                             try
                             {
-                                command = JsonConvert.DeserializeObject<Command>(commandText);
+                                command = McpJson.DeserializeObject<Command>(commandText);
                             }
                             catch
                             {
                                 // Malformed JSON — respond with error directly, don't queue
-                                string errorResponse = JsonConvert.SerializeObject(new
+                                string errorResponse = McpJson.SerializeObject(new
                                 {
                                     status = "error",
                                     error = "Invalid JSON format",
@@ -661,7 +843,7 @@ namespace Cidonix.UniBridge.MCP.Editor
 
                             if (command == null || string.IsNullOrEmpty(command.type))
                             {
-                                string errorResponse = JsonConvert.SerializeObject(new
+                                string errorResponse = McpJson.SerializeObject(new
                                 {
                                     status = "error",
                                     error = command == null ? "Command deserialized to null" : "Command type cannot be empty"
@@ -675,7 +857,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                             if (command.type.Equals("ping", StringComparison.OrdinalIgnoreCase))
                             {
                                 string pingResponse = InjectRequestId(
-                                    JsonConvert.SerializeObject(new { status = "success", result = new { message = "pong" } }),
+                                    McpJson.SerializeObject(new { status = "success", result = new { message = "pong" } }),
                                     command.requestId);
                                 await WriteWithLockAsync(transport, pingResponse, token);
                                 continue;
@@ -684,7 +866,8 @@ namespace Cidonix.UniBridge.MCP.Editor
                             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                             string commandId = Guid.NewGuid().ToString();
 
-                            commandQueue[commandId] = (command, tcs, transport, transportToken);
+                            if (!TryQueueCommand(generation, commandId, command, tcs, transport, transportToken))
+                                break;
 
                             // Fire-and-forget: write response when ready (non-blocking).
                             // The reader loop continues immediately so multiple commands
@@ -710,7 +893,11 @@ namespace Cidonix.UniBridge.MCP.Editor
                         }
                     }
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (OperationCanceledException)
+                {
+                    // A stopped generation does not enter or retain a client owner.
+                }
+                catch (Exception ex)
                 {
                     McpLog.LogDelayed($"HandleClientAsync unhandled exception for {transport.ConnectionId}: {ex}", LogType.Error);
                 }
@@ -719,10 +906,11 @@ namespace Cidonix.UniBridge.MCP.Editor
                     McpLog.LogDelayed($"HandleClientAsync exiting for transport {transport.ConnectionId} [isConnected={transport.IsConnected}]");
 
                     // Cancel background validation/approval and heartbeat for this transport
-                    try { transportCts.Cancel(); } catch { /* best-effort */ }
+                    try { transportCts?.Cancel(); } catch { /* best-effort */ }
 
                     // Wait briefly for heartbeat task to stop
                     try { await Task.WhenAny(heartbeatTask, Task.Delay(500)); } catch { /* best-effort */ }
+                    try { transportCts?.Dispose(); } catch { /* best-effort */ }
 
                     // Remove all per-transport state (identity mappings,
                     // approval state, validation decisions).
@@ -739,6 +927,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                     // a continuation to process the result after it detects disconnection.
 
                     transportSessionTrackers.TryRemove(transport, out _);
+                    generation.Transports.TryRemove(transport, out _);
 
                     // Notify listeners on main thread that a client disconnected
                     if (clientRemoved)
@@ -753,8 +942,10 @@ namespace Cidonix.UniBridge.MCP.Editor
         /// Runs validation and approval in the background, concurrently with the message loop.
         /// Updates approval state so that ExecuteCommandAsync can gate tool calls.
         /// </summary>
-        async Task ValidateAndApproveAsync(IConnectionTransport transport, CancellationToken token, bool isBatchMode)
+        async Task ValidateAndApproveAsync(IConnectionTransport transport, CancellationToken token, BridgeGeneration generation)
         {
+            var validationConfig = generation.Validation;
+            var isBatchMode = generation.IsBatchMode;
             try
             {
                 SetApprovalState(transport, ConnectionApprovalState.Validating);
@@ -823,17 +1014,16 @@ namespace Cidonix.UniBridge.MCP.Editor
                     return;
                 }
 
-                // Store decision for dialog use
-                var transportState = TransportStore.GetState(transport);
-                if (transportState != null)
-                    transportState.ValidationDecision = decision;
-
                 // Update identity mapping with real identity
                 var identity = ConnectionIdentity.FromConnectionInfo(decision.Connection);
-                if (identity != null && !string.IsNullOrEmpty(identity.CombinedIdentityKey))
+                RunForGeneration(generation, token, () =>
                 {
-                    TransportStore.UpdateIdentityKey(transport, identity.CombinedIdentityKey);
-                }
+                    var transportState = TransportStore.GetState(transport);
+                    if (transportState != null)
+                        transportState.ValidationDecision = decision;
+                    if (identity != null && !string.IsNullOrEmpty(identity.CombinedIdentityKey))
+                        TransportStore.UpdateIdentityKey(transport, identity.CombinedIdentityKey);
+                });
 
                 // Exit early if transport disconnected during identity mapping
                 token.ThrowIfCancellationRequested();
@@ -855,146 +1045,152 @@ namespace Cidonix.UniBridge.MCP.Editor
                     McpLog.LogDelayed("Connection persists with unidentifiable client — proceeding with approval");
                 }
 
-                var policy = MCPSettingsManager.Settings.connectionPolicies.direct;
-
-                // Check if origin is allowed
-                if (!policy.allowed)
+                TaskCompletionSource<bool> approvalTcs;
+                string identityKey = identity?.CombinedIdentityKey;
+                lock (startStopLock)
                 {
-                    McpLog.LogDelayed("Connection policy denied: local MCP connections are not allowed", LogType.Warning);
-                    SetApprovalState(transport, ConnectionApprovalState.Denied);
-                    return;
-                }
+                    token.ThrowIfCancellationRequested();
+                    if (!IsCurrentGeneration(generation))
+                        throw new OperationCanceledException("Bridge generation stopped.", token);
+                    var policy = MCPSettingsManager.Settings.connectionPolicies.direct;
 
-                // Enforce the local MCP capacity limit. The census dedupes multiple
-                // transports from the same logical client (codex probes, etc.) so they
-                // collapse to one slot.
-                var reservation = ConnectionCensus.TryReserveDirect(decision.Connection);
-                if (!reservation.Allowed)
-                {
-                    decision.Status = ValidationStatus.CapacityLimit;
-                    decision.Reason = BuildCapacityDenialReason(reservation);
-                    var capacityDecision = decision;
-                    ConnectionStore.RecordConnection(capacityDecision);
-                    ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
-                    SetApprovalState(transport, ConnectionApprovalState.Denied);
-                    return;
-                }
-
-                ConnectionCensus.RegisterDirectTransport(transport, decision.Connection);
-
-                // If approval not required, auto-approve
-                if (!policy.requiresApproval)
-                {
-                    var decisionToRecord = decision;
-                    ConnectionStore.RecordConnection(decisionToRecord);
-                    ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
-                    SetApprovalState(transport, ConnectionApprovalState.Approved);
-                    return;
-                }
-
-                // Batch mode: auto-approve or deny based on setting (no UI available)
-                if (isBatchMode)
-                {
-                    if (MCPSettingsManager.Settings.autoApproveInBatchMode)
+                    // Check if origin is allowed
+                    if (!policy.allowed)
                     {
-                        McpLog.LogDelayed("Batch mode: auto-approving connection");
+                        McpLog.LogDelayed("Connection policy denied: local MCP connections are not allowed", LogType.Warning);
+                        SetApprovalState(transport, ConnectionApprovalState.Denied);
+                        return;
+                    }
+
+                    // Enforce the local MCP capacity limit. The census dedupes multiple
+                    // transports from the same logical client (codex probes, etc.) so they
+                    // collapse to one slot.
+                    var reservation = ConnectionCensus.TryReserveDirect(decision.Connection);
+                    if (!reservation.Allowed)
+                    {
+                        decision.Status = ValidationStatus.CapacityLimit;
+                        decision.Reason = BuildCapacityDenialReason(reservation);
+                        var capacityDecision = decision;
+                        ConnectionStore.RecordConnection(capacityDecision);
+                        ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
+                        SetApprovalState(transport, ConnectionApprovalState.Denied);
+                        return;
+                    }
+
+                    ConnectionCensus.RegisterDirectTransport(transport, decision.Connection);
+
+                    // If approval not required, auto-approve
+                    if (!policy.requiresApproval)
+                    {
                         var decisionToRecord = decision;
                         ConnectionStore.RecordConnection(decisionToRecord);
                         ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
                         SetApprovalState(transport, ConnectionApprovalState.Approved);
+                        return;
                     }
-                    else
+
+                    // Batch mode: auto-approve or deny based on setting (no UI available)
+                    if (isBatchMode)
                     {
-                        McpLog.LogDelayed("Batch mode: auto-approve disabled, denying connection", LogType.Warning);
+                        if (MCPSettingsManager.Settings.autoApproveInBatchMode)
+                        {
+                            McpLog.LogDelayed("Batch mode: auto-approving connection");
+                            var decisionToRecord = decision;
+                            ConnectionStore.RecordConnection(decisionToRecord);
+                            ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
+                            SetApprovalState(transport, ConnectionApprovalState.Approved);
+                        }
+                        else
+                        {
+                            McpLog.LogDelayed("Batch mode: auto-approve disabled, denying connection", LogType.Warning);
+                            SetApprovalState(transport, ConnectionApprovalState.Denied);
+                        }
+                        return;
+                    }
+
+                    // Check existing approval history (exact identity match, then publisher fallback)
+                    var existingRecord = ConnectionStore.FindMatchingConnection(decision.Connection)
+                        ?? ConnectionStore.FindMatchingConnectionByPublisher(decision.Connection);
+
+                    if (existingRecord != null &&
+                        (existingRecord.Status == ValidationStatus.Accepted ||
+                         existingRecord.Status == ValidationStatus.Warning ||
+                         existingRecord.Status == ValidationStatus.CapacityLimit))
+                    {
+                        McpLog.LogDelayed("Connection auto-approved: previously accepted by user");
+                        var decisionToRecord = new ValidationDecision
+                        {
+                            Status = ValidationStatus.Accepted,
+                            Reason = "Auto-approved: previously accepted",
+                            Connection = decision.Connection
+                        };
+                        ConnectionStore.RecordConnection(decisionToRecord);
+                        ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
+                        SetApprovalState(transport, ConnectionApprovalState.Approved);
+                        return;
+                    }
+
+                    if (existingRecord != null && existingRecord.Status == ValidationStatus.Rejected)
+                    {
+                        McpLog.LogDelayed("Connection denied: previously rejected by user", LogType.Warning);
                         SetApprovalState(transport, ConnectionApprovalState.Denied);
+                        return;
                     }
-                    return;
-                }
 
-                // Check existing approval history (exact identity match, then publisher fallback)
-                var existingRecord = ConnectionStore.FindMatchingConnection(decision.Connection)
-                    ?? ConnectionStore.FindMatchingConnectionByPublisher(decision.Connection);
-
-                if (existingRecord != null &&
-                    (existingRecord.Status == ValidationStatus.Accepted ||
-                     existingRecord.Status == ValidationStatus.Warning ||
-                     existingRecord.Status == ValidationStatus.CapacityLimit))
-                {
-                    McpLog.LogDelayed("Connection auto-approved: previously accepted by user");
-                    var decisionToRecord = new ValidationDecision
+                    // Normal Editor mode can optionally auto-approve new local MCP clients.
+                    // Previously rejected identities remain denied by the history check above.
+                    if (!isBatchMode && MCPSettingsManager.Settings.autoApproveInEditorMode)
                     {
-                        Status = ValidationStatus.Accepted,
-                        Reason = "Auto-approved: previously accepted",
+                        McpLog.LogDelayed("Editor mode: auto-approving new connection");
+                        var decisionToRecord = new ValidationDecision
+                        {
+                            Status = ValidationStatus.Accepted,
+                            Reason = "Auto-approved in Editor Mode",
+                            Connection = decision.Connection
+                        };
+                        ConnectionStore.RecordConnection(decisionToRecord);
+                        ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
+                        SetApprovalState(transport, ConnectionApprovalState.Approved);
+                        return;
+                    }
+
+                    // Exit early if transport disconnected before recording Pending
+                    token.ThrowIfCancellationRequested();
+
+                    // New connection — needs user approval
+                    SetApprovalState(transport, ConnectionApprovalState.AwaitingApproval);
+
+                    // Record as Pending
+                    var pendingDecision = new ValidationDecision
+                    {
+                        Status = ValidationStatus.Pending,
+                        Reason = "Awaiting user approval",
                         Connection = decision.Connection
                     };
-                    ConnectionStore.RecordConnection(decisionToRecord);
+                    ConnectionStore.RecordConnection(pendingDecision);
                     ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
-                    SetApprovalState(transport, ConnectionApprovalState.Approved);
-                    return;
-                }
 
-                if (existingRecord != null && existingRecord.Status == ValidationStatus.Rejected)
-                {
-                    McpLog.LogDelayed("Connection denied: previously rejected by user", LogType.Warning);
-                    SetApprovalState(transport, ConnectionApprovalState.Denied);
-                    return;
-                }
-
-                // Normal Editor mode can optionally auto-approve new local MCP clients.
-                // Previously rejected identities remain denied by the history check above.
-                if (!isBatchMode && MCPSettingsManager.Settings.autoApproveInEditorMode)
-                {
-                    McpLog.LogDelayed("Editor mode: auto-approving new connection");
-                    var decisionToRecord = new ValidationDecision
+                    // Show dialog proactively
+                    if (string.IsNullOrEmpty(identityKey))
                     {
-                        Status = ValidationStatus.Accepted,
-                        Reason = "Auto-approved in Editor Mode",
-                        Connection = decision.Connection
-                    };
-                    ConnectionStore.RecordConnection(decisionToRecord);
-                    ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
-                    SetApprovalState(transport, ConnectionApprovalState.Approved);
-                    return;
-                }
-
-                // Exit early if transport disconnected before recording Pending
-                token.ThrowIfCancellationRequested();
-
-                // New connection — needs user approval
-                SetApprovalState(transport, ConnectionApprovalState.AwaitingApproval);
-
-                // Record as Pending
-                var pendingDecision = new ValidationDecision
-                {
-                    Status = ValidationStatus.Pending,
-                    Reason = "Awaiting user approval",
-                    Connection = decision.Connection
-                };
-                ConnectionStore.RecordConnection(pendingDecision);
-                ApplyTransportClientInfo(transport, identity.CombinedIdentityKey);
-
-                // Show dialog proactively
-                string identityKey = identity?.CombinedIdentityKey;
-                if (string.IsNullOrEmpty(identityKey))
-                {
-                    McpLog.LogDelayed("Unable to determine identity key for approval", LogType.Warning);
-                    SetApprovalState(transport, ConnectionApprovalState.Denied);
-                    return;
-                }
-
-                TaskCompletionSource<bool> approvalTcs;
-                lock (pendingApprovalsLock)
-                {
-                    if (!pendingApprovalsByIdentity.TryGetValue(identityKey, out approvalTcs) ||
-                        approvalTcs.Task.IsCompleted)
-                    {
-                        approvalTcs = new TaskCompletionSource<bool>();
-                        pendingApprovalsByIdentity[identityKey] = approvalTcs;
+                        McpLog.LogDelayed("Unable to determine identity key for approval", LogType.Warning);
+                        SetApprovalState(transport, ConnectionApprovalState.Denied);
+                        return;
                     }
-                }
 
-                // Show dialog on main thread
-                ShowApprovalDialogForTransport(transport);
+                    lock (pendingApprovalsLock)
+                    {
+                        if (!pendingApprovalsByIdentity.TryGetValue(identityKey, out approvalTcs) ||
+                            approvalTcs.Task.IsCompleted)
+                        {
+                            approvalTcs = new TaskCompletionSource<bool>();
+                            pendingApprovalsByIdentity[identityKey] = approvalTcs;
+                        }
+                    }
+
+                    // Show dialog on main thread
+                    ShowApprovalDialogForTransport(transport);
+                }
 
                 // Await user decision or transport disconnection
                 var cancellationTcs = new TaskCompletionSource<bool>();
@@ -1028,7 +1224,8 @@ namespace Cidonix.UniBridge.MCP.Editor
 
                         lock (pendingApprovalsLock)
                         {
-                            pendingApprovalsByIdentity.Remove(identityKey);
+                            if (pendingApprovalsByIdentity.TryGetValue(identityKey, out var pending) && ReferenceEquals(pending, approvalTcs))
+                                pendingApprovalsByIdentity.Remove(identityKey);
                         }
 
                         var record = ConnectionStore.FindMatchingConnection(identity);
@@ -1059,38 +1256,41 @@ namespace Cidonix.UniBridge.MCP.Editor
 
                 lock (pendingApprovalsLock)
                 {
-                    pendingApprovalsByIdentity.Remove(identityKey);
+                    if (pendingApprovalsByIdentity.TryGetValue(identityKey, out var pending) && ReferenceEquals(pending, approvalTcs))
+                        pendingApprovalsByIdentity.Remove(identityKey);
                 }
-
-                if (approved)
+                RunForGeneration(generation, token, () =>
                 {
-                    McpLog.LogDelayed("Connection approved by user");
-                    SetApprovalState(transport, ConnectionApprovalState.Approved);
-
-                    var approvedRecord = ConnectionStore.FindMatchingConnection(identity);
-                    if (approvedRecord != null)
+                    if (approved)
                     {
-                        ConnectionStore.UpdateConnectionStatus(
-                            approvedRecord.Info.ConnectionId,
-                            ValidationStatus.Accepted,
-                            "Approved by user");
-                    }
-                }
-                else
-                {
-                    McpLog.LogDelayed("Connection denied by user", LogType.Warning);
-                    SetApprovalState(transport, ConnectionApprovalState.Denied);
+                        McpLog.LogDelayed("Connection approved by user");
+                        SetApprovalState(transport, ConnectionApprovalState.Approved);
 
-                    var rejectedRecord = ConnectionStore.FindMatchingConnection(identity);
-                    if (rejectedRecord != null)
-                    {
-                        ConnectionStore.UpdateConnectionStatus(
-                            rejectedRecord.Info.ConnectionId,
-                            ValidationStatus.Rejected,
-                            "Denied by user");
+                        var approvedRecord = ConnectionStore.FindMatchingConnection(identity);
+                        if (approvedRecord != null)
+                        {
+                            ConnectionStore.UpdateConnectionStatus(
+                                approvedRecord.Info.ConnectionId,
+                                ValidationStatus.Accepted,
+                                "Approved by user");
+                        }
                     }
-                    // Do NOT close the connection — tool calls will fail with error message
-                }
+                    else
+                    {
+                        McpLog.LogDelayed("Connection denied by user", LogType.Warning);
+                        SetApprovalState(transport, ConnectionApprovalState.Denied);
+
+                        var rejectedRecord = ConnectionStore.FindMatchingConnection(identity);
+                        if (rejectedRecord != null)
+                        {
+                            ConnectionStore.UpdateConnectionStatus(
+                                rejectedRecord.Info.ConnectionId,
+                                ValidationStatus.Rejected,
+                                "Denied by user");
+                        }
+                        // Do NOT close the connection — tool calls will fail with error message
+                    }
+                });
             }
             catch (OperationCanceledException)
             {
@@ -1186,22 +1386,31 @@ namespace Cidonix.UniBridge.MCP.Editor
                     {
                         // Remove from queue BEFORE starting async execution to prevent
                         // re-processing on subsequent Update frames
-                        commandQueue.TryRemove(id, out _);
-
-                        // Admission, completion publication, and SessionState access all run
-                        // on the Unity synchronization context. No remove-before-publish gap.
-                        var resultTask = DispatchCommandAsync(command, client, cancellationToken);
-                        _ = WaitForExistingAndComplete(resultTask, tcs, command.requestId);
+                        Task<string> resultTask;
+                        lock (startStopLock)
+                        {
+                            if (!isRunning || cancellationToken.IsCancellationRequested || !commandQueue.TryRemove(id, out _))
+                            {
+                                tcs.TrySetResult(StoppedResponse);
+                                commandWaiters.TryRemove(id, out _);
+                                continue;
+                            }
+                            // Capture admission's journal before Stop may publish another
+                            // generation; asynchronous completion keeps that original owner.
+                            resultTask = DispatchCommandAsync(command, client, cancellationToken);
+                        }
+                        _ = CompleteQueuedCommandAsync(resultTask, tcs, command.requestId, id);
                     }
                     catch (Exception ex)
                     {
                         Debug.LogError($"Error processing command: {ex.Message}\\n{ex.StackTrace}");
-                        tcs.TrySetResult(InjectRequestId(JsonConvert.SerializeObject(new
+                        tcs.TrySetResult(InjectRequestId(McpJson.SerializeObject(new
                         {
                             status = "error",
                             error = ex.Message,
                             commandType = command.type ?? "Unknown"
                         }), command.requestId));
+                        commandWaiters.TryRemove(id, out _);
                     }
                 }
             }
@@ -1260,28 +1469,49 @@ namespace Cidonix.UniBridge.MCP.Editor
         /// </summary>
         async Task WriteWithLockAsync(IConnectionTransport transport, string message, CancellationToken ct = default)
         {
-            await transportWriteLock.WaitAsync(ct);
+            CancellationTokenSource writeCancellation;
+            lock (startStopLock)
+            {
+                if (disposed)
+                    throw new OperationCanceledException("Bridge disposed.", ct);
+                writeCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, writeShutdown.Token);
+                activeTransportWrites++;
+            }
+            bool acquired = false;
             try
             {
-                await MessageProtocol.WriteMessageAsync(transport, message, ct);
+                await transportWriteLock.WaitAsync(writeCancellation.Token);
+                acquired = true;
+                await MessageProtocol.WriteMessageAsync(transport, message, writeCancellation.Token);
             }
             finally
             {
-                transportWriteLock.Release();
+                // The admitted writer owns the semaphore until Release. Dispose
+                // cancels waiting writers and releases resources only after all
+                // admitted operations have reached this cleanup.
+                if (acquired)
+                    transportWriteLock.Release();
+                writeCancellation.Dispose();
+                lock (startStopLock)
+                {
+                    activeTransportWrites--;
+                    DisposeWriteResourcesWhenIdle();
+                }
             }
         }
 
         async Task<string> DispatchCommandAsync(Command command, IConnectionTransport client, CancellationToken cancellationToken)
         {
+            var journal = commandRecovery;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 // These protocol-management commands have no project handler and no result cache.
                 // Keep the eager handshake usable while connection validation is still running.
                 if (IsProtocolManagementCommand(command.type))
                     return await ExecuteCommandAsync(command, client, cancellationToken);
 
                 var identity = await RequireCommandAdmissionAsync(command, client, cancellationToken);
-                var journal = commandRecovery;
 
                 if (string.Equals(command.type, "recover_command", StringComparison.Ordinal))
                 {
@@ -1328,7 +1558,7 @@ namespace Cidonix.UniBridge.MCP.Editor
             }
             catch (Exception ex)
             {
-                return JsonConvert.SerializeObject(new
+                return McpJson.SerializeObject(new
                 {
                     status = "error",
                     error = ex.Message,
@@ -1353,7 +1583,7 @@ namespace Cidonix.UniBridge.MCP.Editor
             // Scheduling a command as a read is not proof that it has no side effects:
             // exports, snapshot persistence, probe resets, and custom observers also need
             // durable admission so a raw duplicate cannot execute them again after reload.
-            var contract = JObject.FromObject(ToolExecutionScheduler.BuildAnnotation(type, handler));
+            var contract = McpJson.ObjectFromObject(ToolExecutionScheduler.BuildAnnotation(type, handler));
             if (contract.Value<bool>("replaySafe"))
                 return false;
 
@@ -1436,7 +1666,7 @@ namespace Cidonix.UniBridge.MCP.Editor
 
         static string RecoveryRefusal(string requestId, string state, string reason)
         {
-            return JsonConvert.SerializeObject(new
+            return McpJson.SerializeObject(new
             {
                 status = "error",
                 error = state == "request_conflict"
@@ -1452,9 +1682,10 @@ namespace Cidonix.UniBridge.MCP.Editor
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (string.IsNullOrEmpty(command.type))
                 {
-                    return JsonConvert.SerializeObject(new
+                    return McpJson.SerializeObject(new
                     {
                         status = "error",
                         error = "Command type cannot be empty",
@@ -1493,7 +1724,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                     string displayName = string.IsNullOrEmpty(title) ? name : title;
                     McpLog.Log($"MCP client info: {displayName} v{version}");
 
-                    return JsonConvert.SerializeObject(new
+                    return McpJson.SerializeObject(new
                     {
                         status = "success",
                         result = new { message = "Client info received" }
@@ -1514,14 +1745,14 @@ namespace Cidonix.UniBridge.MCP.Editor
 
                     if (requestedHash == s_CurrentToolsHash)
                     {
-                        return JsonConvert.SerializeObject(new
+                        return McpJson.SerializeObject(new
                         {
                             status = "success",
                             result = new { unchanged = true, hash = s_CurrentToolsHash }
                         });
                     }
 
-                    var response = JsonConvert.SerializeObject(new
+                    var response = McpJson.SerializeObject(new
                     {
                         status = "success",
                         result = new
@@ -1547,7 +1778,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                 var approvalState = GetApprovalState(client);
                 if (approvalState == ConnectionApprovalState.Denied)
                 {
-                    return JsonConvert.SerializeObject(new
+                    return McpJson.SerializeObject(new
                     {
                         status = "error",
                         error = "Connection revoked. Go to Unity Editor > Project Settings > UniBridge > MCP to change approval.",
@@ -1578,7 +1809,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                 }
 
                 // Standard success response format
-                return JsonConvert.SerializeObject(new { status = "success", result });
+                return McpJson.SerializeObject(new { status = "success", result });
             }
             catch (OperationCanceledException ex)
             {
@@ -1589,7 +1820,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                 }
 
                 McpLog.Log($"Command '{command?.type ?? "Unknown"}' was canceled: {ex.Message}");
-                return JsonConvert.SerializeObject(new
+                return McpJson.SerializeObject(new
                 {
                     status = "error",
                     error = ex.Message,
@@ -1607,7 +1838,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                 }
 
                 Debug.LogError($"Error executing command '{command?.type ?? "Unknown"}': {ex.Message}\n{ex.StackTrace}");
-                return JsonConvert.SerializeObject(new
+                return McpJson.SerializeObject(new
                 {
                     status = "error",
                     error = ex.Message,
@@ -1627,7 +1858,7 @@ namespace Cidonix.UniBridge.MCP.Editor
             var toolName = command.@params?.Value<string>("toolName");
 
             McpLog.Log($"[MCP Approval] Local MCP request auto-approved: {toolName}");
-            return Task.FromResult(JsonConvert.SerializeObject(new
+            return Task.FromResult(McpJson.SerializeObject(new
             {
                 status = "success",
                 result = new { approved = true, reason = "Local UniBridge MCP connection approved" }
@@ -1685,12 +1916,18 @@ namespace Cidonix.UniBridge.MCP.Editor
             catch (Exception ex)
             {
                 McpLog.LogDelayed($"Error waiting for existing command {requestId}: {ex.Message}");
-                tcs.TrySetResult(InjectRequestId(JsonConvert.SerializeObject(new
+                tcs.TrySetResult(InjectRequestId(McpJson.SerializeObject(new
                 {
                     status = "error",
                     error = $"Deduplication error: {ex.Message}"
                 }), requestId));
             }
+        }
+
+        async Task CompleteQueuedCommandAsync(Task<string> task, TaskCompletionSource<string> completion, string requestId, string commandId)
+        {
+            try { await WaitForExistingAndComplete(task, completion, requestId); }
+            finally { commandWaiters.TryRemove(commandId, out _); }
         }
 
         void ComputeToolsSnapshotAndHash()
@@ -1702,7 +1939,7 @@ namespace Cidonix.UniBridge.MCP.Editor
             {
                 minimal[i] = new { tools[i].name, tools[i].description, tools[i].inputSchema };
             }
-            var json = JsonConvert.SerializeObject(minimal, Formatting.None);
+            var json = McpJson.SerializeObject(minimal, Formatting.None);
             using var sha256 = System.Security.Cryptography.SHA256.Create();
             byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(json));
             s_CurrentToolsHash = Convert.ToBase64String(hashBytes);

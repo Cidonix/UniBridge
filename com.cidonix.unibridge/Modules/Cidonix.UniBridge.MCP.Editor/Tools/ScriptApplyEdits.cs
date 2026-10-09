@@ -114,7 +114,8 @@ Examples:
                             no_op = new { type = "boolean", description = "Whether this was a no-op (no changes made)" },
                             normalizedEdits = new { type = "array", description = "Normalized edit operations that were applied" },
                             routing = new { type = "string", description = "Edit routing method used (structured/text/mixed)" },
-                            warnings = new { type = "array", description = "Any warnings generated during processing" }
+                            warnings = new { type = "array", description = "Any warnings generated during processing" },
+                            obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema()
                         }
                     }
                 },
@@ -235,8 +236,8 @@ Examples:
                 ["path"] = path,
                 ["namespace"] = namespaceName,
                 ["scriptType"] = scriptType,
-                ["edits"] = JArray.FromObject(edits),
-                ["options"] = JObject.FromObject(opts)
+                ["edits"] = McpJson.ArrayFromObject(edits),
+                ["options"] = McpJson.ObjectFromObject(opts)
             };
 
             var precondition = GetPreconditionSha256(opts);
@@ -310,6 +311,7 @@ Examples:
                     // Apply edits locally to generate preview
                     string previewText = ApplyEditsLocally(contents, edits);
                     string diff = GenerateUnifiedDiff(contents, previewText);
+                    var obsoleteApiHints = AnalyzeFinalSourceHints(previewText, name, path, options);
 
                     if (preview)
                     {
@@ -317,7 +319,8 @@ Examples:
                         {
                             diff = diff,
                             normalizedEdits = edits,
-                            routing = "text"
+                            routing = "text",
+                            obsoleteApiHints
                         });
                     }
 
@@ -326,7 +329,8 @@ Examples:
                     {
                         diff = diff,
                         normalizedEdits = edits,
-                        routing = "text"
+                        routing = "text",
+                        obsoleteApiHints
                     });
                 }
                 catch (Exception ex)
@@ -358,7 +362,8 @@ Examples:
                     no_op = true,
                     evidence = new { reason = "identical_content" },
                     normalizedEdits = edits,
-                    routing = "text"
+                    routing = "text",
+                    obsoleteApiHints = AnalyzeFinalSourceHints(newContents, name, path, options)
                 });
             }
 
@@ -372,7 +377,8 @@ Examples:
                     {
                         diff = diff,
                         normalizedEdits = edits,
-                        routing = "text"
+                        routing = "text",
+                        obsoleteApiHints = AnalyzeFinalSourceHints(newContents, name, path, options)
                     });
                 }
                 catch (Exception ex)
@@ -412,7 +418,7 @@ Examples:
                         }
                     },
                     ["precondition_sha256"] = sha,
-                    ["options"] = JObject.FromObject(new Dictionary<string, object>
+                    ["options"] = McpJson.ObjectFromObject(new Dictionary<string, object>
                     {
                         ["validate"] = GetStringValue(options, "validate") ?? "standard",
                         ["refresh"] = GetStringValue(options, "refresh") ?? "debounced"
@@ -464,8 +470,8 @@ Examples:
                 ["path"] = path,
                 ["namespace"] = namespaceName,
                 ["scriptType"] = scriptType,
-                ["edits"] = JArray.FromObject(edits),
-                ["options"] = JObject.FromObject(opts)
+                ["edits"] = McpJson.ArrayFromObject(edits),
+                ["options"] = McpJson.ObjectFromObject(opts)
             };
 
             var precondition = GetPreconditionSha256(opts);
@@ -597,7 +603,21 @@ Examples:
         }
 
         /// <summary>
-        /// Convert structured operations to apply_text_edits format
+        /// Inspect the final in-memory source without writing or requesting a refresh.
+        /// </summary>
+        static ObsoleteApiReport AnalyzeFinalSourceHints(string source, string name, string path,
+            Dictionary<string, object> options)
+        {
+            var scriptPath = string.IsNullOrWhiteSpace(path)
+                ? "Assets/" + name + ".cs"
+                : path.TrimEnd('/', '\\') + "/" + name + ".cs";
+            var resolved = ProjectPathResolver.Resolve(scriptPath, assumeAssetRelative: true);
+            return ManageScript.AnalyzeObsoleteApiHints(source,
+                GetStringValue(options, "validate") ?? "standard", resolved.AbsolutePath ?? scriptPath);
+        }
+
+        /// <summary>
+        /// Convert structured operations to apply_text_edits format.
         /// </summary>
         static object ConvertAndApplyTextEdits(string name, string path, string namespaceName, string scriptType,
             List<Dictionary<string, object>> edits, string contents, Dictionary<string, object> options)
@@ -632,7 +652,8 @@ Examples:
                             diff,
                             normalizedEdits = edits,
                             computedTextEdits = atEdits,
-                            routing = "text"
+                            routing = "text",
+                            obsoleteApiHints = AnalyzeFinalSourceHints(previewText, name, path, options)
                         };
 
                         return preview
@@ -658,9 +679,9 @@ Examples:
                     ["path"] = path,
                     ["namespace"] = namespaceName,
                     ["scriptType"] = scriptType,
-                    ["edits"] = JArray.FromObject(atEdits),
+                    ["edits"] = McpJson.ArrayFromObject(atEdits),
                     ["precondition_sha256"] = sha,
-                    ["options"] = JObject.FromObject(new Dictionary<string, object>
+                    ["options"] = McpJson.ObjectFromObject(new Dictionary<string, object>
                     {
                         ["refresh"] = GetStringValue(options, "refresh") ?? "debounced",
                         ["validate"] = GetStringValue(options, "validate") ?? "standard",

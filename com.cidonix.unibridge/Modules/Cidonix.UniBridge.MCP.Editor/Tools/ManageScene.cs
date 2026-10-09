@@ -197,6 +197,7 @@ Returns:
 
             try
             {
+                var writeTracking = WorkSession.BeginWrite(new[] { relativePath, relativePath + ".meta" }, "UniBridge_ManageScene:Create");
                 // Create a new empty scene
                 Scene newScene = EditorSceneManager.NewScene(
                     NewSceneSetup.EmptyScene,
@@ -207,11 +208,12 @@ Returns:
 
                 if (saved)
                 {
+                    var workSessionOwnership = WorkSession.CompleteUnverifiedWrite(writeTracking);
                     AssetDatabase.Refresh(); // Ensure Unity sees the new scene file
 
                     return Response.Success(
                         $"Scene '{Path.GetFileName(relativePath)}' created successfully at '{relativePath}'.",
-                        new { path = relativePath }
+                        new { path = relativePath, workSessionOwnership }
                     );
                 }
                 else
@@ -383,6 +385,8 @@ Returns:
 
                 bool saved;
                 string finalPath = currentScene.path; // Path where it was last saved or will be saved
+                var targetPath = !string.IsNullOrEmpty(relativePath) ? relativePath : currentScene.path;
+                WorkSession.WriteTrackingToken writeTracking = null;
 
                 if (!string.IsNullOrEmpty(relativePath) && currentScene.path != relativePath)
                 {
@@ -392,6 +396,7 @@ Returns:
                     if (!Directory.Exists(dir))
                         Directory.CreateDirectory(dir);
 
+                    writeTracking = WorkSession.BeginWrite(new[] { targetPath, targetPath + ".meta" }, "UniBridge_ManageScene:SaveAs");
                     saved = EditorSceneManager.SaveScene(currentScene, relativePath);
                     finalPath = relativePath;
                 }
@@ -405,16 +410,18 @@ Returns:
                             "Cannot save an untitled scene without providing a 'name' and 'path'. Use Save As functionality."
                         );
                     }
+                    writeTracking = WorkSession.BeginWrite(new[] { targetPath, targetPath + ".meta" }, "UniBridge_ManageScene:Save");
                     saved = EditorSceneManager.SaveScene(currentScene);
                 }
 
                 if (saved)
                 {
+                    var workSessionOwnership = WorkSession.CompleteUnverifiedWrite(writeTracking);
                     AssetDatabase.Refresh();
 
                     return Response.Success(
                         $"Scene '{currentScene.name}' saved successfully to '{finalPath}'.",
-                        new { path = finalPath, name = currentScene.name }
+                        new { path = finalPath, name = currentScene.name, workSessionOwnership }
                     );
                 }
                 else

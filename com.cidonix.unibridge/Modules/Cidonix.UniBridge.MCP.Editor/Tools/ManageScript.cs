@@ -74,7 +74,34 @@ Args:
     edits, precondition_sha256, options, level: Used by edit, apply_text_edits, validate, and get_sha routes.
 
 Returns:
-    success, message, and action-specific script data.";
+    success, message, and action-specific script data.
+    Validation and proposed/written create or edit results include obsoleteApiHints: advisory semantic
+    deprecated API usages, actual source locations, and verified replacement signatures/return-type changes.
+    Its status is available, partial, unavailable, or skipped; it never changes validation/mutation policy.
+    Basic validation skips hints. Source is never rewritten to replace obsolete APIs.";
+
+        [McpOutputSchema(ToolName)]
+        public static object GetOutputSchema()
+        {
+            return new
+            {
+                type = "object",
+                properties = new
+                {
+                    success = new { type = "boolean" },
+                    message = new { type = "string" },
+                    code = new { type = "string" },
+                    error = new { type = "string" },
+                    data = new
+                    {
+                        type = new[] { "object", "string" },
+                        description = "Action-specific data; obsoleteApiHints is present when a final proposed source was available for validation or create/edit analysis.",
+                        properties = new { obsoleteApiHints = GetObsoleteApiHintsOutputSchema() }
+                    }
+                },
+                required = new[] { "success" }
+            };
+        }
         /// <summary>
         /// Resolves a directory under Assets/, preventing traversal and escaping.
         /// Returns fullPathDir on disk and canonical 'Assets/...' relative path.
@@ -270,7 +297,7 @@ Returns:
             string contents = null;
 
             // Check if we have base64 encoded contents
-            bool contentsEncoded = @params["contents_encoded"]?.ToObject<bool>() ?? false;
+            bool contentsEncoded = @params["contents_encoded"]?.ToObjectIndependent<bool>() ?? false;
             if (contentsEncoded && @params["encoded_contents"] != null)
             {
                 try
@@ -369,9 +396,9 @@ Returns:
                     try { fileText = File.ReadAllText(fullPath); }
                     catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
 
-                    var validation = ValidateScriptSource(fileText, level);
+                    var validation = ValidateScriptSource(fileText, level, fullPath);
 
-                    var result = new { diagnostics = validation.Diagnostics };
+                    var result = new { diagnostics = validation.Diagnostics, obsoleteApiHints = validation.ObsoleteApiHints };
                     return validation.Ok ? Response.Success("Validation completed.", result)
                                          : Response.Error("Validation failed.", result);
                 }
@@ -460,9 +487,10 @@ Returns:
             // Validate syntax with detailed error reporting using GUI setting
             ValidationLevel validationLevel = GetValidationLevelFromGUI();
             bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors);
+            var obsoleteApiHints = AnalyzeObsoleteApiHints(contents, validationLevel, fullPath);
             if (!isValid)
             {
-                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>() });
+                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>(), obsoleteApiHints });
             }
             else if (validationErrors != null && validationErrors.Length > 0)
             {
@@ -474,6 +502,7 @@ Returns:
             {
                 // Atomic create without BOM; schedule refresh after reply
                 var enc = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var writeTracking = WorkSession.BeginWrite(new[] { relativePath }, "UniBridge_ManageScript:Create");
                 var tmp = fullPath + ".tmp";
                 File.WriteAllText(tmp, contents, enc);
                 try
@@ -486,10 +515,15 @@ Returns:
                     try { File.Delete(tmp); } catch { }
                 }
 
+                var workSessionOwnership = WorkSession.CompleteWrite(writeTracking, new Dictionary<string, string>
+                {
+                    [relativePath] = WorkSession.ComputeWriteSha256(enc.GetBytes(contents))
+                });
+
                 var uri = $"unity://path/{relativePath}";
                 var ok = Response.Success(
                     $"Script '{name}.cs' created successfully at '{relativePath}'.",
-                    new { uri, scheduledRefresh = false }
+                    new { uri, scheduledRefresh = false, obsoleteApiHints, workSessionOwnership }
                 );
 
                 ManageScriptRefreshHelpers.ImportAndRequestCompile(relativePath);
@@ -498,7 +532,7 @@ Returns:
             }
             catch (Exception e)
             {
-                return Response.Error($"Failed to create script '{relativePath}': {e.Message}");
+                return Response.Error($"Failed to create script '{relativePath}': {e.Message}", new { obsoleteApiHints });
             }
         }
 
@@ -558,9 +592,10 @@ Returns:
             // Validate syntax with detailed error reporting using GUI setting
             ValidationLevel validationLevel = GetValidationLevelFromGUI();
             bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors);
+            var obsoleteApiHints = AnalyzeObsoleteApiHints(contents, validationLevel, fullPath);
             if (!isValid)
             {
-                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>() });
+                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>(), obsoleteApiHints });
             }
             else if (validationErrors != null && validationErrors.Length > 0)
             {
@@ -572,6 +607,7 @@ Returns:
             {
                 // Safe write with atomic replace when available, without BOM
                 var encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var writeTracking = WorkSession.BeginWrite(new[] { relativePath }, "UniBridge_ManageScript:Update");
                 string tempPath = fullPath + ".tmp";
                 File.WriteAllText(tempPath, contents, encoding);
 
@@ -594,11 +630,16 @@ Returns:
                     try { if (File.Exists(backupPath)) File.Delete(backupPath); } catch { }
                 }
 
+                var workSessionOwnership = WorkSession.CompleteWrite(writeTracking, new Dictionary<string, string>
+                {
+                    [relativePath] = WorkSession.ComputeWriteSha256(encoding.GetBytes(contents))
+                });
+
                 // Prepare success response BEFORE any operation that can trigger a domain reload
                 var uri = $"unity://path/{relativePath}";
                 var ok = Response.Success(
                     $"Script '{name}.cs' updated successfully at '{relativePath}'.",
-                    new { uri, path = relativePath, scheduledRefresh = true }
+                    new { uri, path = relativePath, scheduledRefresh = true, obsoleteApiHints, workSessionOwnership }
                 );
 
                 // Schedule a debounced import/compile on next editor tick to avoid stalling the reply
@@ -608,7 +649,7 @@ Returns:
             }
             catch (Exception e)
             {
-                return Response.Error($"Failed to update script '{relativePath}': {e.Message}");
+                return Response.Error($"Failed to update script '{relativePath}': {e.Message}", new { obsoleteApiHints });
             }
         }
 
@@ -793,6 +834,11 @@ Returns:
             string working = original;
             bool relaxed = string.Equals(validateMode, "relaxed", StringComparison.OrdinalIgnoreCase);
             bool syntaxOnly = string.Equals(validateMode, "syntax", StringComparison.OrdinalIgnoreCase);
+            var hintLevel = ParseValidationLevel(validateMode);
+            string finalProposal = original;
+            if (relaxed)
+                foreach (var sp in spans)
+                    finalProposal = finalProposal.Remove(sp.start, sp.end - sp.start).Insert(sp.start, sp.text ?? string.Empty);
             foreach (var sp in spans)
             {
                 string next = working.Remove(sp.start, sp.end - sp.start).Insert(sp.start, sp.text ?? string.Empty);
@@ -804,11 +850,17 @@ Returns:
                     int endPos = sp.start + newLength;
                     if (!CheckScopedBalance(next, Math.Max(0, sp.start - 500), Math.Min(next.Length, endPos + 500)))
                     {
-                        return Response.Error("unbalanced_braces", new { status = "unbalanced_braces", line = 0, expected = "{}()[] (scoped)", hint = "Use standard validation or shrink the edit range." });
+                        return Response.Error("unbalanced_braces", new
+                        {
+                            status = "unbalanced_braces", line = 0, expected = "{}()[] (scoped)",
+                            hint = "Use standard validation or shrink the edit range.",
+                            obsoleteApiHints = AnalyzeObsoleteApiHints(finalProposal, hintLevel, fullPath)
+                        });
                     }
                 }
                 working = next;
             }
+            var obsoleteApiHints = AnalyzeObsoleteApiHints(working, hintLevel, fullPath);
 
             // No-op guard: if resulting text is identical, avoid writes and return explicit no-op
             if (string.Equals(working, original, StringComparison.Ordinal))
@@ -823,7 +875,8 @@ Returns:
                         editsApplied = 0,
                         no_op = true,
                         sha256 = noChangeSha,
-                        evidence = new { reason = "identical_content" }
+                        evidence = new { reason = "identical_content" },
+                        obsoleteApiHints
                     }
                 );
             }
@@ -834,7 +887,7 @@ Returns:
                 int startLine = Math.Max(1, line - 5);
                 int endLine = line + 5;
                 string hint = $"unbalanced_braces at line {line}. Call UniBridge_ReadResource for lines {startLine}-{endLine} and resend a smaller apply_text_edits that restores balance.";
-                return Response.Error(hint, new { status = "unbalanced_braces", line, expected = expected.ToString(), evidenceWindow = new { startLine, endLine } });
+                return Response.Error(hint, new { status = "unbalanced_braces", line, expected = expected.ToString(), evidenceWindow = new { startLine, endLine }, obsoleteApiHints });
             }
 
 #if USE_ROSLYN
@@ -853,7 +906,7 @@ Returns:
                     int firstLine = diagnostics[0].line;
                     int startLineRos = Math.Max(1, firstLine - 5);
                     int endLineRos = firstLine + 5;
-                    return Response.Error("syntax_error", new { status = "syntax_error", diagnostics, evidenceWindow = new { startLine = startLineRos, endLine = endLineRos } });
+                    return Response.Error("syntax_error", new { status = "syntax_error", diagnostics, evidenceWindow = new { startLine = startLineRos, endLine = endLineRos }, obsoleteApiHints });
                 }
 
             }
@@ -865,6 +918,7 @@ Returns:
             try
             {
                 var enc = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var writeTracking = WorkSession.BeginWrite(new[] { relativePath }, "UniBridge_ManageScript:ApplyTextEdits");
                 var tmp = fullPath + ".tmp";
                 File.WriteAllText(tmp, working, enc);
                 string backup = fullPath + ".bak";
@@ -885,6 +939,11 @@ Returns:
                     try { File.Delete(tmp); } catch { }
                     try { if (File.Exists(backup)) File.Delete(backup); } catch { }
                 }
+
+                var workSessionOwnership = WorkSession.CompleteWrite(writeTracking, new Dictionary<string, string>
+                {
+                    [relativePath] = WorkSession.ComputeWriteSha256(enc.GetBytes(working))
+                });
 
                 // Respect refresh mode: immediate vs debounced
                 bool immediate = string.Equals(refreshModeFromCaller, "immediate", StringComparison.OrdinalIgnoreCase) ||
@@ -914,13 +973,15 @@ Returns:
                         path = relativePath,
                         editsApplied = spans.Count,
                         sha256 = newSha,
-                        scheduledRefresh = !immediate
+                        scheduledRefresh = !immediate,
+                        obsoleteApiHints,
+                        workSessionOwnership
                     }
                 );
             }
             catch (Exception ex)
             {
-                return Response.Error($"Failed to write edits: {ex.Message}");
+                return Response.Error($"Failed to write edits: {ex.Message}", new { obsoleteApiHints });
             }
         }
 
@@ -1078,13 +1139,19 @@ Returns:
             try
             {
                 // Use AssetDatabase.MoveAssetToTrash for safer deletion (allows undo)
+                var writeTracking = WorkSession.BeginWrite(new[] { relativePath, relativePath + ".meta" }, "UniBridge_ManageScript:Delete");
                 bool deleted = AssetDatabase.MoveAssetToTrash(relativePath);
                 if (deleted)
                 {
+                    var workSessionOwnership = WorkSession.CompleteWrite(writeTracking, new Dictionary<string, string>
+                    {
+                        [relativePath] = null,
+                        [relativePath + ".meta"] = null
+                    });
                     AssetDatabase.Refresh();
                     return Response.Success(
                         $"Script '{Path.GetFileName(relativePath)}' moved to trash successfully.",
-                        new { deleted = true }
+                        new { deleted = true, workSessionOwnership }
                     );
                 }
                 else
@@ -1148,6 +1215,7 @@ Returns:
             }
 
             string working = original;
+            ObsoleteApiReport obsoleteApiHints = null;
 
             try
             {
@@ -1418,7 +1486,7 @@ Returns:
                             if (string.IsNullOrWhiteSpace(pattern)) return Response.Error("regex_replace requires 'pattern'.");
                             try
                             {
-                                var selection = op.ToObject<Dictionary<string, object>>();
+                                var selection = op.ToObjectIndependent<Dictionary<string, object>>();
                                 selection["anchor"] = pattern;
                                 var match = ScriptApplyEdits.ResolveAnchorMatch(selection, working, "regex_replace");
                                 if (match == null) break;
@@ -1451,7 +1519,7 @@ Returns:
                             try
                             {
                                 var m = ScriptApplyEdits.ResolveAnchorMatch(
-                                    op.ToObject<Dictionary<string, object>>(), working, "anchor_insert");
+                                    op.ToObjectIndependent<Dictionary<string, object>>(), working, "anchor_insert");
                                 if (m == null) break;
                                 int insAt = position == "after" ? m.Index + m.Length : m.Index;
                                 string norm = NormalizeNewlines(text);
@@ -1498,7 +1566,7 @@ Returns:
                             try
                             {
                                 var m = ScriptApplyEdits.ResolveAnchorMatch(
-                                    op.ToObject<Dictionary<string, object>>(), working, "anchor_delete");
+                                    op.ToObjectIndependent<Dictionary<string, object>>(), working, "anchor_delete");
                                 if (m == null) break;
                                 int delAt = m.Index;
                                 int delLen = m.Length;
@@ -1527,7 +1595,7 @@ Returns:
                             try
                             {
                                 var m = ScriptApplyEdits.ResolveAnchorMatch(
-                                    op.ToObject<Dictionary<string, object>>(), working, "anchor_replace");
+                                    op.ToObjectIndependent<Dictionary<string, object>>(), working, "anchor_replace");
                                 if (m == null) break;
                                 int at = m.Index;
                                 int len = m.Length;
@@ -1577,6 +1645,27 @@ Returns:
 
                 bool preview = options?["preview"]?.Value<bool?>() == true;
 
+                // The advisory report uses exactly the final proposal, including previews and no-ops.
+                // Keep the existing validation choice and outcome independent of semantic hints.
+                var level = GetValidationLevelFromGUI();
+                try
+                {
+                    var validateOpt = options?["validate"]?.ToString()?.ToLowerInvariant();
+                    if (!string.IsNullOrEmpty(validateOpt))
+                    {
+                        level = validateOpt switch
+                        {
+                            "basic" => ValidationLevel.Basic,
+                            "standard" => ValidationLevel.Standard,
+                            "comprehensive" => ValidationLevel.Comprehensive,
+                            "strict" => ValidationLevel.Strict,
+                            _ => level
+                        };
+                    }
+                }
+                catch { /* ignore option parsing issues */ }
+                obsoleteApiHints = AnalyzeObsoleteApiHints(working, level, fullPath);
+
                 // No-op guard for structured edits: if text unchanged, return explicit no-op
                 if (string.Equals(working, original, StringComparison.Ordinal))
                 {
@@ -1599,31 +1688,14 @@ Returns:
                             sha256 = currentSha,
                             wouldChange = false,
                             diff = preview ? ScriptApplyEdits.GenerateUnifiedDiff(original, working) : null,
-                            evidence = new { reason = "identical_content" }
+                            evidence = new { reason = "identical_content" },
+                            obsoleteApiHints
                         }
                     );
                 }
 
-                // Validate result using override from options if provided; otherwise GUI strictness
-                var level = GetValidationLevelFromGUI();
-                try
-                {
-                    var validateOpt = options?["validate"]?.ToString()?.ToLowerInvariant();
-                    if (!string.IsNullOrEmpty(validateOpt))
-                    {
-                        level = validateOpt switch
-                        {
-                            "basic" => ValidationLevel.Basic,
-                            "standard" => ValidationLevel.Standard,
-                            "comprehensive" => ValidationLevel.Comprehensive,
-                            "strict" => ValidationLevel.Strict,
-                            _ => level
-                        };
-                    }
-                }
-                catch { /* ignore option parsing issues */ }
                 if (!ValidateScriptSyntax(working, level, out var errors))
-                    return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = errors ?? Array.Empty<string>() });
+                    return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = errors ?? Array.Empty<string>(), obsoleteApiHints });
                 else if (errors != null && errors.Length > 0)
                     Debug.LogWarning($"Script validation warnings for {name}:\n" + string.Join("\n", errors));
 
@@ -1644,7 +1716,8 @@ Returns:
                             currentSha256 = currentSha,
                             predictedSha256 = predictedSha,
                             wouldChange = !string.Equals(currentSha, predictedSha, StringComparison.OrdinalIgnoreCase),
-                            diff = ScriptApplyEdits.GenerateUnifiedDiff(original, working)
+                            diff = ScriptApplyEdits.GenerateUnifiedDiff(original, working),
+                            obsoleteApiHints
                         }
                     );
                 }
@@ -1657,6 +1730,7 @@ Returns:
 
                 // Persist changes atomically (no BOM), then compute/return new file SHA
                 var enc = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var writeTracking = WorkSession.BeginWrite(new[] { relativePath }, "UniBridge_ManageScript:StructuredEdit");
                 var tmp = fullPath + ".tmp";
                 File.WriteAllText(tmp, working, enc);
                 var backup = fullPath + ".bak";
@@ -1678,6 +1752,11 @@ Returns:
                     try { if (File.Exists(backup)) File.Delete(backup); } catch { }
                 }
 
+                var workSessionOwnership = WorkSession.CompleteWrite(writeTracking, new Dictionary<string, string>
+                {
+                    [relativePath] = WorkSession.ComputeWriteSha256(enc.GetBytes(working))
+                });
+
                 var newSha = ComputeSha256(working);
                 var ok = Response.Success(
                     $"Applied {appliedCount} structured edit(s) to '{relativePath}'.",
@@ -1687,7 +1766,9 @@ Returns:
                         uri = $"unity://path/{relativePath}",
                         editsApplied = appliedCount,
                         scheduledRefresh = !immediate && !suppressRefresh,
-                        sha256 = newSha
+                        sha256 = newSha,
+                        obsoleteApiHints,
+                        workSessionOwnership
                     }
                 );
 
@@ -1704,7 +1785,9 @@ Returns:
             }
             catch (Exception ex)
             {
-                return Response.Error($"Edit failed: {ex.Message}");
+                return obsoleteApiHints == null
+                    ? Response.Error($"Edit failed: {ex.Message}")
+                    : Response.Error($"Edit failed: {ex.Message}", new { obsoleteApiHints });
             }
         }
 

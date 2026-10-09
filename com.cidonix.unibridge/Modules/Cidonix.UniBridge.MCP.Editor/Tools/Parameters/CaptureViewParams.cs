@@ -16,7 +16,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         CaptureContactSheet,
         CaptureDiff,
         ClearCaptures,
-        ListCameras
+        ListCameras,
+        Capture2DRegion
     }
 
     public enum CaptureViewDirection

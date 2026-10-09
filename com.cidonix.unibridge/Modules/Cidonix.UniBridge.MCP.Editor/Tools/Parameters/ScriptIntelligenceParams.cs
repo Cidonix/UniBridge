@@ -182,6 +182,15 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Maximum MonoScript assets scanned. Keeps large projects responsive.", Required = false, Default = 3000)]
         public int MaxScanScripts { get; set; } = 3000;
 
+        [McpDescription("Include advisory semantic ObsoleteAttribute hints for Analyze, ReadTypes, Selection, ChangeImpact and Hotspots. Uses the current Unity assembly context; does not rewrite source.", Required = false, Default = true)]
+        public bool IncludeObsoleteApiHints { get; set; } = true;
+
+        [McpDescription("Maximum scripts receiving semantic obsolete API analysis per request (1..25). Bulk results explicitly report skipped/partial coverage. Default 5; semantic work also has an 8 second request budget.", Required = false, Default = 5)]
+        public int MaxSemanticScripts { get; set; } = 5;
+
+        internal int SemanticScriptsAnalyzed;
+        internal System.Diagnostics.Stopwatch SemanticWatch;
+
         [McpDescription("Maximum non-script assets scanned for script usages.", Required = false, Default = 8000)]
         public int MaxScanAssets { get; set; } = 8000;
 

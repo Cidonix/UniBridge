@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.21";
+    public const string Version = "1.1.0-build.22";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -271,6 +271,8 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     string? clientVersion;
     volatile bool clientInitialized;
     int notifiedConnectionGeneration;
+    string negotiatedProtocolVersion = "2025-03-26";
+    bool SupportsStructuredOutput => RelayOutputContracts.SupportsStructuredOutput(negotiatedProtocolVersion);
 
     public async Task TryConnectUnityAsync(CancellationToken ct)
     {
@@ -372,7 +374,14 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         catch (Exception ex)
         {
             if (id != null)
-                await WriteErrorAsync(id, -32603, ex.Message, ct).ConfigureAwait(false);
+            {
+                if (method == "tools/call")
+                    await WriteToolTextResultAsync(id, new JsonObject {
+                        ["status"] = "error", ["code"] = "TOOL_CALL_FAILED", ["error"] = ex.Message,
+                        ["automaticReplay"] = false }, isError: true, ct).ConfigureAwait(false);
+                else
+                    await WriteErrorAsync(id, -32603, ex.Message, ct).ConfigureAwait(false);
+            }
         }
     }
 
@@ -385,10 +394,10 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         if (unity.IsConnected)
             await unity.SendClientInfoAsync(clientName, clientVersion, options.ClientName, ct).ConfigureAwait(false);
 
-        var protocol = parameters?["protocolVersion"]?.GetValue<string>() ?? "2025-03-26";
+        negotiatedProtocolVersion = RelayOutputContracts.Negotiate(parameters?["protocolVersion"]?.GetValue<string>());
         var result = new JsonObject
         {
-            ["protocolVersion"] = protocol,
+            ["protocolVersion"] = negotiatedProtocolVersion,
             ["capabilities"] = new JsonObject
             {
                 ["tools"] = new JsonObject { ["listChanged"] = true },
@@ -421,6 +430,8 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         var tools = new JsonArray { CreateServerInfoTool(), CreateCommandStatusTool() };
         foreach (var tool in unity.Tools)
             tools.Add(tool.DeepClone());
+        if (!SupportsStructuredOutput)
+            foreach (var tool in tools.OfType<JsonObject>()) tool.Remove("outputSchema");
 
         await WriteResultAsync(id, new JsonObject { ["tools"] = tools }, ct).ConfigureAwait(false);
     }
@@ -433,7 +444,12 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
             return;
         }
 
-        var name = parameters["name"]?.GetValue<string>();
+        var name = parameters["name"] is JsonValue nameValue && nameValue.TryGetValue<string>(out var toolName) ? toolName : null;
+        if (parameters.ContainsKey("arguments") && parameters["arguments"] is not JsonObject)
+        {
+            await WriteErrorAsync(id, -32602, "Tool arguments must be an object.", ct).ConfigureAwait(false);
+            return;
+        }
         var args = parameters["arguments"] as JsonObject ?? new JsonObject();
 
         if (string.IsNullOrWhiteSpace(name))
@@ -1052,8 +1068,11 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     static JsonNode ExtractUnityFailureForMcp(JsonObject response)
     {
         var result = response["result"] as JsonObject;
-        if (result != null && ReadBoolean(result, "success") == false &&
-            (result["structuredContent"] is not JsonObject structured || ReadBoolean(structured, "success") != true))
+        // The Editor can have completed a mutation but failed to serialize/deliver
+        // its result. Preserve that completion evidence, code, context and metadata.
+        if (result != null && (ReadBoolean(result, "success") == false || ReadBoolean(result, "isError") == true ||
+            string.Equals(ReadString(result, "status"), "error", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ReadString(result, "status"), "failed", StringComparison.OrdinalIgnoreCase)))
             return result.DeepClone();
         if (result == null && !string.Equals(ReadString(response, "status"), "success", StringComparison.OrdinalIgnoreCase))
             return response.DeepClone();
@@ -1063,6 +1082,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         // unambiguous failure contract while retaining the original as evidence.
         var failure = new JsonObject
         {
+            ["status"] = "error",
             ["success"] = false,
             ["code"] = ReadString(result ?? response, "code") ?? "TOOL_RESULT_FAILED",
             ["error"] = ReadString(result ?? response, "error") ?? "Unity tool execution did not succeed. Inspect the retained original response.",
@@ -1548,6 +1568,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         ["title"] = "Recover a Unity command result",
         ["description"] = "Read-only lookup of an interrupted operation. Never executes or resumes the original command. Use the nextSuggestedCall returned with outcome_unknown, then verify project state before deciding to issue a new operation.",
         ["annotations"] = new JsonObject { ["readOnlyHint"] = true, ["destructiveHint"] = false, ["openWorldHint"] = false },
+        ["outputSchema"] = RelayOutputContracts.CommandStatus(),
         ["inputSchema"] = new JsonObject
         {
             ["type"] = "object",
@@ -1566,6 +1587,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     {
         ["name"] = "_server_info",
         ["description"] = "UniBridge Unity MCP discovery/status tool. Search aliases: UniBridge, Unity, ValidateScript, RefreshAssets, RequestScriptCompilationNoWait, WaitForReadyAfterReload, GetCompilationDiagnostics, ReadConsole, DiagnosticSummary, ClearConsole, PlayMode, WaitForPlayMode, WaitForEditMode, ValidateAdditiveSceneRegistration. Inspect relay state, Unity bridge connections, available tools, or force a Unity reconnect.",
+        ["outputSchema"] = RelayOutputContracts.ServerInfo(),
         ["inputSchema"] = new JsonObject
         {
             ["type"] = "object",
@@ -1585,24 +1607,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
 
     async Task WriteToolTextResultAsync(JsonNode? id, JsonNode payload, bool isError, CancellationToken ct)
     {
-        var result = new JsonObject
-        {
-            ["content"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["type"] = "text",
-                    ["text"] = payload.ToJsonString(PrettyJson)
-                }
-            }
-        };
-
-        if (payload is JsonObject obj && obj["structuredContent"] != null)
-            result["structuredContent"] = obj["structuredContent"]!.DeepClone();
-
-        if (isError)
-            result["isError"] = true;
-
+        var result = RelayOutputContracts.ToolResult(payload, SupportsStructuredOutput, isError);
         await WriteResultAsync(id, result, ct).ConfigureAwait(false);
     }
 

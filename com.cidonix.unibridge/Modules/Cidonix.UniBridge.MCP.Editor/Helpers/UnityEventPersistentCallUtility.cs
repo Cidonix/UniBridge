@@ -11,6 +11,7 @@ using UnityEditor.Events;
 using UnityEngine;
 using UnityEngine.Events;
 using Object = UnityEngine.Object;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -663,7 +664,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 
             if (targetToken.Type == JTokenType.Integer)
             {
-                return UnityApiAdapter.GetObjectFromId(targetToken.ToObject<long>());
+                return UnityApiAdapter.GetObjectFromId(targetToken.ToObjectIndependent<long>());
             }
 
             if (targetToken.Type == JTokenType.String)
@@ -718,7 +719,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             Object value;
             if (token.Type == JTokenType.Integer)
             {
-                value = UnityApiAdapter.GetObjectFromId(token.ToObject<long>());
+                value = UnityApiAdapter.GetObjectFromId(token.ToObjectIndependent<long>());
             }
             else if (token.Type == JTokenType.String)
             {
@@ -924,7 +925,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return parsed;
             }
 
-            return token.ToObject<int>();
+            return token.ToObjectIndependent<int>();
         }
 
         static float ReadFloat(JToken token)
@@ -934,7 +935,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return parsed;
             }
 
-            return token.ToObject<float>();
+            return token.ToObjectIndependent<float>();
         }
 
         static bool ReadBool(JToken token)
@@ -944,7 +945,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 return parsed;
             }
 
-            return token.ToObject<bool>();
+            return token.ToObjectIndependent<bool>();
         }
 
         static Object LoadAssetReference(string pathOrGuid, Type expectedType)

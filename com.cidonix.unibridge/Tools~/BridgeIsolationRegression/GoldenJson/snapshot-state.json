@@ -1,0 +1,55 @@
+{
+  "snapshotId": "golden-snapshot",
+  "name": "Збережений редактор",
+  "createdUtc": "2026-10-09T01:02:03Z",
+  "project": {
+    "id": "golden",
+    "name": "Golden",
+    "root": "X:/Golden",
+    "unityVersion": "6000.6.5f1"
+  },
+  "scenes": {
+    "activeScenePath": "Assets/Golden.unity",
+    "activeSceneName": "Golden",
+    "loadedScenes": [
+      {
+        "path": "Assets/Golden.unity",
+        "name": "Golden",
+        "isLoaded": true,
+        "isDirty": true,
+        "buildIndex": -1,
+        "rootCount": 2
+      }
+    ]
+  },
+  "sceneView": {
+    "exists": true,
+    "pivot": {
+      "x": 1.25,
+      "y": -2.5,
+      "z": 0.0
+    },
+    "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+    },
+    "size": 10.5,
+    "orthographic": true,
+    "in2DMode": true
+  },
+  "selection": {
+    "activeGlobalId": "GlobalObjectId_V1-golden",
+    "objects": []
+  },
+  "prefabStage": {
+    "isOpen": false,
+    "isDirty": false
+  },
+  "prefabAutoSave": {
+    "prefabModeAllowAutoSave": false
+  },
+  "windows": [],
+  "dockTabs": []
+}

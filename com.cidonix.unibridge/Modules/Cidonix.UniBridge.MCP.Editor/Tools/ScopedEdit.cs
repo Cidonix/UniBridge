@@ -98,7 +98,7 @@ Returns:
 
                 var batch = BuildNestedBatch(parameters, steps, dryRun, name, scopePath, isScene);
                 var batchResult = await BatchActions.HandleCommand(batch);
-                var batchJson = JObject.FromObject(batchResult);
+                var batchJson = McpJson.ObjectFromObject(batchResult);
                 var batchSuccess = batchJson.Value<bool?>("success") ?? true;
 
                 object saveResult = null;

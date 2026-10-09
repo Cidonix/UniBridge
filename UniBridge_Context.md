@@ -1,5 +1,107 @@
 # UniBridge Context
 
+## 2026-10-09 - Guarded restore safety (point 5, qualified 0.2.60)
+
+- Owner authorized the four selected restore-safety findings: dirty-scene
+  protection, truthful revert outcomes, explicit write ownership/concurrency
+  guards, and baseline/scan/metadata integrity. Existing qualified 0.2.59
+  changes and author files are preserved; all helper launches are elevated.
+- WorkSession version-2 baselines fingerprint the actual captured byte stream
+  and expose scan completeness. Explicit before/expected-after receipts guard
+  owned writes; filesystem differences alone never establish authorship.
+- Revert uses one-use preview PlanId admission, verifies capture/current hashes,
+  preserves unrelated metadata and unknown writes, locks existing restore
+  targets and retains pre-restore/quarantined bytes under Library for recovery.
+- Snapshot restore retains already-loaded scenes, opens missing scenes
+  additively and closes only planned extras with dirty/save guards. Failed or
+  uncertain saves report failure and stop subsequent scene-set changes.
+- Added asset/metadata groups compensate without replacing concurrent files;
+  independent companions are rechecked before quarantine, receipt commit and
+  automatic-refresh admission. Returned paths are listed as compensatedPaths,
+  separately from completed reverted entries. Auto-refresh suppression balances
+  through its own finally, including partial verification/compensation errors.
+- Qualification passed 83 production-linked isolated checks (53 WorkSession,
+  30 Snapshot), 51 live WorkSession MCP checks, 42 automatic Script writer checks,
+  and 18 live Snapshot guards including six actual scene cases without skips.
+  The WorkSession phase is explicitly classified from a preserved combined run.
+- Actual denied SaveScene returned partial/success=false without closing the
+  dirty scenes. A PID/project/run-specific helper cancels only the owned native
+  Moving file failed dialog. Its matcher/lifecycle passed 27 checks and guarded
+  fixture cleanup passed five. Early fixture setup/timeout reports are retained.
+- The transient fixture was removed by its recorded source/metadata hashes.
+  Final compilation is healthy, errors=0, all 110 assemblies current, stale=0,
+  missing=0. No Editor restart or author scene save was needed; helpers elevated.
+- Test package matches all 629 controlled source files byte-for-byte. Of 9,649
+  baseline Assets/Packages/ProjectSettings files, only 12 expected existing package
+  files changed; 9,637 original files are unchanged. The 22 new controlled package
+  files are expected, no unrelated additions/removals occur, scenes/selection match.
+- Evidence: Temp/restore-safety-candidate-final.json,
+  Temp/restore-safety-worksession-live-qualified.json,
+  Temp/restore-safety-script-writer-live.json,
+  Temp/restore-safety-snapshot-live-qualified.json and
+  Temp/RestoreSafety-20261009/preservation.json. Repeatable suites are shipped in
+  Tools~/RestoreSafetyRegression. Legacy sessions/unknown serialized writes remain
+  reviewable and protected from automatic revert. Relay remains build.21.
+- Other-host upgrades/publication and the deferred native Mono crash are outside
+  this request. Existing point-4 and author changes remain preserved.
+
+## 2026-10-09 - Semantic obsolete API hints (point 4, qualified 0.2.59)
+
+- Owner requested the fourth comparison item: advisory hints from real bound
+  C# symbols and System.ObsoleteAttribute, independently implemented from the
+  installed Assistant's observed behavior. No external implementation is copied.
+- A Unity-free Roslyn analyzer and a current owning-assembly context builder
+  report source locations, warning/error metadata, actual signatures and
+  conservative advertised replacement/result-type guidance. No source rewrite,
+  assembly emission or execution is performed. Missing context and budgets are
+  explicit partial/unavailable results; basic validation remains inexpensive.
+- Script validation/edit integration and ScriptIntelligence semantic details
+  are qualified. Bulk intelligence has explicit semantic coverage budgets;
+  obsolete-name regex guesses are replaced by bound metadata checks.
+- Source baseline is published 0.2.58 at 338ba54. Native Mono crash investigation
+  remains deferred; this feature does not claim to fix that crash. Preserve all
+  author changes and run application/helper launches as Administrator.
+- Final evidence: 66/66 production-linked checks (65 semantic scenarios and
+  whole helper compile against installed Unity API/.NET 4.8), and 76/76 live
+  MCP checks in Unity 6000.6.5f1. Standalone runtime is .NET 10; live Editor
+  results are separate Mono/runtime qualification. Reports retained under
+  Temp/ObsoleteApi-20261009; the live suite is shipped alongside core regression.
+- Live checks include actual GetInstanceID/GetEntityId result and obsolete
+  conversion guidance, custom symbols, active defines, suppressed warnings,
+  preview routes, source refresh after reload, failed validation, no-op and
+  stale guards, bounded bulk coverage and cleanup. The owned fixture and .meta
+  are removed; final compilation is healthy and scenes/selection preserved.
+- Root fixed two verified integration gaps: parser-only missing /out error
+  incorrectly marked complete contexts partial, and ApplyTextEdits wrapped the
+  report only in nested details. Nominal parser output is never emitted; the
+  wrapper now exposes the advisory report without changing existing details.
+- Owner subsequently authorized delivery to Domovyk/Corgi and a full Domovyk
+  Plastic check-in. Both 0.2.58 baselines match all 597 controlled source files;
+  Domovyk saved pending was empty. Delivery/verification follows qualification.
+- Test final protected overlay is byte-equal for all 607 controlled package
+  files. Of 9,639 baseline Assets/Packages/ProjectSettings files, only the 14
+  expected existing package files changed; all other 9,625 original files are
+  unchanged, with no unexpected additions/removals. Global Codex configuration
+  and scene/selection state are unchanged. UTF-8 baseline JSON reads are explicit.
+- Corgi delivery passed 28/28 host checks: all 607 package files match source,
+  seven extra Unity metadata files and 8,955 author/settings/dependency files
+  are unchanged. Same Editor PID/scenes/selection/Prefab Stage; 140 current
+  assemblies. Actual current Unity replacement hints have available coverage.
+- Typed MCP tool registration already omitted explicit output schemas before
+  this feature; actual typed response JSON and updated input/tool descriptions
+  carry the report contract. The generic UniBridge_Script route publishes the
+  new output schema. No unrelated registry behavior is changed for this release.
+- Delivery complete: Test, Domovyk and Corgi each match all 607 frozen package
+  files at 0.2.59; the relay remains build.21. Domovyk and Corgi each passed
+  28/28 host checks without restarting Unity or saving author scenes.
+- Domovyk full Plastic check-in is cs281 on /main: exactly 25 files and one
+  directory, detailed Ukrainian comment, all 25 server file SHA256 values and
+  exact server paths verified. Full saved pending is empty. All 37 groups of
+  its 45 existing warnings match baseline, with 115 current assemblies.
+- Source Git remains on published 338ba54 with this qualified 0.2.59 feature
+  in the working tree; the current owner's publication request was the full
+  Domovyk checkpoint. Native Mono crash remains deferred, not claimed fixed.
+
 ## 2026-10-09 - UniBridge 0.2.58 source publication
 
 - Owner explicitly requested source Git commit/push after deferring the Mono
@@ -10572,3 +10674,254 @@ Docs/package:
 - після real revert `WorkSession Review` повернув `post_revert_paths=[]`;
 - фінальна консоль:
   `totalEntries=0`, `warningCount=0`, `errorCount=0`, `exceptionCount=0`.
+
+
+## 2026-10-09 - 0.2.60 delivery to Domovyk and Corgi, Plastic cs282
+
+- Owner explicitly authorized both embedded host updates and the full saved
+  Domovyk pending check-in. Domovyk began clean on Plastic cs281; Corgi has no
+  repository. Source Git commit/push was not requested in this delivery.
+- The v2 freeze contains 629 controlled package files. Delivery replaces 12
+  known original files and adds 22 qualified files, with guarded backups.
+  The new regression README uses verified parameters and the user-profile relay
+  path rather than personal home/project-ID literals. Only this documentation
+  changed after point-5 qualification; all eight production provenance hashes
+  remain exact. Intentional approved-Test-root fixture guards remain intact.
+- Domovyk: standard validation passed 16/16 changed C# files with zero errors
+  and warnings. One explicit RefreshAssets/domain boundary and project-scoped
+  read-only checks passed 25/25: version 0.2.60, 115 current assemblies, healthy
+  compilation, zero errors/critical/stale/missing outputs. Existing 45 native
+  warnings in 37 groups match the prior categories; no UniBridge warning group.
+- Corgi Engine v10: 10/10 production C# files validated with zero errors and
+  warnings; one explicit refresh recovered across reload. Host checks passed
+  27/27 with 140 current assemblies, zero compilation/critical/stale/missing
+  outputs and the loaded owned-write/PlanId/snapshot-retention contracts.
+  Retained logger errors are zero; this is not a warning-free player-build claim.
+- Final post-check-in filesystem audit proves all 5,802 protected Domovyk and
+  8,955 Corgi author/dependency files and file sets unchanged. Both packages match
+  every frozen byte. All 13 Domovyk target-only extras (seven Unity metadata and
+  six ignored IDE/cache files), seven Corgi metadata files, contexts' original
+  prefixes, loaded scenes, selection, Prefab Stage and Editor state are retained.
+  No authored scene was saved/reloaded/discarded, no fixtures injected into these
+  hosts, and no gameplay/player build or Editor restart was needed. All helper
+  processes inherited Administrator rights; global client config is unchanged.
+- Full Domovyk checkpoint is cs282 on /main: 35 files plus one directory,
+  including Domovyk_context.md. Exact server file downloads match all reviewed
+  SHA256 values, paths and the detailed Ukrainian comment. Final normal/private
+  pending sets are empty. Corgi had no SCM operation.
+- Initial delivery audit assumptions were corrected without changing author
+  bytes: preserve every target-only extra, compare unordered Plastic rows,
+  download revisions to files because cm cat stdout strips UTF-8 BOM, and decode
+  JSON as UTF-8-sig on Windows. Earlier audit output remains with the evidence;
+  final raw-byte/server and author-state proofs pass.
+- Evidence: Temp/RestoreSafetyDelivery-20261009/source-freeze-v2.json,
+  payload-review.json and final-delivery-audit.json; each host's
+  Library/AgentValidation/UniBridge0260-20261009; Domovyk's
+  Library/AgentValidation/UniBridge0260-checkin-20261009/
+  server-publication-verification-exact.json. Native Mono crash work stays deferred.
+
+
+## 2026-10-09 - Authorized sequential plan, points 6 through 12
+
+- Owner authorized implementing point 6, then continuing automatically through
+  point 12 in the existing order. Each stage must pass relevant actual tests
+  before its version is copied to Domovyk and Corgi Engine v10 and a Domovyk
+  Plastic checkpoint is made. Failed tests block that stage's delivery; their
+  evidence is retained and causes repaired before progression.
+- Starting state: qualified 0.2.60; Domovyk cs282, Corgi has no repository.
+  Existing uncommitted 0.2.59/0.2.60 source work and author files are preserved.
+  Source Git commit/push is not included in the new authorization.
+- Stage versions planned 0.2.61 through 0.2.67; stage 6 begins with UXML/USS
+  structural preflight, truthful Unity import/readback, and no-write preview.
+  Later stages remain pending until their preceding host delivery is complete.
+- All launches must inherit Administrator rights. Author scenes and unrelated
+  pending work must remain intact; native Mono crash diagnosis stays separate.
+- Local progress and per-stage source/protection/evidence records are retained
+  under Temp/SequentialPlan-20261009.
+
+
+## 2026-10-09 - Point 6 candidate 0.2.61
+
+Added structural UXML/USS validation, pure source preview, synchronous import diagnostics, exact readback, guarded baseline recovery and original-read hash guards on UXML patches. Whole-tool production-linked suite passed 101/101, including the stale-original-A/current-author-B routes. Version 0.2.61 is a candidate until actual Unity imports and downstream qualification pass; no source Git publication or native Mono crash claim.
+
+Final point 6 candidate qualification supersedes the earlier 101-case report: 106/106 with current frozen production source hashes; both UXML and USS native import flags are checked. Isolated fixture cleanup passed 8/8. Actual Unity imports and host delivery remain pending.
+
+Actual first native gate passed17/17 with110 fresh assemblies and9029 author files preserved. Its first live fixture found a false test assumption: unknown custom control imports without diagnostics; missing UXML template/style and undefined template do yield real import failures with guarded baseline restoration. Failed report retained and its exact known fixture source/meta removed safely. Native read-only binding counterproof exposed candidate false rejection, now repaired alongside legacy src/path. Final unchanged production-linked qualification115/115 and fixture cleanup11/11; actual importer scope explicitly excludes instantiation/custom constructors. Downstream sync remains gated on renewed native/live success.
+
+Point6 central native/live qualification complete:115/115 whole unchanged production-linked checks,11/11 guarded fixture-cleanup checks,206/206 actual Unity6000.6.5f1 MCP checks; all fixtures removed,9029 author/dependency files and scene/selection/Prefab Stage retained.110 current assemblies,0 compiler errors/stale/missing outputs. Corrective native reports retained; no constructor execution. Final package freeze and downstream0.2.61 delivery/Plastic checkpoint now in progress.
+
+
+## 2026-10-09 - Point 6 delivered, point 7 started
+
+UniBridge0.2.61 delivered with exact641-file frozen parity to Test, Domovyk and Corgi. Central115/115 standalone,11/11 cleanup,206/206 real UXML/USS MCP import checks; Test110freshassemblies and9029authorfiles protected. Domovyk18/18,115freshassemblies,5797author/dependencyfiles retained,45pre-existingwarnings; Corgi18/18,140freshassemblies,8955author/dependencyfiles retained. Noauthor scene saves/Consoleclear/playerbuild; launchesAdministrator. Domovyk Plasticcs283/main checkedin19files+1directory with exactserverfiledownloads/comment/savedbytes and emptypendingstatus verified. CorgiSCM intentionally absent; sourceGitpublication notrequested. Progressledger nowpoint7inprogress; completed6. Prior nativeincorrectcustom-negative/readonlybindingcounterproof/correctiveprobe remain inTemp evidence.
+
+
+## 2026-10-09 - Point 7 implementation in progress
+
+Semantic Roslyn audit identified359 global-Newtonsoft coupled Editor calls across51files, with explicit serializers preserved; migration uses a fresh JsonSerializer.Create facade. Root dependency review found8 further Tracing producer/config calls and1 Runtime UnityObjectConverter instance-ID conversion that ignored its supplied serializer; their isolation is in the same Editor pipeline scope. Bridge transaction includes committed worker gate, generation-local state, guarded queue admission and independent cleanup even afterpartialStart. Offline fault/golden/poison tests and actual native gates remain pending; nohostpackage updates untilqualification. NativeMonoProcessInfoCollector crash remainsseparate/unproven. SourceGitnotpublished.
+
+Point 7 candidate 0.2.62: production-linked qualification 129/129; thirteen original golden byte contracts pass in three global settings modes. Complete current Runtime/Tracing/Editor compile covers 243 source files and twelve conditional profiles with zero errors/global-coupled sites. Continuity UIToolkit115/115 and Restore83/83 passed with actual McpJson dependency. Two initial date-format test expectations and captured-cancelled-start control failure retained; cancelled callback guard repaired. Native scoped global-factory fixture and ordinary short-lived MCP tests prepared; exact delegate and source/meta cleanup guards required. Actual Unity and host delivery remain pending; no source Git publication or native crash causal claim.
+
+Final point7 offline candidate qualification146/146 supersedes129 after scheduler check+hook locking and TransportStore mutator atomicity. Complete current production243sources/12conditionalprofiles zeroerrors/zero globalcoupledsites; source hashes match,15 harnessfiles frozen. Native fixture compiled against305 actualUnity references zero diagnostics; Native/host execution follows same immutable candidate. Live preinstall Test state now has one author-selected stylesheet, retained as the fresh baseline; no restoration to historical selection0.
+
+Point7 native qualification86/86 onUnity6000.6.5f1 withfourfreshordinaryMCPrelayclients whileownedglobalNewtonsoftfactorythrows. ActualMcpJson/TraceJson/protocol+typedEditor/nestedUITKroutes neverconsultedfactory; exactoriginaldelegaterestored andownedsource/meta pairsremoved. Standard73changedCS validated0errors;110freshassemblies, compiler/stale/missing/consoleerrors0;9029author/dependencyfilesunchanged. Initialreload selection1stylesheet changedto0; originunassigned, questionpending, currentemptyselectionpreserved acrossnativebaseline/final withnorollback. Initial15/16prelivefailure andexplicitpostlive16/16native-selectionqualification retained. Scene/PrefabStage/dirtyflagsunchanged. Final676filefreeze/downstreamdelivery follows; sourceGit/nativecrashclaimsunchanged.
+
+
+Point7 clarification: owner confirmed the asset click and explicitly granted full testing freedom in UniBridge_Test_Project; transient selection/UI state requires no further confirmation. Earlier unassigned-selection notes are superseded; author byte protection remains for downstream projects. Portable native runner now requires explicit test-fixture opt-in and configured/native root+ID equality. Recorded native response replay verified23 tagged envelopes and2 known relay reload-recovery envelopes, rejecting3 invalid identities/envelope forms; original native86/86 remains the feature proof. Final freeze v2 follows.
+
+
+Point7 delivered0.2.62:146/146 offline,86/86 native,676-file exact package parity; Test16/16,Domovyk17/17 with115assemblies,Corgi17/17 with140assemblies. Domovyk cs284/main includes100files+2directories; server bytes/comment/paths/pending verified. All downstream authors retained; sourceGitnotpublished. Point8 actual window-state RTT qualification now starts. Transient pre-overlay Test parity failure is retained and post-overlay16/16 passes; it was orchestration timing, not production behavior.
+
+
+Point8 actual setup: baseline01 retained (lazy relay status queried before connection); repairedrunner offline31/31 against actual68-descriptor catalogs/native payloads. baseline02 retains successful initialize/catalog/identity/snapshot but Windows foreground refusal; no wake conclusion and9718 author/package/settings files unchanged. Supported Computer Use selected exactly TestHWND8921894 and clicked observed title bar to obtain actual foregroundPID123932. Owner full Test freedom permits temporary Editor/UI state. Remaining measurement uses externally prepared single-state windows with readonly native observation, avoiding additional custom UI activation. No source production wake change yet.
+
+
+## 2026-10-09 - Point 8 measured baseline and 0.2.63 candidate
+
+Actual Unity6000.6.5f1 baseline completed36 measured ContextSnapshot/GetState calls across foreground,visiblebackground,minimized states; allRTT<100ms. Snapshot warm/new medians3.7/6.2,70.4/59.3,35.1/20.7ms;3independentwarm+9shortrelays,84totalprotocolrequests.9718Assets/Packages/ProjectSettingsfiles retainedperrun; actualhandlerclock,payload,identity,state/provenance verified. No productionwakechange justified; stage8 adds portable explicitoptin read-only single-state qualification. Initial lazy-status,OSforeground-refusal andexternalbarrier setup failures retained, distinctfrompackagefault. Shippingtool qualification/downstream0.2.63 delivery stillpending; sourceGitnotpublished/nativeMonocrashseparate. OwnerTestfullfreedom confirmed; transientselection/UI noapproval blocker.
+
+
+Point8 public-tool qualification: Shipping-tool qualification also completed 36 actual Unity 6000.6.5f1 calls through the shipped PowerShell entry point, with three warm and nine new relay processes. Maximum RTT was 106.8 ms; no measured timeout or wake defect. All 9722 protected Assets/Packages/ProjectSettings files and actual scene, selection and Prefab Stage state were retained in each run. ContextSnapshot medians: foreground: 3.6/5.8 ms (warm/new); background: 60.7/65.1 ms (warm/new); minimized: 28.1/39.4 ms (warm/new). The independent recorded replay passed 238 assertions over 36 historical measured payloads and twelve startup sequences; it made no new native calls. The initial cached package-version gates and withheld preparation acknowledgment failure remain in local evidence. Final package/downstream delivery follows; sourceGit not published.
+
+Stage8 release evidence organized under its own CHANGELOG version section; actual qualification unchanged.
+
+
+## 2026-10-09 - Point8 delivery complete
+
+0.2.63 exact680file freeze deliveredTest16/16,Domovyk17/17 115assemblies5797authorfiles,Corgi17/17 140assemblies8955authorfiles. Domovyk cs285/main completepending10files+1dir; serverrawbytes/comment/paths/savedbytes/emptyprivatepending ninechecks passed. Metadata63confirmednativeafteroneForcecompileperhost; reloadread-disconnect evidence retained, compile not replayed. TemporaryPackageManagerwindowsclosed; sourceGitnotpublished. Point9 nativeProfilerqualification next.
+
+
+Point9 prepromotion review confirmed filter/cap ordering falsepartial and requestedThreadID coverage gaps; originalfrozen candidates retained, derivative regressions/fullcompile preparing. Guarded version/sourcepromotion and exactUUIDfixture install/capture/hash-owned cleanup helpers prepared, notyetexecuted. Test freedomperowner; no incidentalUIconfirmation. Parallel11provider/relay and12assembly candidates remainTemponly;10dirtyPrefab/URPnativefixture preparing.
+
+
+## 2026-10-09 - Point9 candidate 0.2.64
+
+Promoted independently frozen recordedProfiler candidates with physicaltree/GCmetadata/partialoutcomes; actualUnity/nativefixture and downstreamqualification pending. Originalstage9candidate preserved, filter-cap/selected-ID coverage review incorporated in derivative. No sourceGitpublication/nativeMonocrashclaim.
+
+
+Point9 candidate64 installedTest688files;6changedCS standardvalidation0errors, native16/16 with110currentassemblies and9029protectedfiles. Native01failedbeforeProfilerrecording: testfixture plainNewtonsoft SceneViewVector3 recursion inAuthorState, provenConsoleexception atProbeBegin beforeactive/flagchanges. NoBegin/captureproduced, noRecordedFramesinvoked; failedreport+Consoleevidence retained,exact4ownedsource/metafiles removedwithmanifestguard. Freshscalar-onlynativefixturederivative preparing; no productionchangefromharnessfailure.
+
+Point9 native02 recorded actual main/worker frames but independent fixture CopyDirectFrame failed on unnamed Raw sample at StartsWith (null), before RuntimeProfiler reads. Failed report retained; separate nativev3 null-safe harness preparation, production adapter already handles unnamed sample. Restoration verified inactive/workerStopped, exact flags/authorstate and all9029 filehashes; exact4ownedsource/metafiles removed, ordinary reloadready. No sourcepublication/nativecrashclaim.
+
+
+## 2026-10-09 - Point9 native qualification complete
+
+Qualified in the actual Unity 6000.6.5f1 Mono Editor: 83 native runner checks and 2405 independent physical Raw/no-merge Hierarchy oracle checks; 391 actual raw samples. RecordedFrames preserves stopped recording, history, targets and author state. Explicit missing-thread, metadata-disabled and extraction-cap results remain partial errors. All 9029 protected files retained; exact owned fixture removed. Offline reader regression: 59 assertions; whole Editor four conditional API profiles compiled without errors. Two initial harness failures (Unity-struct serialization and an unnamed sample predicate) are retained separately. No native crash-causality or Unity CoreCLR qualification is claimed.
+Downstream delivery/check-in follows; source Git not published.
+
+Point9 delivered0.2.64 exact688files: Test16/16 110assemblies9029files,Dom17/17 115assemblies5797files,Corgi17/17 140assemblies8955files. FullDomovykcs286/main16savedfiles, nine server exactrawbytes/comment/path/pending checks passed. Native83runner+2405independentphysicalchecks391actualrawsamples; fixturesremoved,sourceGitnotpublished. Point10 next.
+
+
+## 2026-10-09 - Point10 candidate 0.2.65
+
+Frozen Capture2DRegion sources promoted with 90 offline checks and 14 independent oracle controls; actual MainStage, dirtyPrefab and URP qualification/downstream delivery pending. No source Git publication/native crash claim.
+
+Point10 candidateREADME external output fields corrected to actual OutputDirectory/FileName before nativequalification; no runtime source change. Initial sourcefreeze01 retained; updated nativefreeze02 follows.
+
+Point10 MainStage01 failedpre-capturefixtureassertion: HideAndDontSave removes GO fromactualownedconstructionscene; officialUnitysemantics+actualnativecheckconsistent. No Capture invoked; authorstate/9029protectedhashes exact. ReviewedfailedreportSHA29a3258c22896f80d1fad77b1e167f37b49eb17d42fb5ecefbc23a72a27296a7, exact6source/PNG/metafiles quarantinedwithreceipt, refreshonce. Plainownedsceneobjectderivativepreparing; productioncapturecameraunchanged/nativenotqualified.
+
+Point10 nativeMain02 executedactual26checks allpass/productionoutputs513x257; independentRGBAoracle failed10153transparentpixels (graybackgroundopaque) whileeveryopaqueexpectedpixel exact. Authorstate/9029filehashes exact, known6source/PNG/metafilesquarantined, actualPNG/evidence retained. SeparateordinaryMCPtransportprobe confirmed REAL defect: Capture2DRegion strictparameterparser rejectsrelay-injected __unibridge_expected_project_root beforewrite; zeroPNG created. Independentcandidate-v2 transportmetadata handling +actualMCPcases preparing, no hostdelivery yet. Graybackgroundcausality separatelytesting; nativepipeline source notclaimedqualified.
+
+
+Point10 confirmed ordinaryMCP root metadata rejection repaired in independentlyfrozen candidate-v2: clone request, remove exact ProjectContextGuard canonical metadata before business planner; other unknown parameters still fail and caller JObject stays unchanged. 99offline/fullAPIcompile passed, new nativeMCP/sourcepixel gates pending; other3productionCS unchanged.
+
+Point10 actualordinaryMCP render afterprivate-root repair PASSED atauthor-backdrop02; newoutputcase notfailedcommandreplay. Confirmed10153/10153graypixelsofpreviousnative02equalindependentauthor-onlyMaincapture; all121688opaquesourcepixels exact. ExistingAuthorscenebackdrop correctlyrenderedthroughtransparentfixtureholes, so no productioncolorchange. RetainedMain+grid332545pixelsfullstitched0mismatch+GPUactualGpuReadbackidentical. Upcomingfixture4 journals temporaryauthorRenderer.forceRenderingOff and restoresflags; actualsourcepatterngate stillpending.
+
+## 2026-10-09 - Point10 native gate audit and point12 fixture preparation
+
+Point10 remains unqualified for delivery: Main03 has 44 independent pixel checks and exact renderer restoration, but one native Preview resource check was false despite its top-level flag. Prefab01 state/resource failure is retained. All known fixtures were individually quarantined without author-file overwrite. Clean-control03 passed 26 ordinary-MCP checks and four literal clean-empty-scene checkpoints; SetActiveScene returned false for an already-active scene, so earlier test admissions were incorrect. No production camera dirty-state defect was confirmed. A controlled Test-only scene reload restored the pre-test clean scene state without saving; post-cleanup qualification passed16/16, all9029 original files and692 current package files exact. Truthful per-check/staged pixel gates remain pending.
+
+Point12 Temp helper preparation v2 is frozen separately:91 synthetic guard checks passed, exact6 payloads+9 GUID metadata rows, no-reparse ancestry, concurrent-byte preservation and partial recovery. Root promotion helper is prepared only; source22 mapping and prior stage11 delivery guards remain mandatory. No source Git publication or native Mono crash-causality claim.
+
+## 2026-10-09 - Point10 honest native recovery and continuing qualification
+
+Main05 genuinely passed all45 runner,36 native and44 independent pixel checks, with196 temporarily suppressed renderers restored and9029 protected files unchanged. Prefab04 passed its relative-state and pixel checks, but its initial author scene was already dirty; it is not accepted as proof of clean-scene preservation. Failed earlier reports remain immutable. A plain-camera control passed38 runner/27 native checks without rendering or an author dirty-state change; no production camera-lifecycle defect was confirmed.
+
+URP01 failed during fixture setup before any capture. Unity serialized two legacy ProjectSettings files while the fixture selected an owned URP configuration. Root verified the exact original hashes against retained backup bytes, stopped only the identified Test Editor under the owner's full testing authorization, quarantined18 exact owned fixture files and restored only those two proven test writes. All9029 original protected files were verified exact before an elevated restart. New Test PID93152 is healthy; post-recovery package/author qualification16/16 passed with692 frozen package files and zero compiler errors. Fresh URP qualification will use a UUID-owned nested sandbox with its own canonical settings. Domovyk/Corgi remain on verified0.2.64 until point10 genuinely qualifies.
+
+The owner explicitly grants full freedom in UniBridge_Test_Project; temporary selection and Editor UI state are diagnostic, not approval boundaries. Source/test author-file evidence remains honest and foreign Domovyk/Corgi work stays protected. Point12 native-v2 now materializes initial scene/view/camera snapshots; helper-v3 passed95 synthetic ownership guards. These remain preparation only. Source Git is unpublished; native Mono ProcessInfoCollector crash causality remains a separate unresolved investigation.
+
+Point10 Prefab05 started with a genuinely clean author scene and exposed a real dirty flag side effect after the first full capture. Production-causal01 and independent plain-render-causal01 retain native sceneDirtied stacks: camera render, PNG encoding, resource cleanup and camera destruction preserve clean state; ClosePreviewScene alone changes the original scene from clean to dirty. All9029 protected file hashes and actual author cameras remain exact. Failed fixtures were individually quarantined and only the test-caused dirty in-memory scene was reloaded without saving. A narrow candidate removes the unnecessary owned preview scene and uses the existing hidden EditorUtility camera pattern; no clearing dirty flags is accepted as a fix. Fresh Main/Prefab/URP native qualification remains required.
+
+The owner is playing a game and asked not to interfere with computer control. Root stopped mouse/keyboard control after the authorized Unity Administrator warning click; remaining work uses ordinary MCP and background commands. The owned URP sandbox is normally booted and configured, with its own saved baseline scene and exact692-file .65 package. Canonical native reload proof will replace an unnecessary GUI restart, without changing protected-file/pixel/typed-pipeline gates. Original Test/Domovyk/Corgi assets and settings are not copied into the sandbox.
+
+
+Point10 candidate-v3 narrow lifecycle repair promoted: only Renderer uses the existing hidden EditorUtility Camera construction; no temporary PreviewScene New/Move/Close. Native close-stack causality retained. All99 linked controls and actual whole API compilation passed. CameraType and scene binding remain unchanged. Fresh Main/cleanPrefab/URP native qualification and downstream delivery are pending.
+
+Point10 current v3 Main06 genuinely passed45 runner/37 native/44 strict pixel checks; all196 renderer flags and9029 protected files restored. Clean Prefab06 and standalone hidden Game-camera control exposed a separate delayed native sceneDirtied event after immediate capture/resource cleanup stayed clean. Their failed reports remain false and immutable; known12 files were quarantined per attempt, test-caused in-memory dirty state reloaded without saving. No CameraType change is inferred. Fresh no-camera/no-render setup-hold passed38 runner/23 native checks over ten actual Editor seconds with zero dirty events and exact author state; all12 owned files then normally quarantined. Same-duration activation/Preview and hidden-camera-without-render controls follow.
+
+URP02 in the canonical owned nested sandbox failed before any Capture dispatch: the test atomic JSON writer appended a long UUID suffix and exceeded native Mono path length. The canonical47 protected files stayed exact. No native qualification is claimed; only the proven initial four fixture files may be contained with independent identity/GUID/hash/current-MCP evidence. A Temp-only derivative keeps CreateNew and same-directory atomic File.Move while shortening the temporary basename. User gaming continues without mouse/keyboard actions or further GUI launches.
+
+Point10 matched ten-second native controls now isolate camera type: activation+pure Preview passed38/26, hidden Game-camera full setup/destruction without rendering passed38/27, rendered hidden Preview camera passed38/28 with zero dirty events, while the same v12 rendered Game-camera control changed the clean original author scene to dirty on the next native update. No other author state or9029 protected bytes changed. Known12 failed files were individually quarantined; the test-caused dirty scene was reloaded without saving. A one-line CameraType.Preview derivative is preparing with unchanged99 offline controls and fresh actual full gates; native internal mechanism is not claimed beyond this observed differential.
+
+URP03 current v3 ordinary five-capture qualification genuinely passed78 runner/52 native/16 strict pixel checks in the canonical sandbox with47 protected files/settings exact, correct dirty Prefab isolation and no dirty events. Known12 source/assets/metas were normally quarantined. It remains historical v3 proof if the camera-type derivative changes production; fresh v4 Main/Prefab/URP qualification is mandatory before delivery.
+
+
+## 2026-10-09 - Point10 Preview camera classification candidate
+
+Candidate-v4 changes only the standalone service Camera to CameraType.Preview. Matched actual v12 Game render caused delayed author-scene dirtiness while Preview type preserved the clean baseline over ten seconds; setup/production Preview and identical no-render camera controls remained clean. Offline route 99/99 and whole Editor API compilation passed. Fresh production Main/Prefab/URP pixel qualification and host delivery are still pending; no native Mono crash fix or source Git publication is claimed.
+
+
+## 2026-10-09 - Point10 native qualification complete
+
+Qualified in the actual Unity 6000.6.5f1 Mono Editor: 201 native runner checks across MainStage, dirty owned PrefabStage and typed URP; 16 ordinary registered MCP capture responses. MainStage retains 45 runner checks, 37 native fixture checks and 44 unchanged strict pixel oracle checks, including every decoded RGBA pixel, full/tiled seams, shifted grids and synchronous/GPU parity. PrefabStage and URP retain independent pattern/MainStage-decoy pixel checks, clean original scene dirtiness/root identities, real hierarchy-camera components/transforms/typed targets, dirty-stage metadata and author-file protection. Editor UI pose/selection are diagnostics and are deliberately not restored. URP qualification uses a separate owned nested blank Unity project with canonical settings configured and serialized before the capture baseline. The existing owned canonical probe CS was explicitly journaled and replaced while its meta/GUID and the 47-file inventory were preserved; its fresh native reload proves the actual loaded package Preview camera setter, native assembly identity, typed URP and exact settings before capture. The capture fixture reuses its already-active typed URP read-only; its native ProjectSettings bytes remain exact. All 9029 Main baseline protected files remain byte-identical; exact owned fixtures and paired metadata are quarantined with verified recovery hashes (6/12/12 files). Offline route qualification: 99 assertions; whole Editor API compilation passed. Initial failed harness/native attempts remain separate evidence and are not counted as PASS. No native crash-causality or Unity CoreCLR qualification is claimed.
+Downstream delivery/check-in follows; source Git not published.
+
+
+Point10 delivered0.2.65 exact692files: Test16/16 110assemblies9029protected,Dom17/17 115assemblies5797protected,Corgi17/17 140assemblies8955protected. FullDomcs287/main12savedfiles andnine exactserverbytes/comment/path/pending checksPASS. Currentv4 nativeMain07/Prefab07/URP04 total201runner139native77strictpixels16ordinarycaptures,normal6/12/12quarantines; sourceGitnotpublished. Point11 next.
+
+
+## 2026-10-09 - Point11 candidate0.2.66 / relay build22
+
+Exact registry final-freeze-v3 and relay output-contract freeze promoted only after completed stage10. Explicit typed/JObject/primitive/generic schema routes; real Task<T>/ValueTask<T> awaiting; once-only truthful completed-handler projection and retained evidence. Manual13 source_family_partial, opaque envelope_only, wholeActionDataQualified=false. MCP modern/older compatibility and query-only recovery preserved. Frozen 4RID self-contained artifacts, Windows help/version only; no physical Linux/macOS runtime claim. Whole current source compiled12 profiles with241 Editor files,0 errors/warnings. Native action qualification and downstream host delivery pending; no source Git publication/native crash-causality claim.
+
+
+Point11 candidate0.2.66 promoted only after completed10/Domcs287: 22 guarded source/artifact/doc payloads andknownmetadata; Source/Test702packagefiles exact, actual Testnative16/16 healthy110assemblies9029protected. The prematurely started zero-file validation is explicitly excluded and retained; all8 changedCSharpfiles genuinely validated0errors aftercompletedoverlay, oneRefresh usedthatproof. Actual nativefixture-v1 API preflight failedbeforeanyfixtureinstall: Unity6000.6 SceneHandle cannotimplicitlybe JToken at2snapshotfields. Minimal immutable test-onlystringidentityderivative preparing; coreproductioncompilerhealthy/nativeoutputqualificationpending. NoGUIcontrol/sourceGitpublication.
+
+
+## 2026-10-09 - Point11 native qualification complete
+
+Qualified in the actual Unity Mono Editor through 27 ordinary registered MCP tool responses and 327 per-check native gates; exact live relay build.22 PID/executable/parent/time/hash observed. DTO, Task<T>, ValueTask<T>, JObject and explicit-interface routes retain their authored text/structured contracts. One owned mutator completed once; RESULT_PROJECTION_FAILED preserves handlerCompleted=true/retryOriginal=false and truthful unavailable projection outcome, with no command replay. The13 reviewed core providers retain source_family_partial; the importer representative is parameter conversion before its handler. Opaque core schemas remain envelope_only and custom explicit schemas explicit_unqualified; wholeActionDataQualified=false. Independent Draft2020-12 validates actual descriptor/response contracts. 9029 protected author files and the whole installed package stayed identical. 9 exact owned fixture/marker/meta bytes are retained in quarantine; one Refresh, 7 post-cleanup gates and actual fresh catalog absence passed. Fresh complete current-source compile09 retains12 module/profile emissions,0errors/0warnings; metadata-only foreign-symbol profiles do not establish physical Linux/macOS or Unity CoreCLR behavior. Initial failed/superseded attempts remain separate evidence. Host delivery/check-in, source Git publication and native crash causality are verified separately.
+
+
+## 2026-10-10 - Point11 delivered 0.2.66
+
+Actual native327/327,27 tools/call responses/29 RPC requests,10 canonical routes/13 partial providers, one handler completion/fault getter/mutator send. Normal known9-file quarantine and one cleanup Refresh; fresh Test16/16, Domovyk17/17 and Corgi17/17, exact702 controlled package files. Full Domovyk cs288/main:24 saved files,9 server verification checks PASS; server bytes exact and normal/private pending empty. Context histories and authored files preserved. Source Git unpublished; native ProcessInfoCollector crash remains separate. Native Unity Mono/Windows verified; physical Linux/macOS and Unity CoreCLR not claimed.
+
+
+## 2026-10-09 - Point12 candidate0.2.67
+
+- Shared loaded-assembly catalog uses runtime identity, generation and weak snapshots; loaded-only type resolution retains partial/dynamic/locationless assemblies and reports ambiguity.
+- ComponentResolver and TypeSchema no longer keep strong type caches; supported collectible contexts can unload.
+- Owning Unity compilation context and bounded immutable PE reference images are shared by obsolete hints and semantic validation, with content hashes, aliases and truthful partial diagnostics.
+- Nineteen consumers use the shared helpers. Standalone CoreCLR is qualified separately from native Unity Mono; no Unity CoreCLR or native crash-causality claim.
+Standalone59/59; actual Unity Mono native catalog and continuity qualification pending. Source Git not published.
+
+
+## 2026-10-10 - Point12 native qualification complete
+
+Standalone production-linked catalog/semantic regression passed 59/59. Actual Unity 6000.6.5f1 Mono passed six native catalog cases and 61 ordinary-MCP runner checks (12 tool responses), plus 83 Profiler runner checks and 2249 unchanged oracle checks over 365 physical raw samples. Fresh MainStage Capture passed 45 runner/37 native fixture/44 strict pixel-oracle checks, including complete decoded RGBA images, tiled seams and GPU parity. Four full compile profiles passed for 244 current Editor sources with zero errors. Normal owned catalog/Profiler/Capture quarantines retained 15/4/6 exact files with GUIDs/hashes; all 9029 original author/dependency files remain exact after cleanup. The complete Test finalizer passed; downstream host delivery is verified separately. Standalone CoreCLR semantic and collectible-context regression is qualified separately. In native Unity Mono the installed strict semantic profile is structural only; owning-context and advisory obsolete hints are qualified for two source files and 301 compiler references. No native Unity CoreCLR, physical Linux/macOS, whole-action schema fidelity, native crash-causality or source Git publication is claimed.
+
+The first MainStage continuity attempt is retained as FAIL because the original scene was already dirty before its native Begin and before any renderer/object/PNG operation. Its exact four fixture files and excluded unexecuted preparations were separately quarantined. The current unsaved Test scene was preserved as a verified Library copy before a typed GUID-backed original-scene reload; its author source and metadata stayed unchanged. The helper itself used four additional owned files during the successful native gate and was removed afterwards. The dirty transition occurred during an unobserved reload/idle interval; no specific causal source is claimed. The original native Begin was never replayed.
+
+- Actual complete Test proof: Temp/SequentialPlan-20261009/12/continuity-v5/test-qualified-01.json.
+- Domovyk and Corgi delivery/check-in follow as separate verified work. Source Git remains unpublished.
+
+
+## 2026-10-10 - Points6-12 delivered; final UniBridge0.2.67
+
+Point12 actual native six catalog cases/61 runner checks; Profiler 83 runner/2249 oracle checks; MainStage 45 runner/37 native/44 strict pixel checks. Test16/16, Domovyk17/17, Corgi17/17; exact708 controlled package files. Full Domovyk cs289/main: 31 saved files, 0 directories,9 server checks PASS; server bytes/comment/paths exact and normal/private pending empty. Per-point Domovyk check-ins283 through289 complete. Native unsaved Test state retained as a verified Library scene copy; failed old Capture and unexecuted preparations remain excluded and quarantined. Original author/dependency files and context histories preserved. Native strict semantic validation is structural in the installed non-Roslyn profile; standalone CoreCLR59/59 is separate. Source Git remains unpublished. Native ProcessInfoCollector crash remains deferred and causality unclaimed. All authorized points6-12 are complete; no new task auto-started.
+
+
+## 2026-10-10 - Native Mono crash investigation resumed
+
+Author requested actual x64 Mono fault reproduction, fault dump, confirmed-cause fix and short-lived MCP clients. Full author/source file baselines retained in Temp/MonoCrash-20261010; isolated copy C:/Temp/UniBridgeMonoCrash-20261010 has a fresh identity and unchanged 0.2.67 collector. Existing source pending and all author projects preserved. Historical dump is a healthy debugger-breakpoint snapshot, not crash evidence. Root shell is elevated/X64; all child launches inherit Administrator. No causal production change or publication claimed yet.
+
+
+## 2026-10-10 - Native crash investigation stopped at user request
+
+User explicitly stopped this investigation because the chat was blocking diagnostic content. No automatic resume. No production code changes; package remains 0.2.67. Prepared isolated copy and Temp-only probes retained, but no new native Editor/debugger/client connection was launched. All three diagnostic agents completed or were interrupted; no owned task process remains. Final hash audit: all 9750 author files exact, all 719 source baseline files exact except this appended context history. Cause remains unconfirmed; no actual fault dump collected. Evidence and terminal record: Temp/MonoCrash-20261010/stopped-at-user-request.json.
+
+## 2026-10-10 - Source Git publication prepared: UniBridge 0.2.67
+
+User explicitly requested committing and pushing the accumulated completed source work. main/origin/main matched at 338ba54 after fetch. The publication includes completed changes from 0.2.59 through 0.2.67, relay 1.1.0-build.22, production helpers, regression suites, metadata and documentation. The exact 708-file package freeze still matches the native-qualified downstream delivery; no package code, version or binary is changed for publication. Root README now describes the source and bundled relays already tracked in this repository while retaining the proprietary license and Patreon distribution information. Existing author changes and history remain included. Native Mono crash investigation remains stopped at the user's request; no crash fix is claimed. All publication commands run elevated. Final staged/commit/remote/clean-state verification is retained separately in Temp/GitPublication-20261010.

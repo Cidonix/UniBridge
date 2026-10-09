@@ -444,7 +444,7 @@ Returns:
         static JObject BuildCompilationDiagnosticsData(object buildSystemHealth, object assemblyFreshness, bool includeBuildEvidence)
         {
             var diagnostics = EditorEventHistory.Snapshot(0, 1, includeSelection: false, includeDiagnostics: true, includeAssetChanges: false);
-            var data = JObject.FromObject(diagnostics);
+            var data = McpJson.ObjectFromObject(diagnostics);
 
             if (!includeBuildEvidence)
             {
@@ -452,11 +452,11 @@ Returns:
                 return data;
             }
 
-            var buildSystemHealthToken = JToken.FromObject(buildSystemHealth);
-            var assemblyFreshnessToken = JToken.FromObject(assemblyFreshness);
+            var buildSystemHealthToken = McpJson.TokenFromObject(buildSystemHealth);
+            var assemblyFreshnessToken = McpJson.TokenFromObject(assemblyFreshness);
             data["buildSystemHealth"] = buildSystemHealthToken;
             data["assemblyFreshness"] = assemblyFreshnessToken;
-            data["compileHealth"] = JToken.FromObject(BuildCompileHealthSummary(buildSystemHealthToken, assemblyFreshnessToken));
+            data["compileHealth"] = McpJson.TokenFromObject(BuildCompileHealthSummary(buildSystemHealthToken, assemblyFreshnessToken));
             return data;
         }
 
@@ -500,12 +500,6 @@ Returns:
         {
             try
             {
-                // Get all types deriving from EditorWindow
-                var windowTypes = AppDomain
-                    .CurrentDomain.GetAssemblies()
-                    .SelectMany(assembly => assembly.GetTypes())
-                    .Where(type => type.IsSubclassOf(typeof(EditorWindow)))
-                    .ToList();
 
                 var openWindows = new List<EditorWindowInfo>();
 
@@ -1009,7 +1003,7 @@ Returns:
             if (response == null)
                 return false;
 
-            var success = JObject.FromObject(response)["success"];
+            var success = McpJson.ObjectFromObject(response)["success"];
             return success?.Type == JTokenType.Boolean && success.Value<bool>();
         }
 
@@ -1021,8 +1015,8 @@ Returns:
 
             var buildSystemHealth = ReadConsole.BuildBuildSystemHealth(maxIssues: 5, includeStacktrace: true);
             var assemblyFreshness = BuildScriptAssemblyFreshness();
-            var buildSystemHealthToken = JToken.FromObject(buildSystemHealth);
-            var assemblyFreshnessToken = JToken.FromObject(assemblyFreshness);
+            var buildSystemHealthToken = McpJson.TokenFromObject(buildSystemHealth);
+            var assemblyFreshnessToken = McpJson.TokenFromObject(assemblyFreshness);
             var compilationDiagnostics = BuildCompilationDiagnosticsData(
                 buildSystemHealth,
                 assemblyFreshness,
@@ -1055,7 +1049,7 @@ Returns:
                 }
 
                 var assemblyFreshness = BuildScriptAssemblyFreshnessV2(projectRoot);
-                var v2Token = JObject.FromObject(assemblyFreshness);
+                var v2Token = McpJson.ObjectFromObject(assemblyFreshness);
                 var v2Summary = v2Token["summary"];
                 var overallStaleLikely = v2Summary?["staleLikely"]?.Value<bool>() == true;
                 var staleAssemblyCount = v2Summary?["staleAssemblyCount"]?.Value<int>() ?? 0;
@@ -1498,7 +1492,7 @@ Returns:
             {
                 AssetDatabase.Refresh();
                 var editorAssembly = typeof(EditorApplication).Assembly;
-                var syncVsType = editorAssembly.GetType("UnityEditor.SyncVS");
+                var syncVsType = LoadedAssemblyCatalog.LookupType(editorAssembly,"UnityEditor.SyncVS");
                 var method = syncVsType?
                     .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
                     .FirstOrDefault(m => m.Name == "SyncSolution" && m.GetParameters().Length == 0);
@@ -1619,7 +1613,7 @@ Returns:
                 };
                 if (!completed)
                 {
-                    var waitError = waitResult == null ? null : JObject.FromObject(waitResult)["error"]?.Value<string>();
+                    var waitError = waitResult == null ? null : McpJson.ObjectFromObject(waitResult)["error"]?.Value<string>();
                     return Response.Error(waitError ?? "Editor readiness wait failed after ReloadCheckpoint refresh.", result);
                 }
 

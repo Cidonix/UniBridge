@@ -1,4 +1,4 @@
-﻿#nullable disable
+#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -356,7 +356,7 @@ Returns:
             JToken parentToken = @params["parent"];
 
             // --- Add parameter for controlling non-public field inclusion ---
-            bool includeNonPublicSerialized = @params["include_non_public_serialized"]?.ToObject<bool>() ?? true; // Default to true
+            bool includeNonPublicSerialized = @params["include_non_public_serialized"]?.ToObjectIndependent<bool>() ?? true; // Default to true
             // --- End add parameter ---
 
             // --- Prefab Redirection Check ---
@@ -492,7 +492,7 @@ Returns:
             }
 
             // Get prefab creation parameters
-            bool saveAsPrefab = @params["save_as_prefab"]?.ToObject<bool>() ?? false;
+            bool saveAsPrefab = @params["save_as_prefab"]?.ToObjectIndependent<bool>() ?? false;
             string prefabPath = @params["prefab_path"]?.ToString();
             string prefabFolder = @params["prefab_folder"]?.ToString() ?? "Assets/Prefabs";
             string tag = @params["tag"]?.ToString(); // Get tag for creation
@@ -714,7 +714,7 @@ Returns:
             }
 
             // Set Parent / Sibling order
-            var worldTransformStays = @params["world_transform_stays"]?.ToObject<bool?>() ?? true;
+            var worldTransformStays = @params["world_transform_stays"]?.ToObjectIndependent<bool?>() ?? true;
             var hierarchyResult = ApplyHierarchyPlacement(newGo, @params, worldTransformStays, out _, out _);
             if (hierarchyResult != null)
             {
@@ -999,7 +999,7 @@ Returns:
             }
 
             // Set Active State
-            bool? setActive = @params["set_active"]?.ToObject<bool?>();
+            bool? setActive = @params["set_active"]?.ToObjectIndependent<bool?>();
             if (setActive.HasValue && targetGo.activeSelf != setActive.Value)
             {
                 targetGo.SetActive(setActive.Value);
@@ -1126,7 +1126,7 @@ Returns:
             }
 
             // Change parent / sibling order
-            var worldTransformStays = @params["world_transform_stays"]?.ToObject<bool?>() ?? true;
+            var worldTransformStays = @params["world_transform_stays"]?.ToObjectIndependent<bool?>() ?? true;
             var hierarchyResult = ApplyHierarchyPlacement(targetGo, @params, worldTransformStays, out var hierarchyChanged, out _);
             if (hierarchyResult != null)
                 return hierarchyResult;
@@ -1330,7 +1330,7 @@ Returns:
             string searchMethod
         )
         {
-            bool findAll = @params["find_all"]?.ToObject<bool>() ?? @params["findAll"]?.ToObject<bool>() ?? false;
+            bool findAll = @params["find_all"]?.ToObjectIndependent<bool>() ?? @params["findAll"]?.ToObjectIndependent<bool>() ?? false;
             List<GameObject> foundObjects = ObjectsHelper.FindObjects(
                 targetToken,
                 searchMethod,
@@ -1765,9 +1765,9 @@ Returns:
                 try
                 {
                     return new Vector3(
-                        array[0].ToObject<float>(),
-                        array[1].ToObject<float>(),
-                        array[2].ToObject<float>()
+                        array[0].ToObjectIndependent<float>(),
+                        array[1].ToObjectIndependent<float>(),
+                        array[2].ToObjectIndependent<float>()
                     );
                 }
                 catch (Exception ex)
@@ -2500,8 +2500,8 @@ Returns:
             List<object> applied,
             List<object> skipped)
         {
-            var data = JObject.FromObject(GameObjectSerializer.GetGameObjectData(gameObject));
-            data["componentPropertyApplication"] = JObject.FromObject(new
+            var data = McpJson.ObjectFromObject(GameObjectSerializer.GetGameObjectData(gameObject));
+            data["componentPropertyApplication"] = McpJson.ObjectFromObject(new
             {
                 requested = (applied?.Count ?? 0) + (skipped?.Count ?? 0),
                 appliedCount = applied?.Count ?? 0,
@@ -2585,8 +2585,8 @@ Returns:
                 return expected == null && actual == null;
             }
 
-            var expectedToken = expected as JToken ?? JToken.FromObject(expected);
-            var actualToken = actual as JToken ?? JToken.FromObject(actual);
+            var expectedToken = expected as JToken ?? McpJson.TokenFromObject(expected);
+            var actualToken = actual as JToken ?? McpJson.TokenFromObject(actual);
             if (TryCompareStableObjectReferences(expectedToken, actualToken, out var objectReferencesEqual))
             {
                 return objectReferencesEqual;
@@ -2713,7 +2713,7 @@ Returns:
 
             try
             {
-                return JToken.FromObject(value).ToString(Formatting.None);
+                return McpJson.TokenFromObject(value).ToString(Formatting.None);
             }
             catch
             {
@@ -3357,12 +3357,12 @@ Returns:
                 return null;
             }
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
             {
                 Type[] types;
                 try
                 {
-                    types = assembly.GetTypes();
+                    types = LoadedAssemblyCatalog.EnumerateTypes(assembly);
                 }
                 catch (ReflectionTypeLoadException ex)
                 {
@@ -3815,11 +3815,11 @@ Returns:
             // Consider removing these if the serializer handles them reliably.
             if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y") && obj.ContainsKey("z"))
             {
-                return new Vector3(obj["x"].ToObject<float>(), obj["y"].ToObject<float>(), obj["z"].ToObject<float>());
+                return new Vector3(obj["x"].ToObjectIndependent<float>(), obj["y"].ToObjectIndependent<float>(), obj["z"].ToObjectIndependent<float>());
             }
             if (token is JArray arr && arr.Count >= 3)
             {
-                 return new Vector3(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>());
+                 return new Vector3(arr[0].ToObjectIndependent<float>(), arr[1].ToObjectIndependent<float>(), arr[2].ToObjectIndependent<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Vector3 using fallback. Returning Vector3.zero.");
             return Vector3.zero;
@@ -3831,11 +3831,11 @@ Returns:
             // ... (implementation - likely replaced by Vector2Converter) ...
              if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y"))
             {
-                return new Vector2(obj["x"].ToObject<float>(), obj["y"].ToObject<float>());
+                return new Vector2(obj["x"].ToObjectIndependent<float>(), obj["y"].ToObjectIndependent<float>());
             }
             if (token is JArray arr && arr.Count >= 2)
             {
-                 return new Vector2(arr[0].ToObject<float>(), arr[1].ToObject<float>());
+                 return new Vector2(arr[0].ToObjectIndependent<float>(), arr[1].ToObjectIndependent<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Vector2 using fallback. Returning Vector2.zero.");
             return Vector2.zero;
@@ -3846,11 +3846,11 @@ Returns:
             // ... (implementation - likely replaced by QuaternionConverter) ...
             if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y") && obj.ContainsKey("z") && obj.ContainsKey("w"))
             {
-                return new Quaternion(obj["x"].ToObject<float>(), obj["y"].ToObject<float>(), obj["z"].ToObject<float>(), obj["w"].ToObject<float>());
+                return new Quaternion(obj["x"].ToObjectIndependent<float>(), obj["y"].ToObjectIndependent<float>(), obj["z"].ToObjectIndependent<float>(), obj["w"].ToObjectIndependent<float>());
             }
             if (token is JArray arr && arr.Count >= 4)
             {
-                 return new Quaternion(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+                 return new Quaternion(arr[0].ToObjectIndependent<float>(), arr[1].ToObjectIndependent<float>(), arr[2].ToObjectIndependent<float>(), arr[3].ToObjectIndependent<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Quaternion using fallback. Returning Quaternion.identity.");
             return Quaternion.identity;
@@ -3861,11 +3861,11 @@ Returns:
              // ... (implementation - likely replaced by ColorConverter) ...
             if (token is JObject obj && obj.ContainsKey("r") && obj.ContainsKey("g") && obj.ContainsKey("b") && obj.ContainsKey("a"))
             {
-                return new Color(obj["r"].ToObject<float>(), obj["g"].ToObject<float>(), obj["b"].ToObject<float>(), obj["a"].ToObject<float>());
+                return new Color(obj["r"].ToObjectIndependent<float>(), obj["g"].ToObjectIndependent<float>(), obj["b"].ToObjectIndependent<float>(), obj["a"].ToObjectIndependent<float>());
             }
             if (token is JArray arr && arr.Count >= 4)
             {
-                 return new Color(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+                 return new Color(arr[0].ToObjectIndependent<float>(), arr[1].ToObjectIndependent<float>(), arr[2].ToObjectIndependent<float>(), arr[3].ToObjectIndependent<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Color using fallback. Returning Color.white.");
             return Color.white;
@@ -3876,11 +3876,11 @@ Returns:
              // ... (implementation - likely replaced by RectConverter) ...
             if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y") && obj.ContainsKey("width") && obj.ContainsKey("height"))
             {
-                return new Rect(obj["x"].ToObject<float>(), obj["y"].ToObject<float>(), obj["width"].ToObject<float>(), obj["height"].ToObject<float>());
+                return new Rect(obj["x"].ToObjectIndependent<float>(), obj["y"].ToObjectIndependent<float>(), obj["width"].ToObjectIndependent<float>(), obj["height"].ToObjectIndependent<float>());
             }
             if (token is JArray arr && arr.Count >= 4)
             {
-                 return new Rect(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+                 return new Rect(arr[0].ToObjectIndependent<float>(), arr[1].ToObjectIndependent<float>(), arr[2].ToObjectIndependent<float>(), arr[3].ToObjectIndependent<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Rect using fallback. Returning Rect.zero.");
             return Rect.zero;
@@ -4048,8 +4048,7 @@ Returns:
     /// </summary>
     static class ComponentResolver
     {
-        static readonly Dictionary<string, Type> CacheByFqn = new(StringComparer.Ordinal);
-        static readonly Dictionary<string, Type> CacheByName = new(StringComparer.Ordinal);
+
 
         /// <summary>
         /// Resolve a Component/MonoBehaviour type by short or fully-qualified name.
@@ -4059,38 +4058,33 @@ Returns:
         public static bool TryResolve(string nameOrFullName, out Type type, out string error)
         {
             error = string.Empty;
-            type = null!;
-
-            // Handle null/empty input
+            type = null;
             if (string.IsNullOrWhiteSpace(nameOrFullName))
             {
                 error = "Component name cannot be null or empty";
                 return false;
             }
-
-            // 1) Exact cache hits
-            if (CacheByFqn.TryGetValue(nameOrFullName, out type)) return true;
-            if (!nameOrFullName.Contains(".") && CacheByName.TryGetValue(nameOrFullName, out type)) return true;
-            type = Type.GetType(nameOrFullName, throwOnError: false);
-            if (IsValidComponent(type)) { Cache(type); return true; }
-
-            // 2) Search loaded assemblies (prefer Player assemblies)
-            var candidates = FindCandidates(nameOrFullName);
-            if (candidates.Count == 1) { type = candidates[0]; Cache(type); return true; }
-            if (candidates.Count > 1) { error = Ambiguity(nameOrFullName, candidates); type = null!; return false; }
-
-#if UNITY_EDITOR
-            // 3) Last resort: Editor-only TypeCache (fast index)
-            var tc = TypeCache.GetTypesDerivedFrom<Component>()
-                              .Where(t => NamesMatch(t, nameOrFullName));
-            candidates = PreferPlayer(tc).ToList();
-            if (candidates.Count == 1) { type = candidates[0]; Cache(type); return true; }
-            if (candidates.Count > 1) { error = Ambiguity(nameOrFullName, candidates); type = null!; return false; }
-#endif
-
-            error = $"Component type '{nameOrFullName}' not found in loaded runtime assemblies. " +
-                    "Use a fully-qualified name (Namespace.TypeName) and ensure the script compiled.";
-            type = null!;
+            var resolution = LoadedAssemblyCatalog.Resolve(nameOrFullName, IsValidComponent,
+            #if UNITY_EDITOR
+                new HashSet<string>(UnityEditor.Compilation.CompilationPipeline.GetAssemblies(UnityEditor.Compilation.AssembliesType.Player).Select(assembly => assembly.name), StringComparer.Ordinal)
+            #else
+                null
+            #endif
+            );
+            if (resolution.Partial)
+            {
+                error = "Component type lookup is incomplete: " + string.Join("; ", resolution.Issues.Select(issue => issue.Category + " (" + issue.Detail + ")"));
+                return false;
+            }
+            if (resolution.Status == "unique") { type = resolution.Type; return true; }
+            if (resolution.Status == "ambiguous") { error = Ambiguity(nameOrFullName, resolution.Candidates); return false; }
+            #if UNITY_EDITOR
+            // The fast Unity type index is a fallback; it is filtered before applying Player preference.
+            var indexed = PreferPlayer(TypeCache.GetTypesDerivedFrom<Component>().Where(candidate => NamesMatch(candidate, nameOrFullName))).Distinct().ToList();
+            if (indexed.Count == 1) { type = indexed[0]; return true; }
+            if (indexed.Count > 1) { error = Ambiguity(nameOrFullName, indexed); return false; }
+            #endif
+            error = $"Component type '{nameOrFullName}' not found in loaded runtime assemblies. Use a fully-qualified name and ensure the script compiled.";
             return false;
         }
 
@@ -4101,67 +4095,33 @@ Returns:
         static bool IsValidComponent(Type t) =>
             t != null && typeof(Component).IsAssignableFrom(t);
 
-        static void Cache(Type t)
-        {
-            if (t.FullName != null) CacheByFqn[t.FullName] = t;
-            CacheByName[t.Name] = t;
-        }
 
         static List<Type> FindCandidates(string query)
         {
-            bool isShort = !query.Contains('.');
-            var loaded = AppDomain.CurrentDomain.GetAssemblies();
-
-#if UNITY_EDITOR
-            // Names of Player (runtime) script assemblies (asmdefs + Assembly-CSharp)
-            var playerAsmNames = new HashSet<string>(
-                UnityEditor.Compilation.CompilationPipeline.GetAssemblies(UnityEditor.Compilation.AssembliesType.Player).Select(a => a.name),
-                StringComparer.Ordinal);
-
-            IEnumerable<Assembly> playerAsms = loaded.Where(a => playerAsmNames.Contains(a.GetName().Name));
-            IEnumerable<Assembly> editorAsms = loaded.Except(playerAsms);
-#else
-            IEnumerable<System.Reflection.Assembly> playerAsms = loaded;
-            IEnumerable<System.Reflection.Assembly> editorAsms = Array.Empty<System.Reflection.Assembly>();
-#endif
-            static IEnumerable<Type> SafeGetTypes(Assembly a)
-            {
-                try { return a.GetTypes(); }
-                catch (ReflectionTypeLoadException rtle) { return rtle.Types.Where(t => t != null)!; }
-            }
-
-            Func<Type, bool> match = isShort
-                ? (t => t.Name.Equals(query, StringComparison.Ordinal))
-                : (t => t.FullName!.Equals(query, StringComparison.Ordinal));
-
-            var fromPlayer = playerAsms.SelectMany(SafeGetTypes)
-                                       .Where(IsValidComponent)
-                                       .Where(match);
-            var fromEditor = editorAsms.SelectMany(SafeGetTypes)
-                                       .Where(IsValidComponent)
-                                       .Where(match);
-
-            var list = new List<Type>(fromPlayer);
-            if (list.Count == 0) list.AddRange(fromEditor);
-            return list;
+            return LoadedAssemblyCatalog.Resolve(query, IsValidComponent,
+            #if UNITY_EDITOR
+                new HashSet<string>(UnityEditor.Compilation.CompilationPipeline.GetAssemblies(UnityEditor.Compilation.AssembliesType.Player).Select(assembly => assembly.name), StringComparer.Ordinal)
+            #else
+                null
+            #endif
+            ).Candidates;
         }
 
 #if UNITY_EDITOR
         static IEnumerable<Type> PreferPlayer(IEnumerable<Type> seq)
         {
-            var player = new HashSet<string>(
-                UnityEditor.Compilation.CompilationPipeline.GetAssemblies(UnityEditor.Compilation.AssembliesType.Player).Select(a => a.name),
-                StringComparer.Ordinal);
-
-            return seq.OrderBy(t => player.Contains(t.Assembly.GetName().Name) ? 0 : 1);
+            var candidates = seq.Distinct().ToArray();
+            var playerNames = new HashSet<string>(UnityEditor.Compilation.CompilationPipeline.GetAssemblies(UnityEditor.Compilation.AssembliesType.Player).Select(assembly => assembly.name), StringComparer.Ordinal);
+            var preferred = candidates.Where(candidate => playerNames.Contains(candidate.Assembly.GetName().Name)).ToArray();
+            return preferred.Length > 0 ? preferred : candidates;
         }
 #endif
 
         static string Ambiguity(string query, IEnumerable<Type> cands)
         {
-            var lines = cands.Select(t => $"{t.FullName} (assembly {t.Assembly.GetName().Name})");
+            var lines = cands.Select(candidate => $"{candidate.FullName} (assembly {candidate.Assembly.FullName})");
             return $"Multiple component types matched '{query}':\n - " + string.Join("\n - ", lines) +
-                   "\nProvide a fully qualified type name to disambiguate.";
+                "\nProvide a full type/assembly identity when it distinguishes the candidates. Matching identities loaded in different contexts require resolving the duplicate load.";
         }
 
         /// <summary>

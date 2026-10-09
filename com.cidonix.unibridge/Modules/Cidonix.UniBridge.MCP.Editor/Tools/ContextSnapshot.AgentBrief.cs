@@ -9,6 +9,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
 
 namespace Cidonix.UniBridge.MCP.Editor.Tools
 {
@@ -450,7 +451,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         {
             try
             {
-                var json = console != null ? JObject.FromObject(console) : null;
+                var json = console != null ? McpJson.ObjectFromObject(console) : null;
                 return json?["data"]?["totals"] as JObject;
             }
             catch
@@ -463,7 +464,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         {
             try
             {
-                var json = hierarchy != null ? JObject.FromObject(hierarchy) : null;
+                var json = hierarchy != null ? McpJson.ObjectFromObject(hierarchy) : null;
                 if (json == null)
                 {
                     return;
@@ -498,7 +499,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         {
             try
             {
-                var json = JObject.FromObject(activeWorkSession);
+                var json = McpJson.ObjectFromObject(activeWorkSession);
                 if (json.Value<bool?>("active") != true)
                 {
                     risks.Add(new AgentRiskFlag("info", "no_active_work_session", "No active WorkSession. Begin one before mutating files, scenes, prefabs, or import settings.", "UniBridge_WorkSession Action=Begin Name=<task>"));
@@ -516,7 +517,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             var hasActiveSession = false;
             try
             {
-                hasActiveSession = JObject.FromObject(activeWorkSession).Value<bool?>("active") == true;
+                hasActiveSession = McpJson.ObjectFromObject(activeWorkSession).Value<bool?>("active") == true;
             }
             catch
             {
@@ -651,7 +652,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             {
                 try
                 {
-                    var riskCode = JObject.FromObject(risk).Value<string>("code");
+                    var riskCode = McpJson.ObjectFromObject(risk).Value<string>("code");
                     if (string.Equals(riskCode, code, StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
@@ -668,11 +669,11 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         static string BuildAgentOneLineSummary(object projectShape, object[] systems, object[] risks)
         {
-            var shape = JObject.FromObject(projectShape);
+            var shape = McpJson.ObjectFromObject(projectShape);
             var totalAssets = shape.Value<int?>("totalAssets") ?? 0;
             var sceneScale = shape.Value<string>("sceneScale") ?? "unknown";
             var systemNames = systems
-                .Select(system => JObject.FromObject(system).Value<string>("name"))
+                .Select(system => McpJson.ObjectFromObject(system).Value<string>("name"))
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Take(4)
                 .ToArray();

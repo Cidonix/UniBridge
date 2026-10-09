@@ -1128,7 +1128,7 @@ Layout notes:
                     target = BuildGameObjectInfo(target),
                     before,
                     after = failedAfter,
-                    noChangesApplied = JToken.DeepEquals(JToken.FromObject(before ?? new object()), JToken.FromObject(failedAfter ?? new object())),
+                    noChangesApplied = JToken.DeepEquals(McpJson.TokenFromObject(before ?? new object()), McpJson.TokenFromObject(failedAfter ?? new object())),
                     requestedFields,
                     appliedFields = textUpdate.AppliedFields,
                     errors = textUpdate.Errors
@@ -1148,8 +1148,8 @@ Layout notes:
 
             var after = BuildGraphicInfo(target);
             var noChangesApplied = JToken.DeepEquals(
-                JToken.FromObject(before ?? new object()),
-                JToken.FromObject(after ?? new object()));
+                McpJson.TokenFromObject(before ?? new object()),
+                McpJson.TokenFromObject(after ?? new object()));
             var changedFields = noChangesApplied
                 ? Array.Empty<string>()
                 : requestedFields.ToArray();
@@ -1663,9 +1663,9 @@ Layout notes:
             {
                 call["argument"] = parameters.EventArgumentType switch
                 {
-                    UIButtonEventArgumentType.Int => JToken.FromObject(ParseIntArgument(parameters.EventArgument)),
-                    UIButtonEventArgumentType.Float => JToken.FromObject(ParseFloatArgument(parameters.EventArgument)),
-                    UIButtonEventArgumentType.Bool => JToken.FromObject(ParseBoolArgument(parameters.EventArgument)),
+                    UIButtonEventArgumentType.Int => McpJson.TokenFromObject(ParseIntArgument(parameters.EventArgument)),
+                    UIButtonEventArgumentType.Float => McpJson.TokenFromObject(ParseFloatArgument(parameters.EventArgument)),
+                    UIButtonEventArgumentType.Bool => McpJson.TokenFromObject(ParseBoolArgument(parameters.EventArgument)),
                     _ => parameters.EventArgument ?? string.Empty
                 };
             }
@@ -3767,15 +3767,15 @@ Layout notes:
 
         static Type FindLoadedType(string fullName)
         {
-            var type = Type.GetType(fullName, false);
+            var type = LoadedAssemblyCatalog.ResolveType(fullName,false);
             if (type != null)
             {
                 return type;
             }
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
             {
-                type = assembly.GetType(fullName, false);
+                type = LoadedAssemblyCatalog.LookupType(assembly,fullName,false);
                 if (type != null)
                 {
                     return type;

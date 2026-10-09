@@ -7,6 +7,110 @@ UniBridge is local-first. The Unity package runs a bridge inside the Editor, ins
 For version-specific packaging, verification, and known limitation details, see
 `../RELEASE_NOTES.md`.
 
+## Shared assembly and compilation catalogs
+
+Loaded type queries use assemblies already visible to the runtime. Full identity and runtime instance distinguish collisions; changing generations and partial reflection failures are reported. Queries do not explicitly load assemblies or construct user types. Runtime reflection may resolve dependency metadata.
+
+Semantic consumers prefer the source file's owning Unity assembly and its actual compiler references. Bounded immutable PE images preserve aliases and content identity; unavailable references make context partial. Advisory obsolete hints preserve existing validation results. Strict Roslyn validation requires a complete owning context when that profile is enabled.
+
+## MCP output contracts
+
+The registry resolves explicit output-schema providers before invoking typed,
+JObject, primitive and generic extension handlers. It also awaits `Task<T>` and
+`ValueTask<T>` results before projecting their output. Parameter conversion
+failures occur before handler invocation and remain tool errors.
+
+Inspect `annotations.uniBridgeOutput` for contract provenance and fidelity.
+`source_family_partial` means a core provider's declared response families have
+been reviewed against source and controlled serialized branches; it does not
+claim native execution of every action. `envelope_only` is an open object fallback
+for opaque results, including tools without a reviewed explicit provider.
+`explicit_unqualified` preserves an extension's declared schema without claiming
+complete action coverage. Inferred schemas follow the isolated serializer's
+contract metadata and remain conservative around converters or dynamic data.
+
+The common schema admits business errors (`success=false`, `code`, `error`),
+Bridge errors (`status=error` or `failed`, `error`) and strict projection failures.
+An already authored object `structuredContent` stays intact; complete text output,
+context and metadata remain available. Primitive/null results use an object
+`value` field. A non-object authored structured value produces a delivery error.
+
+When a completed handler cannot be serialized/projected, the error carries
+`RESULT_PROJECTION_FAILED` and `executionEvidence.handlerCompleted=true`,
+`retryOriginal=false`. Its outcome may be unavailable; retained serialized
+evidence is included when present. Do not repeat the original mutating command
+to repair an output error. Command recovery remains query-only.
+
+Relay `1.1.0-build.22` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
+and `2025-11-25`: a supported requested version is used, otherwise the latest
+supported version is returned. Outer `structuredContent` and advertised
+`outputSchema` are enabled for June 2025 and newer supported versions; older
+versions keep text responses. Relay-local status/recovery/errors have object
+output contracts. Malformed MCP name/arguments are JSON-RPC parameter errors;
+execution/conversion failures are `tools/call` results with `isError=true`.
+
+The qualification fixtures exercise actual registry dispatch and completed CLR
+producers, independent JSON Schema positives/negatives, and isolated relay peers.
+They are validation fixtures rather than production tools. Native Unity action
+coverage and downstream host delivery are recorded separately.
+
+## Capture a 2D world region
+
+Use `UniBridge_CaptureView Action=Capture2DRegion` with
+`WorldRect={xMin,yMin,xMax,yMax}` and finite positive `PixelsPerUnit`.
+`GridOrigin={x,y}` defaults to zero. `Preview=true` returns outward-rounded
+pixel extents, effective world bounds and tile offsets without rendering.
+Set `Tiling=true` and `TileSize` to split large captures while retaining density.
+Set `Stage=MainStage` or `CurrentPrefabStage` explicitly. `OutputDirectory` and `FileName` identify
+the external PNG destination; existing outputs are never overwritten.
+Transparent PNG pixel parity depends on the actual pipeline and effects;
+world-grid geometry alone cannot qualify every material or postprocess.
+
+## Recorded Profiler frames
+
+`UniBridge_RuntimeProfiler Action=RecordedFrames` reads already recorded CPU
+history without starting recording. Set FrameIndex/FrameCount and persistent
+ThreadIds as needed. Real ancestry, inclusive/self time and recorded GC.Alloc
+bytes are returned, with explicit partial/unavailable coverage. Metadata that
+was not captured is unknown. Set SaveToFile=false for a read-only invocation.
+MarkerFilters, ExcludeMarkerFilters, Top-N and depth affect presentation after
+accounting; capped raw topology cannot supply reliable self time.
+
+## Command latency qualification
+
+`Tools~/CommandLatencyRegression` measures actual `ContextSnapshot` and
+`ManageEditor GetState` round trips for a configured Windows test project.
+Explicit test-project opt-in, root/ID and Editor image/version inputs are required.
+Each run observes a single externally prepared foreground, background or minimized
+state; it does not move windows or change focus. Warm and new-client measurements
+are distinct, as are relay startup and real tool response time. Reports disclose
+timeouts, payload freshness, package provenance and file/state protection.
+
+The measured Unity 6000.6.5f1 baseline completed 36 calls within 100 ms across
+the three states. No production wake change was justified by this environment.
+See the tool README for preparation, bounded deadlines and exact qualification.
+
+## JSON and Bridge lifecycle isolation
+
+The Editor protocol, tool parameter/result conversion, discovery, persisted work
+sessions/write receipts, snapshots and tracing use fresh serializers created with
+UniBridge's own settings. Application-wide `JsonConvert.DefaultSettings` is never
+consulted. Explicit private settings and converters retain their behavior; serializers
+are not shared between concurrent connections. Unconfigured deserialization requires
+one complete JSON value; explicitly supplied settings own that reader policy.
+Persisted snapshots explicitly retain strict single-value validation.
+
+Bridge startup publishes running state only after resource acquisition and discovery
+succeed. Partial failures clean each acquired resource independently. Stop drains
+queued and in-flight response waiters and guards admission with a generation lock.
+Old accepted clients retain their original listener, cancellation, handshake and
+validation state. Cancelled captured startup callbacks cannot restart a stopped
+Bridge. Dispose cancels waiting writers and releases write resources after the last
+admitted operation completes. Transport state and identity-index mutations share
+their ownership lock across registration, identity update, removal and clear.
+These contracts do not establish a native Mono crash
+cause. See `Tools~/BridgeIsolationRegression` for reproducible qualification.
+
 ## Requirements
 
 - Unity Editor 6000.0 or newer.
@@ -569,7 +673,7 @@ For scene and gameplay work, prefer high-level tools before falling back to many
 - `UniBridge_ManagePhysics3D`: create PhysicsMaterial assets and apply Rigidbody, Collider, Joint, and CharacterController presets.
 - `UniBridge_ManageNavigation`: author NavMeshAgent, NavMeshObstacle, OffMeshLink, and optional AI Navigation surface/modifier/link components.
 - `UniBridge_ManageRendering`: create cameras, lights, Volume assets, render settings, preview/lighting rigs, and named rendering layer masks for lights/renderers.
-- `UniBridge_ManageUIToolkit`: create UXML/USS/PanelSettings assets, wire UIDocument scene objects, and patch small UXML element/class/style changes.
+- `UniBridge_ManageUIToolkit`: validate and create UXML/USS/PanelSettings assets, wire UIDocument scene objects, and patch small UXML element/class/style changes. `ValidateUxml` / `ValidateUss` and `DryRun` / `Preview` check source structure without writing or importing; `validation.semanticValidation` remains `not_run`. Documented runtime bindings, UXML objects and legacy `src` / `path` references remain supported. Unresolved custom/property tags defer to Unity; `import.semanticValidationScope=unity_import` and `import.instantiationValidation=not_run` disclose that control constructors are not executed. Creation and source patches use synchronous Unity import logs, typed asset loading and exact readback; `written` and `imported` report these separate outcomes. `status` is `blocked`, `preview`, `completed`, `completed_with_warnings`, `restored_baseline` or `partial`. Import warnings fail by default; explicit `FailOnImportWarnings=false` permits them with diagnostics. A failed import returns `success=false`; guarded recovery restores existing known source only when candidate/source and metadata hashes still match. Concurrent bytes survive, recovery copies remain under `Library/UniBridge/UIToolkitWrites`, and UXML patches require their original read hash. See `Tools~/UIToolkitRegression` for production-linked and actual Unity-import tests.
 
 Use `DryRun=true` first for scoped or batched edits, then verify with
 `UniBridge_ReadConsole Action=DiagnosticSummary` and a domain-specific inspect
@@ -686,7 +790,13 @@ Common actions:
 - `Restore`: restore scenes, selection, Scene View, Prefab Mode, Prefab autosave settings, active tool, active dock tabs, and focused window;
 - `Delete` / `Clear`: remove saved snapshots.
 
-Restore has safety controls. It refuses to reload or close dirty scenes unless `SaveDirtyScenes` or `AllowDirtySceneReload` is enabled. Use `DryRun=true` before a restore when you want to see exactly what will change.
+Restore retains already-loaded scenes, opens missing scenes additively and closes
+only planned extras. Dirty retained scenes are neither reloaded nor implicitly
+saved. Closing a dirty extra requires `SaveDirtyScenes` or `AllowDirtySceneReload`;
+failed saving or an untitled dirty scene under `SaveDirtyScenes` stops restoration.
+Dirty Prefab Stages are also protected. Use `DryRun=true` to inspect the plan.
+Execution reports `data.status=completed|blocked|partial`; blocked or partial
+execution returns `success=false` and preserves the applied-operation details.
 
 Window restore is intentionally conservative. UniBridge focuses matching EditorWindow types, can re-show captured active dock tabs, and can optionally restore maximized state, but it does not rewrite Unity layout files.
 
@@ -1009,6 +1119,8 @@ UniBridge_WorkSession Action=Begin Name="Reorganize darkness scene"
 UniBridge_WorkSession Action=Review
 UniBridge_WorkSession Action=Diff Paths=[Assets/...]
 UniBridge_WorkSession Action=Revert DryRun=true Paths=[Assets/...]
+...inspect data.plan and data.planId...
+UniBridge_WorkSession Action=Revert DryRun=false Paths=[Assets/...] PlanId=<planId>
 UniBridge_WorkSession Action=End
 ```
 
@@ -1031,7 +1143,9 @@ Actions:
 - `Status`: return active session metadata plus compact current file and semantic scene change counts.
 - `Review`: list changed files with change type, asset kind, risk flags, hashes/sizes, whether UniBridge can revert them from the captured baseline, and semantic scene changes when enabled.
 - `Diff`: return compact text diffs for selected changed files.
-- `Revert`: defaults to `DryRun=true`; repeat with `DryRun=false` only after reviewing the plan. It restores modified/deleted captured files and deletes files added after the checkpoint.
+- `BeginWrite`: before an external write, capture explicit `Paths` and optional `Source`; returns `tokenId` and before-state preconditions.
+- `CompleteWrite`: provide `TokenId` and `AfterSha256`, a map of the declared paths to SHA256 of the known intended payload, or null for an intentional deletion. A post-hoc scan or a token started after changing the file cannot establish ownership.
+- `Revert`: defaults to `DryRun=true`. A successful preview returns `planId`; execute the same selection with `DryRun=false` and `PlanId`. The token is consumed before mutations; any selection, file or ownership change requires a new preview. Only verified owned changes can be restored/quarantined. Results expose `status=preview|blocked|partial|completed`; blocked and partial results return `success=false`.
 - `End`: close the active session, optionally deleting session files.
 
 Useful controls:
@@ -1040,7 +1154,23 @@ Useful controls:
 - `IncludeSceneSemantics`, `MaxSemanticObjects`, `IncludeSemanticReview`, and `MaxSemanticChanges`: capture and bound loaded-scene semantic review.
 - `IncludeProjectSettings`, `IncludePackageManifests`, and `IncludePackageFiles`: tune scope.
 - `Paths`: selected project-relative files for `Diff` or `Revert`.
-- `RevertAll=true`: revert every detected change from the session, usually after a dry-run review.
+- `RevertAll=true`: select verified session-owned changed paths; preserve and report unrelated `skippedUnownedPaths`.
+
+New baselines record `scanComplete`. Incomplete baseline/current scans, unavailable
+fingerprints, corrupt captures, dirty loaded assets and conflicted ownership chains
+block execution. Automatic companion `.meta` selection applies only to added
+assets; existing modified metadata is never selected implicitly. Added assets with
+unverified companion metadata cannot be quarantined because refresh may remove it.
+Companion and original-path guards run during quarantine and again before automatic
+refresh resumes. Late conflicts compensate without overwriting independent files;
+`compensatedPaths` identifies returned files separately from completed `reverted` entries.
+Legacy sessions remain reviewable but cannot execute an unguarded revert.
+
+Script tools record known payload hashes automatically. Unity serialized scene
+saves and other uninstrumented writes remain reviewable but protected from automatic
+revert: post-save bytes alone cannot prove which changes came from the agent.
+Pre-restore and quarantined bytes remain in the session's `revert-recovery` folder;
+partial failures stop further operations and skip the explicit forced import refresh.
 
 ### Read Unity Console
 
@@ -1304,6 +1434,31 @@ It is read-only and supports:
 - `Metrics`: summarize script counts by kind, assembly, folder, and Unity callback.
 
 Prefer this tool for orientation and impact analysis. Use the dedicated edit tools below when it is time to change code.
+
+As of 0.2.59, Analyze/ReadTypes/Selection and ChangeImpact return
+`obsoleteApiHints` from the actual bound C# symbols and System.ObsoleteAttribute
+in the current Unity owning assembly. Hints include one-based source locations,
+attribute warning/error severity, actual signatures and uniquely resolved
+replacements advertised by the message. Result type changes explain how to
+update the receiving type and avoid obsolete conversions back. An ambiguous or
+unresolved replacement is explicit; source is never automatically rewritten.
+
+`UniBridge_ValidateScript Level=standard` (also comprehensive/strict) and
+create/update/edit results expose the same advisory report for the submitted or
+final proposed source, including previews and failed validation. Basic skips
+semantic work. These hints are separate from existing validation counts and
+success; `severity=error` describes attribute metadata, not a new validation
+failure policy. Inspect `status` (available/partial/unavailable/skipped),
+`limitations`, `bindingErrors` and `truncated` before treating empty hints as
+complete coverage.
+
+Hotspots replaces obsolete-name text guesses with semantic checks. Its
+`semanticCoverage` exposes examined/omitted scripts and per-script limitations.
+`MaxSemanticScripts` defaults to 5 (1..25) with an eight-second request budget;
+individual contexts are bounded to 128 source files, one million characters
+and 1024 references. Narrow the query or use Analyze for remaining scripts.
+`IncludeObsoleteApiHints=false` explicitly skips intelligence hints. No compiler
+defines, project references, global settings or user assets are changed by analysis.
 
 For script migration or deletion checks, call `Action=Usages IncludeUsageLocations=true`. Usage locations resolve prefab/scene YAML references to the script GUID and include line/column, property path, YAML document context, inferred object path, duplicate-safe indexed object path, and resolved script type where Unity can load the `MonoScript`.
 

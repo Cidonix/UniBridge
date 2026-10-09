@@ -4,11 +4,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
 using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
+using UnityEditor.AssetImporters;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -31,7 +34,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 Use this with UniBridge_CaptureUIToolkit for a complete authoring loop: create UXML/USS, attach a UIDocument, add small elements/classes/styles, then capture or inspect the resolved visual tree.
 
 Args:
-    Action: Inspect, CreateDocument, CreateStyleSheet, CreatePanelSettings, AttachDocument, AddElement, SetClasses, or SetInlineStyle.
+    Action: Inspect, ValidateUxml, ValidateUss, CreateDocument, CreateStyleSheet, CreatePanelSettings, AttachDocument, AddElement, SetClasses, or SetInlineStyle.
     Path/UxmlPath/DocumentPath: UXML asset path for document operations.
     StyleSheetPath: USS asset path.
     PanelSettingsPath: PanelSettings asset path.
@@ -39,9 +42,13 @@ Args:
     Name, RootName, RootClass, Template, Elements: UXML creation controls.
     ElementType, ElementName, ParentName, Text, Classes, Style, Attributes, Children: element controls.
     ReferenceResolution, ScaleMode, ScreenMatchMode, Match: PanelSettings controls.
+    Content: optional raw UXML/USS source for creation or validation.
+    DryRun/Preview: validate the proposed UXML/USS without file writes, checkout, or import.
+    FailOnImportWarnings: reject import warnings by default; false explicitly permits completed_with_warnings.
 
 Returns:
-    success, message, and data with created asset paths, UIDocument summaries, or UXML element summaries.";
+    success, message, and data with asset paths, structured validation/import diagnostics, written/imported flags, or UIDocument summaries.
+Preview checks structure only; Unity semantic import is not run. Failed imports never report successful creation.";
 
         [McpSchema(ToolName)]
         public static object GetInputSchema()
@@ -51,7 +58,11 @@ Returns:
                 type = "object",
                 properties = new
                 {
-                    Action = new { type = "string", @enum = new[] { "Inspect", "CreateDocument", "CreateStyleSheet", "CreatePanelSettings", "AttachDocument", "AddElement", "SetClasses", "SetInlineStyle" } },
+                    Action = new { type = "string", @enum = new[] { "Inspect", "ValidateUxml", "ValidateUss", "CreateDocument", "CreateStyleSheet", "CreatePanelSettings", "AttachDocument", "AddElement", "SetClasses", "SetInlineStyle" } },
+                    Content = new { type = "string", description = "Exact raw UXML or USS source. Creation can also generate content from the existing controls." },
+                    DryRun = new { type = "boolean", @default = false, description = "Validate UXML/USS without writes, checkout or import. Semantic import is not run." },
+                    Preview = new { type = "boolean", @default = false },
+                    FailOnImportWarnings = new { type = "boolean", @default = true },
                     Path = new { type = "string" },
                     UxmlPath = new { type = "string" },
                     DocumentPath = new { type = "string" },
@@ -89,9 +100,13 @@ Returns:
             var action = Normalize(GetString(parameters, "Action", "action") ?? "Inspect");
             try
             {
+                if (IsPreview(parameters) && (action == "createpanelsettings" || action == "panelsettings" || action == "attachdocument" || action == "attach" || action == "uidocument"))
+                    return Response.Error("UI_TOOLKIT_PREVIEW_UNSUPPORTED", new { status = "blocked", preview = true, written = false, imported = false, message = "Preview is supported for UXML/USS source operations; no scene or PanelSettings changes were made." });
                 return action switch
                 {
                     "inspect" => Inspect(parameters),
+                    "validateuxml" => ValidateSource(parameters, isUxml: true),
+                    "validateuss" => ValidateSource(parameters, isUxml: false),
                     "createdocument" or "createuxml" or "uxml" => CreateDocument(parameters),
                     "createstylesheet" or "createuss" or "uss" or "stylesheet" => CreateStyleSheet(parameters),
                     "createpanelsettings" or "panelsettings" => CreatePanelSettings(parameters),
@@ -102,10 +117,13 @@ Returns:
                     _ => Response.Error($"Unknown UI Toolkit action '{GetString(parameters, "Action", "action")}'.")
                 };
             }
+            catch (UIToolkitValidationException ex)
+            {
+                return Response.Error("UI_TOOLKIT_VALIDATION_FAILED", new { status = "blocked", preview = IsPreview(parameters), written = false, imported = false, validation = ex.Validation });
+            }
             catch (Exception ex)
             {
-                Debug.LogError($"[ManageUIToolkit] Action '{action}' failed: {ex}");
-                return Response.Error($"UI Toolkit action '{action}' failed: {ex.Message}");
+                return Response.Error("UI_TOOLKIT_OPERATION_FAILED", new { status = "blocked", preview = IsPreview(parameters), written = false, imported = false, message = $"UI Toolkit action '{action}' failed: {ex.Message}" });
             }
         }
 
@@ -133,8 +151,8 @@ Returns:
         static object CreateDocument(JObject parameters)
         {
             var path = ResolveUxmlPath(parameters, required: true);
-            EnsureParentDirectory(path);
-            VersionControlUtility.EnsureAssetEditable(path, checkout: true, throwOnBlocked: false);
+            var raw = GetRawString(parameters, "Content", "content");
+            if (raw != null) return WriteTextAsset(path, raw, isUxml: true, parameters);
 
             var document = new XDocument(new XDeclaration("1.0", "utf-8", null));
             var root = new XElement(UiNamespace + "UXML",
@@ -154,30 +172,14 @@ Returns:
 
             root.Add(rootElement);
             document.Add(root);
-            document.Save(ProjectPathToAbsolutePath(path));
-            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
-            return Response.Success("UI Toolkit UXML created or updated.", BuildUxmlSummary(path));
+            return SaveUxmlDocument(path, document, parameters);
         }
 
         static object CreateStyleSheet(JObject parameters)
         {
-            var path = NormalizeAssetPath(GetString(parameters, "StyleSheetPath", "styleSheetPath", "Path", "path", "UssPath", "ussPath", "uss_path") ?? "Assets/UI/Toolkit/NewStyles.uss");
-            EnsureParentDirectory(path);
-            VersionControlUtility.EnsureAssetEditable(path, checkout: true, throwOnBlocked: false);
-            var content = GetString(parameters, "Content", "content", "Text", "text");
-            if (string.IsNullOrWhiteSpace(content))
-                content = BuildDefaultUss(parameters);
-
-            File.WriteAllText(ProjectPathToAbsolutePath(path), content);
-            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(path);
-            return Response.Success("UI Toolkit USS created or updated.", new
-            {
-                path,
-                guid = AssetDatabase.AssetPathToGUID(path),
-                exists = sheet != null,
-                bytes = content.Length
-            });
+            var path = ResolveSourceExtension(NormalizeAssetPath(GetString(parameters, "StyleSheetPath", "styleSheetPath", "Path", "path", "UssPath", "ussPath", "uss_path") ?? "Assets/UI/Toolkit/NewStyles.uss"), ".uss");
+            var content = GetRawString(parameters, "Content", "content", "Text", "text") ?? BuildDefaultUss(parameters);
+            return WriteTextAsset(path, content, isUxml: false, parameters);
         }
 
         static object CreatePanelSettings(JObject parameters)
@@ -203,7 +205,7 @@ Returns:
             panel.screenMatchMode = ParseEnum(GetString(parameters, "ScreenMatchMode", "screenMatchMode", "screen_match_mode"), panel.screenMatchMode);
             panel.match = GetFloat(parameters, panel.match, "Match", "match");
             EditorUtility.SetDirty(panel);
-            AssetDatabase.SaveAssets();
+            AssetDatabase.SaveAssetIfDirty(panel);
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
             return Response.Success(created ? "PanelSettings created." : "PanelSettings updated.", BuildPanelSettingsSummary(path, panel));
         }
@@ -260,8 +262,7 @@ Returns:
                 elementSpec["children"] = children.DeepClone();
 
             parent.Add(BuildElement(elementSpec));
-            SaveUxmlDocument(path, document);
-            return Response.Success("UI Toolkit element added.", BuildUxmlSummary(path));
+            return SaveUxmlDocument(path, document, parameters);
         }
 
         static object SetClasses(JObject parameters)
@@ -278,8 +279,7 @@ Returns:
             foreach (var cls in ReadStringArray(GetToken(parameters, "RemoveClasses", "removeClasses", "remove_classes")) ?? Array.Empty<string>())
                 classes.Remove(cls);
             SetAttribute(element, "class", string.Join(" ", classes.Where(item => !string.IsNullOrWhiteSpace(item))));
-            SaveUxmlDocument(path, document);
-            return Response.Success("UI Toolkit element classes updated.", BuildUxmlSummary(path));
+            return SaveUxmlDocument(path, document, parameters);
         }
 
         static object SetInlineStyle(JObject parameters)
@@ -293,8 +293,7 @@ Returns:
             var styles = ParseStyleAttribute(element.Attribute("style")?.Value);
             MergeStyle(styles, GetToken(parameters, "Style", "style"));
             SetAttribute(element, "style", string.Join("; ", styles.Select(pair => $"{pair.Key}: {pair.Value}")));
-            SaveUxmlDocument(path, document);
-            return Response.Success("UI Toolkit inline style updated.", BuildUxmlSummary(path));
+            return SaveUxmlDocument(path, document, parameters);
         }
 
         static XElement BuildRootElement(JObject parameters)
@@ -347,7 +346,7 @@ Returns:
 
             if (GetToken(spec, "style", "Style") is JToken styleToken)
             {
-                var styles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var styles = new Dictionary<string, string>(StringComparer.Ordinal);
                 MergeStyle(styles, styleToken);
                 element.SetAttributeValue("style", string.Join("; ", styles.Select(pair => $"{pair.Key}: {pair.Value}")));
             }
@@ -379,14 +378,180 @@ Returns:
             var absolutePath = ProjectPathToAbsolutePath(path);
             if (!File.Exists(absolutePath))
                 throw new FileNotFoundException($"UXML '{path}' was not found.", absolutePath);
-            return XDocument.Load(absolutePath, LoadOptions.PreserveWhitespace);
+            var sourceBytes = File.ReadAllBytes(absolutePath);
+            string content;
+            using (var sourceReader = new StreamReader(new MemoryStream(sourceBytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+                content = sourceReader.ReadToEnd();
+            var validation = ValidateUxml(content);
+            if (!validation.valid) throw new UIToolkitValidationException(validation);
+            using var reader = XmlReader.Create(new StringReader(content), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+            var document = XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+            document.AddAnnotation(new UxmlSourcePrecondition { Sha256 = WorkSession.ComputeWriteSha256(sourceBytes) });
+            return document;
         }
 
-        static void SaveUxmlDocument(string path, XDocument document)
+        sealed class UxmlSourcePrecondition { public string Sha256; }
+
+        static object SaveUxmlDocument(string path, XDocument document, JObject parameters)
         {
-            VersionControlUtility.EnsureAssetEditable(path, checkout: true, throwOnBlocked: false);
-            document.Save(ProjectPathToAbsolutePath(path));
-            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            using var memory = new MemoryStream();
+            using (var writer = XmlWriter.Create(memory, new XmlWriterSettings { Encoding = new UTF8Encoding(false), Indent = true, NewLineChars = "\n" }))
+                document.Save(writer);
+            return WriteTextAsset(path, Encoding.UTF8.GetString(memory.ToArray()), isUxml: true, parameters,
+                document.Annotation<UxmlSourcePrecondition>()?.Sha256);
+        }
+
+        static object ValidateSource(JObject parameters, bool isUxml)
+        {
+            var path = isUxml ? ResolveUxmlPath(parameters, required: false) : NormalizeAssetPath(GetString(parameters, "StyleSheetPath", "styleSheetPath", "Path", "path", "UssPath", "ussPath", "uss_path"));
+            if (path != null) path = ResolveSourceExtension(path, isUxml ? ".uxml" : ".uss");
+            var content = GetRawString(parameters, "Content", "content");
+            if (content == null)
+            {
+                if (path == null) return Response.Error("UI_TOOLKIT_SOURCE_REQUIRED", new { status = "blocked", written = false, imported = false });
+                content = File.ReadAllText(ProjectPathToAbsolutePath(path));
+            }
+            var validation = isUxml ? ValidateUxml(content) : UIToolkitValidation.ValidateUss(content);
+            var data = new { path, status = validation.valid ? "validated_structure" : "blocked", preview = true, written = false, imported = false, validation, import = new UIToolkitImportResult() };
+            return validation.valid ? Response.Success("UI Toolkit source structure validated; semantic import was not run.", data) : Response.Error("UI_TOOLKIT_VALIDATION_FAILED", data);
+        }
+
+        static UIToolkitValidationResult ValidateUxml(string content)
+        {
+            return UIToolkitValidation.ValidateUxml(content, (ns, name) =>
+            {
+                if (ns.Length == 0 || ns == UiNamespace.NamespaceName)
+                {
+                    var type = typeof(VisualElement).Assembly.GetType(UiNamespace.NamespaceName + "." + name, false);
+                    if (type != null && (typeof(VisualElement).IsAssignableFrom(type) || type.IsDefined(typeof(UxmlObjectAttribute), true)))
+                        return true;
+                }
+                // Serialized-object property wrappers, custom factories and Editor elements may not match
+                // a VisualElement type name. Defer unresolved tags to Unity rather than rejecting legal UXML.
+                return null;
+            });
+        }
+
+        static object WriteTextAsset(string path, string content, bool isUxml, JObject parameters, string expectedBeforeSha256 = null)
+        {
+            path = ResolveSourceExtension(path, isUxml ? ".uxml" : ".uss");
+            var validation = isUxml ? ValidateUxml(content) : UIToolkitValidation.ValidateUss(content);
+            var preview = IsPreview(parameters);
+            if (!preview && validation.valid && (EditorApplication.isCompiling || EditorApplication.isUpdating || EditorApplication.isPlayingOrWillChangePlaymode))
+                return Response.Error("UI_TOOLKIT_EDITOR_BUSY", new { path, status = "blocked", preview = false, written = false, imported = false, validation });
+            var bytes = new UTF8Encoding(false).GetBytes(content);
+            var absolute = ProjectPathToAbsolutePath(path);
+            var recoveryRoot = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Library", "UniBridge", "UIToolkitWrites");
+            WorkSession.WriteTrackingToken token = null;
+            UIToolkitAssetWriteResult result = null;
+            var suppressed = false;
+            try
+            {
+                if (!preview && validation.valid)
+                {
+                    token = WorkSession.BeginWrite(new[] { path }, "ManageUIToolkit/" + (isUxml ? "uxml" : "uss"));
+                    AssetDatabase.DisallowAutoRefresh(); suppressed = true;
+                }
+                result = UIToolkitAssetWriter.Write(path, absolute, bytes, validation, preview, recoveryRoot,
+                    () => { VersionControlUtility.EnsureAssetEditable(path, checkout: true, throwOnBlocked: true); EnsureParentDirectory(path); },
+                    () => ImportTextAsset(path, isUxml), GetBool(parameters, true, "FailOnImportWarnings", "failOnImportWarnings"), expectedBeforeSha256);
+            }
+            finally
+            {
+                if (suppressed)
+                {
+                    try { AssetDatabase.AllowAutoRefresh(); }
+                    catch (Exception error)
+                    {
+                        if (result == null) throw;
+                        result.succeeded = false; result.status = result.written ? "partial" : "blocked";
+                        result.diagnostics.Add(new UIToolkitDiagnostic { severity = "error", code = "AUTO_REFRESH_RELEASE_FAILED", message = error.Message, file = path });
+                    }
+                }
+            }
+            if (!preview && result.written)
+            {
+                try
+                {
+                    var current = WorkSession.ComputeWriteSha256(File.ReadAllBytes(absolute));
+                    var expected = result.restoredBaseline ? result.beforeSha256 : result.expectedSha256;
+                    result.currentSha256 = current;
+                    if (current != expected)
+                    {
+                        result.succeeded = false; result.imported = false; result.restoredBaseline = false; result.status = "partial";
+                        result.diagnostics.Add(new UIToolkitDiagnostic { severity = "error", code = "FINAL_SOURCE_CHANGED", message = "Source changed after the import scope; current bytes are preserved.", file = path });
+                    }
+                }
+                catch (Exception error)
+                {
+                    result.succeeded = false; result.imported = false; result.restoredBaseline = false; result.currentSha256 = null; result.status = "partial";
+                    result.diagnostics.Add(new UIToolkitDiagnostic { severity = "error", code = "FINAL_READBACK_FAILED", message = error.Message, file = path });
+                }
+            }
+            var data = McpJson.ObjectFromObject(result);
+            data["bytes"] = bytes.Length;
+            data["exists"] = File.Exists(absolute);
+            if (preview) data["proposedContent"] = content;
+            if (result.imported && isUxml)
+            {
+                // Summarize the known imported payload, avoiding another importer/load callback after final readback.
+                var elements = XDocument.Parse(content).Descendants().Where(element => element.Name.LocalName != "UXML").Take(200)
+                    .Select(element => new { type = element.Name.LocalName, name = element.Attribute("name")?.Value,
+                        classes = ReadClasses(element), text = element.Attribute("text")?.Value, childCount = element.Elements().Count() }).ToArray();
+                data["visualTreeAssetLoaded"] = true;
+                data["elementCount"] = elements.Length;
+                data["elements"] = McpJson.ArrayFromObject(elements);
+            }
+            if (token != null && result.written)
+            {
+                try
+                {
+                    var finalKnownHash = result.restoredBaseline ? result.beforeSha256 : result.expectedSha256;
+                    data["workSessionOwnership"] = McpJson.ObjectFromObject(WorkSession.CompleteWrite(token, new Dictionary<string, string> { [path] = finalKnownHash }));
+                }
+                catch (Exception error) { data["workSessionOwnership"] = McpJson.ObjectFromObject(new { Succeeded = false, Issues = new[] { error.Message } }); }
+            }
+            return result.succeeded
+                ? Response.Success(preview ? "UI Toolkit source preview validated; semantic import was not run." : result.import.hasWarnings ? "UI Toolkit source written and imported with warnings; declarations may have been ignored." : "UI Toolkit source written, imported and read back successfully.", data)
+                : Response.Error(validation.valid ? "UI_TOOLKIT_WRITE_OR_IMPORT_FAILED" : "UI_TOOLKIT_VALIDATION_FAILED", data);
+        }
+
+        static UIToolkitImportResult ImportTextAsset(string path, bool isUxml)
+        {
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+            var result = new UIToolkitImportResult { guid = AssetDatabase.AssetPathToGUID(path) };
+            var asset = isUxml ? (UnityEngine.Object)AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(path) : AssetDatabase.LoadAssetAtPath<StyleSheet>(path);
+            result.assetLoaded = asset != null;
+            var log = AssetImporter.GetImportLog(path);
+            result.@checked = true;
+            if (log != null)
+                foreach (var entry in log.logEntries ?? Array.Empty<ImportLog.ImportLogEntry>())
+                {
+                    var error = (entry.flags & ImportLogFlags.Error) != 0;
+                    var warning = (entry.flags & ImportLogFlags.Warning) != 0;
+                    result.hasErrors |= error; result.hasWarnings |= warning;
+                    result.diagnostics.Add(new UIToolkitDiagnostic { severity = error ? "error" : warning ? "warning" : "info", code = "UNITY_IMPORT_LOG", message = entry.message, file = entry.file, line = entry.line });
+                }
+            if (asset is StyleSheet sheet)
+            {
+                result.hasErrors |= sheet.importedWithErrors;
+                result.hasWarnings |= sheet.importedWithWarnings;
+                if (sheet.importedWithErrors && !result.diagnostics.Any(item => item.severity == "error"))
+                    result.diagnostics.Add(new UIToolkitDiagnostic { severity = "error", code = "USS_IMPORTED_WITH_ERRORS", message = "StyleSheet.importedWithErrors is true.", file = path });
+                if (sheet.importedWithWarnings && !result.diagnostics.Any(item => item.severity == "warning"))
+                    result.diagnostics.Add(new UIToolkitDiagnostic { severity = "warning", code = "USS_IMPORTED_WITH_WARNINGS", message = "StyleSheet.importedWithWarnings is true.", file = path });
+            }
+            if (asset is VisualTreeAsset tree)
+            {
+                result.hasErrors |= tree.importedWithErrors;
+                result.hasWarnings |= tree.importedWithWarnings;
+                if (tree.importedWithErrors && !result.diagnostics.Any(item => item.severity == "error"))
+                    result.diagnostics.Add(new UIToolkitDiagnostic { severity = "error", code = "UXML_IMPORTED_WITH_ERRORS", message = "VisualTreeAsset.importedWithErrors is true.", file = path });
+                if (tree.importedWithWarnings && !result.diagnostics.Any(item => item.severity == "warning"))
+                    result.diagnostics.Add(new UIToolkitDiagnostic { severity = "warning", code = "UXML_IMPORTED_WITH_WARNINGS", message = "VisualTreeAsset.importedWithWarnings is true.", file = path });
+            }
+            result.semanticValidation = result.hasErrors || !result.assetLoaded ? "failed" : result.hasWarnings ? "warnings" : "passed";
+            return result;
         }
 
         static XElement FindElement(XDocument document, JObject parameters, bool parentFallback)
@@ -506,7 +671,7 @@ Returns:
 
 .title {{
     font-size: 28px;
-    unity-font-style: bold;
+    -unity-font-style: bold;
     color: #ffffff;
     margin-bottom: 12px;
 }}
@@ -525,20 +690,7 @@ Returns:
 
         static Dictionary<string, string> ParseStyleAttribute(string style)
         {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrWhiteSpace(style))
-                return result;
-            foreach (var part in style.Split(';'))
-            {
-                var index = part.IndexOf(':');
-                if (index <= 0)
-                    continue;
-                var key = part.Substring(0, index).Trim();
-                var value = part.Substring(index + 1).Trim();
-                if (!string.IsNullOrWhiteSpace(key))
-                    result[key] = value;
-            }
-            return result;
+            return string.IsNullOrWhiteSpace(style) ? new Dictionary<string, string>(StringComparer.Ordinal) : UIToolkitValidation.ReadInlineDeclarations(style);
         }
 
         static void MergeStyle(Dictionary<string, string> styles, JToken token)
@@ -554,7 +706,7 @@ Returns:
             if (token is JObject obj)
             {
                 foreach (var property in obj.Properties())
-                    styles[property.Name] = property.Value.ToString();
+                    styles[property.Name.StartsWith("--", StringComparison.Ordinal) ? property.Name : property.Name.ToLowerInvariant()] = property.Value.ToString();
             }
         }
 
@@ -622,9 +774,7 @@ Returns:
                 return null;
             }
 
-            if (!path.EndsWith(".uxml", StringComparison.OrdinalIgnoreCase))
-                path += ".uxml";
-            return path;
+            return ResolveSourceExtension(path, ".uxml");
         }
 
         static void EnsureParentDirectory(string assetPath)
@@ -648,18 +798,31 @@ Returns:
         {
             if (string.IsNullOrWhiteSpace(path))
                 return null;
-            var normalized = path.Trim().Replace('\\', '/').TrimStart('/');
+            var normalized = path.Trim().Replace('\\', '/');
+            if (Path.IsPathRooted(normalized) || normalized.StartsWith("/", StringComparison.Ordinal) || normalized.Contains(':') || normalized.Split('/').Any(segment => segment == "." || segment == ".."))
+                throw new InvalidOperationException("UI Toolkit paths must be project-relative asset paths without traversal.");
             if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
                 normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
                 return normalized;
             return "Assets/" + normalized;
         }
 
+        static string ResolveSourceExtension(string path, string extension)
+        {
+            if (string.IsNullOrWhiteSpace(path)) throw new InvalidOperationException("An asset path is required.");
+            if (path.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) return path;
+            if (Path.HasExtension(path)) throw new InvalidOperationException("The asset path must use " + extension + ".");
+            return path + extension;
+        }
+
         static string ProjectPathToAbsolutePath(string assetPath)
         {
             assetPath = NormalizeAssetPath(assetPath);
             var projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
-            return Path.Combine(projectRoot ?? string.Empty, assetPath).Replace('/', Path.DirectorySeparatorChar);
+            var root = Path.GetFullPath(projectRoot ?? string.Empty).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var absolute = Path.GetFullPath(Path.Combine(root, assetPath));
+            if (!absolute.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("UI Toolkit asset path escapes the project.");
+            return absolute;
         }
 
         static Vector2Int? ParseVector2Int(JToken token)
@@ -690,6 +853,19 @@ Returns:
         {
             var token = GetToken(obj, keys);
             return token == null || token.Type == JTokenType.Null ? null : token.ToString().Trim();
+        }
+
+        static string GetRawString(JObject obj, params string[] keys)
+        {
+            var token = GetToken(obj, keys);
+            return token == null || token.Type == JTokenType.Null ? null : token.ToString();
+        }
+
+        static bool IsPreview(JObject parameters) => GetBool(parameters, false, "DryRun", "dryRun", "dry_run") || GetBool(parameters, false, "Preview", "preview");
+        static bool GetBool(JObject parameters, bool fallback, params string[] keys)
+        {
+            var token = GetToken(parameters, keys);
+            return token == null || token.Type == JTokenType.Null ? fallback : token.Type == JTokenType.Boolean ? token.Value<bool>() : bool.TryParse(token.ToString(), out var value) ? value : fallback;
         }
 
         static int GetInt(JObject obj, int defaultValue, params string[] keys)

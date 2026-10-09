@@ -2587,7 +2587,7 @@ Returns:
                 return null;
             if (array.Count < 2 || array.Count > 3)
                 throw new InvalidOperationException("Position must be [x,y] or [x,y,z].");
-            return new Vector3(array[0].ToObject<float>(), array[1].ToObject<float>(), array.Count >= 3 ? array[2].ToObject<float>() : 0f);
+            return new Vector3(array[0].ToObjectIndependent<float>(), array[1].ToObjectIndependent<float>(), array.Count >= 3 ? array[2].ToObjectIndependent<float>() : 0f);
         }
 
         static Vector2? ParseVector2(JArray array)
@@ -2596,7 +2596,7 @@ Returns:
                 return null;
             if (array.Count != 2)
                 throw new InvalidOperationException("BlendTree child position must be [x,y].");
-            return new Vector2(array[0].ToObject<float>(), array[1].ToObject<float>());
+            return new Vector2(array[0].ToObjectIndependent<float>(), array[1].ToObjectIndependent<float>());
         }
 
         static AnimatorControllerParameterType ParseParameterType(string type)
@@ -2837,25 +2837,25 @@ Returns:
         static int GetInt(JObject obj, int defaultValue, params string[] names)
         {
             var token = GetToken(obj, names);
-            return token == null ? defaultValue : token.ToObject<int>();
+            return token == null ? defaultValue : token.ToObjectIndependent<int>();
         }
 
         static int? GetNullableInt(JObject obj, params string[] names)
         {
             var token = GetToken(obj, names);
-            return token == null ? null : token.ToObject<int>();
+            return token == null ? null : token.ToObjectIndependent<int>();
         }
 
         static float GetFloat(JObject obj, float defaultValue, params string[] names)
         {
             var token = GetToken(obj, names);
-            return token == null ? defaultValue : token.ToObject<float>();
+            return token == null ? defaultValue : token.ToObjectIndependent<float>();
         }
 
         static bool GetBool(JObject obj, bool defaultValue, params string[] names)
         {
             var token = GetToken(obj, names);
-            return token == null ? defaultValue : token.ToObject<bool>();
+            return token == null ? defaultValue : token.ToObjectIndependent<bool>();
         }
 
         static JToken GetToken(JObject obj, params string[] names)

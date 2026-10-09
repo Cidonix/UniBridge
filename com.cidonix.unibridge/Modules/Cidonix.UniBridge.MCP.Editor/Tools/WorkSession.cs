@@ -58,7 +58,9 @@ Actions:
     Status: Return active session metadata plus current file and scene semantic change summaries.
     Review: Return changed files, semantic scene changes, risk flags, and restore availability.
     Diff: Return compact text diffs for selected changed files.
-    Revert: Dry-run or execute selected file reverts from the session snapshot.
+    BeginWrite: Capture per-path preconditions before an explicitly owned external write.
+    CompleteWrite: Record that write only when expected payload hashes match the files.
+    Revert: Preview guarded owned file reverts, then execute the unchanged PlanId once.
     End: Mark the active session complete.
     List: List recent work sessions.
 
@@ -75,14 +77,18 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                     Action = new
                     {
                         type = "string",
-                        @enum = new[] { "Begin", "Status", "Review", "Diff", "Revert", "End", "List" },
+                        @enum = new[] { "Begin", "Status", "Review", "Diff", "BeginWrite", "CompleteWrite", "Revert", "End", "List" },
                         @default = "Status"
                     },
                     SessionId = new { type = "string", description = "Existing session id. If omitted, the active/latest session is used." },
                     Name = new { type = "string", description = "Human-readable session name for Begin." },
                     Paths = new { type = "array", items = new { type = "string" }, description = "Project-relative paths to diff/revert. Omit for Review; use RevertAll=true for full revert." },
-                    RevertAll = new { type = "boolean", description = "For Revert, select every changed file from this session.", @default = false },
+                    RevertAll = new { type = "boolean", description = "For Revert, select owned changed files only; unrelated changes are reported and preserved.", @default = false },
                     DryRun = new { type = "boolean", description = "For Revert, preview without touching files.", @default = true },
+                    PlanId = new { type = "string", description = "For executed Revert, the one-use planId from a successful dry-run. Changed files, ownership or selection invalidate the plan." },
+                    TokenId = new { type = "string", description = "For CompleteWrite, tokenId from BeginWrite BEFORE the write." },
+                    Source = new { type = "string", description = "Description of the explicitly owned write for BeginWrite." },
+                    AfterSha256 = new { type = "object", additionalProperties = new { type = new[] { "string", "null" } }, description = "For CompleteWrite, project-relative path to expected SHA256 of the known written bytes; null means an explicitly deleted file. Never derive these from unrelated current changes." },
                     IncludeProjectSettings = new { type = "boolean", @default = true },
                     IncludePackageManifests = new { type = "boolean", @default = true },
                     IncludePackageFiles = new { type = "boolean", description = "Also scan Packages content. Usually false to avoid package-cache noise.", @default = false },
@@ -115,6 +121,8 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                     "begin" or "start" or "checkpoint" => Begin(parameters),
                     "review" or "changes" or "changedfiles" => Review(parameters),
                     "diff" => Diff(parameters),
+                    "beginwrite" => BeginWriteTracking(parameters),
+                    "completewrite" => CompleteWriteTracking(parameters),
                     "revert" or "rollback" => Revert(parameters),
                     "end" or "finish" or "close" => End(parameters),
                     "list" or "sessions" => List(parameters),
@@ -143,7 +151,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             var semanticBaseline = CaptureSemanticBaseline(options, sessionId, out var semanticWarnings);
             var state = new SessionState
             {
-                Version = 1,
+                Version = 2,
                 SessionId = sessionId,
                 Name = GetString(parameters, "Name", "name") ?? "UniBridge work session",
                 ProjectRoot = ProjectRoot,
@@ -154,6 +162,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 Baseline = new SessionBaseline
                 {
                     FileCount = scan.Files.Count,
+                    ScanComplete = scan.Complete,
                     CapturedFiles = capture.CapturedFiles,
                     CapturedBytes = capture.CapturedBytes,
                     CaptureTruncated = capture.Truncated,
@@ -329,66 +338,149 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             var revertAll = GetBool(parameters, false, "RevertAll", "revertAll", "revert_all");
             var deleteAddedMetaWithAsset = GetBool(parameters, true, "DeleteAddedMetaWithAsset", "deleteAddedMetaWithAsset", "delete_added_meta_with_asset");
             var selected = ReadPaths(parameters);
-
             var changes = BuildChanges(state, state.Options, int.MaxValue);
-            var targets = SelectRevertTargets(changes.All, selected, revertAll, deleteAddedMetaWithAsset);
+            var skipped = revertAll ? changes.All.Where(change => !state.OwnedWrites.ContainsKey(change.Path)).Select(change => change.Path).ToArray() : Array.Empty<string>();
+            var candidates = revertAll ? changes.All.Where(change => state.OwnedWrites.ContainsKey(change.Path)).ToList() : changes.All;
+            var targets = SelectRevertTargets(candidates, selected, revertAll, deleteAddedMetaWithAsset);
+            var blockers = new List<string>();
+            if (state.Version < 2 || state.Baseline?.ScanComplete != true || !changes.ScanComplete)
+                blockers.Add("A complete version-2 baseline and current scan are required. Unknown paths from incomplete scans cannot be reverted.");
+            if (!revertAll)
+            {
+                foreach (var path in selected.Where(path => !targets.Any(change => string.Equals(change.Path, path, StringComparison.OrdinalIgnoreCase))))
+                    blockers.Add($"Selected path is not a known changed file: {path}");
+            }
             if (targets.Count == 0)
-            {
-                return Response.Error("Revert found no selected changed files.", new
-                {
-                    hint = "Pass Paths from Action=Review, or set RevertAll=true.",
-                    changedCount = changes.TotalChanged
-                });
-            }
-
+                blockers.Add("No owned changed files were selected.");
             var plan = targets.Select(change => BuildRevertPlan(state, change)).ToArray();
-            var invalid = plan.Where(item => !item.CanRevert).ToArray();
-            if (dryRun || invalid.Length > 0)
+            blockers.AddRange(plan.Where(item => !item.CanRevert).Select(item => $"{item.Path}: {item.Reason}"));
+            // A metadata file can be independently owned/edited. Refresh can remove orphan
+            // metadata, so never delete an asset with an unselected existing companion.
+            foreach (var change in targets.Where(change => change.ChangeType == "Added" && !change.Path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase)))
             {
-                return Response.Success(dryRun
-                    ? "Built UniBridge work session revert dry-run."
-                    : "Revert was not executed because one or more selected files cannot be restored.", new
-                {
-                    action = "Revert",
-                    dryRun = true,
-                    session = ToSessionSummary(state),
-                    requested = selected,
-                    revertAll,
-                    plan = plan.Select(ToRevertPlanDto).ToArray(),
-                    canExecute = invalid.Length == 0,
-                    invalidCount = invalid.Length,
-                    hint = invalid.Length == 0 ? "Repeat with DryRun=false to execute this revert." : "Remove non-restorable paths or revert them manually."
-                });
+                var meta = change.Path + ".meta";
+                if (File.Exists(ToAbsoluteProjectPath(meta)) && !targets.Any(item => item.ChangeType == "Added" && string.Equals(item.Path, meta, StringComparison.OrdinalIgnoreCase)))
+                    blockers.Add($"{change.Path}: existing companion metadata is not included as a verified owned addition: {meta}");
             }
-
+            foreach (var change in targets.Where(change => change.ChangeType == "Added" && change.Path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase)))
+            {
+                var asset = change.Path.Substring(0, change.Path.Length - 5);
+                if ((File.Exists(ToAbsoluteProjectPath(asset)) || Directory.Exists(ToAbsoluteProjectPath(asset))) &&
+                    !targets.Any(item => item.ChangeType == "Added" && string.Equals(item.Path, asset, StringComparison.OrdinalIgnoreCase)))
+                    blockers.Add($"{change.Path}: removing metadata while retaining its asset could regenerate a new GUID. Preserve this metadata.");
+            }
+            string planId = null;
+            if (blockers.Count == 0)
+            {
+                if (dryRun)
+                    planId = SaveRevertPreview(state, plan, selected, revertAll, deleteAddedMetaWithAsset);
+                else
+                {
+                    planId = GetString(parameters, "PlanId", "planId", "plan_id");
+                    ValidateAndConsumeRevertPreview(state, plan, selected, revertAll, deleteAddedMetaWithAsset, planId, blockers);
+                }
+            }
+            if (dryRun || blockers.Count > 0)
+            {
+                var data = new
+                {
+                    action = "Revert", status = blockers.Count == 0 ? "preview" : "blocked", dryRun,
+                    session = ToSessionSummary(state), requested = selected, revertAll, planId,
+                    plan = plan.Select(ToRevertPlanDto).ToArray(), canExecute = blockers.Count == 0,
+                    invalidCount = blockers.Count, blockers, skippedUnownedPaths = skipped,
+                    hint = blockers.Count == 0 ? "Execute the same selection with DryRun=false and this PlanId." : "Preserve blocked files. Start a complete session and track owned writes before modifying files; do not claim existing changes."
+                };
+                return blockers.Count == 0 ? Response.Success("Built guarded UniBridge revert preview.", data) : Response.Error("WORK_SESSION_REVERT_BLOCKED", data);
+            }
             var results = new List<object>();
             var errors = new List<string>();
+            var possiblyModified = false;
+            var processed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var addedRecoveryGroups = new List<AddedRevertGroupRecovery>();
+            var compensatedPaths = Array.Empty<string>();
+            AssetDatabase.DisallowAutoRefresh();
+            try
+            {
             foreach (var change in targets)
             {
+                if (processed.Contains(change.Path)) continue;
                 try
                 {
-                    results.Add(ExecuteRevert(state, change));
+                    if (change.ChangeType == "Added")
+                    {
+                        var group = targets.Where(item => item.ChangeType == "Added" &&
+                            (string.Equals(item.Path, change.Path, StringComparison.OrdinalIgnoreCase) ||
+                             !change.Path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) && string.Equals(item.Path, change.Path + ".meta", StringComparison.OrdinalIgnoreCase))).ToArray();
+                        results.AddRange(ExecuteAddedRevertGroupWithRecovery(state, group, addedRecoveryGroups));
+                        foreach (var item in group) processed.Add(item.Path);
+                    }
+                    else
+                    {
+                        results.Add(ExecuteRevert(state, change));
+                        processed.Add(change.Path);
+                    }
                 }
                 catch (Exception ex)
                 {
                     errors.Add($"{change.Path}: {ex.Message}");
+                    possiblyModified |= ex is RevertMutationException;
+                    break; // Preserve the remaining files after the first failed operation.
                 }
             }
-
-            AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
-            var after = BuildChanges(state, state.Options, DefaultMaxChanged);
-
-            return Response.Success(errors.Count == 0
-                ? "Reverted selected UniBridge work session changes."
-                : "Revert completed with errors.", new
+            }
+            finally
             {
-                action = "Revert",
-                dryRun = false,
-                session = ToSessionSummary(state),
-                reverted = results,
-                errors,
-                remainingChanges = after.Summary
-            });
+                try
+                {
+                    try { ValidateAddedRevertGroupsBeforeRefresh(state, addedRecoveryGroups); }
+                    catch (Exception ex)
+                    {
+                        errors.Add("Added asset/metadata refresh guard: " + ex.Message);
+                        possiblyModified |= ex is RevertMutationException;
+                    }
+                    compensatedPaths = addedRecoveryGroups.SelectMany(group => group.CompensatedPaths).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                    if (compensatedPaths.Length > 0)
+                    {
+                        var returnedPaths = new HashSet<string>(compensatedPaths, StringComparer.OrdinalIgnoreCase);
+                        results.RemoveAll(result => returnedPaths.Contains(McpJson.ObjectFromObject(result).Value<string>("path")));
+                        processed.ExceptWith(returnedPaths);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add("Restore result verification: " + ex.Message);
+                    possiblyModified = true;
+                }
+                finally
+                {
+                    try { AssetDatabase.AllowAutoRefresh(); }
+                    catch (Exception ex) { errors.Add("Restore auto-refresh: " + ex.Message); }
+                }
+            }
+            object remaining = null;
+            if (results.Count > 0 && errors.Count == 0)
+            {
+                try { AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate); }
+                catch (Exception ex) { errors.Add("Refresh: " + ex.Message); }
+                foreach (var path in processed)
+                {
+                    state.Files.TryGetValue(path, out var baseline);
+                    var absolute = ToAbsoluteProjectPath(path);
+                    if (File.Exists(absolute) != (baseline != null) ||
+                        baseline != null && !string.Equals(TryComputeSha256(absolute), baseline.Sha256, StringComparison.OrdinalIgnoreCase))
+                        errors.Add($"{path}: importer/callback changed the post-restore result; preserve it and review before further action.");
+                }
+            }
+            try { remaining = BuildChanges(state, state.Options, DefaultMaxChanged).Summary; }
+            catch (Exception ex) { errors.Add("Post-revert review: " + ex.Message); }
+            var outcome = new
+            {
+                action = "Revert", status = errors.Count == 0 ? "completed" : results.Count > 0 || possiblyModified ? "partial" : "blocked",
+                dryRun = false, planId, session = ToSessionSummary(state), reverted = results, errors,
+                skippedUnownedPaths = skipped, compensatedPaths, remainingChanges = remaining,
+                recoveryStorage = ToProjectDisplayPath(Path.Combine(GetSessionDir(state.SessionId), "revert-recovery"))
+            };
+            return errors.Count == 0 ? Response.Success("Reverted verified owned UniBridge changes.", outcome) : Response.Error("WORK_SESSION_REVERT_INCOMPLETE", outcome);
         }
 
         static object End(JObject parameters)
@@ -437,6 +529,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
         static ProjectScan ScanProject(ScanOptions options, CaptureBudget capture, string sessionId, bool computeHashes = true)
         {
             var warnings = new List<string>();
+            var complete = true;
             var files = new Dictionary<string, FileSnapshot>(StringComparer.OrdinalIgnoreCase);
             var roots = BuildScanRoots(options);
             foreach (var root in roots)
@@ -455,7 +548,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                     if (files.Count >= options.MaxFiles)
                     {
                         warnings.Add($"File scan reached MaxFiles={options.MaxFiles}; baseline is truncated.");
-                        return new ProjectScan { Files = files, Warnings = warnings };
+                        return new ProjectScan { Files = files, Warnings = warnings, Complete = false };
                     }
 
                     if (ShouldSkipFile(file))
@@ -465,7 +558,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 }
             }
 
-            return new ProjectScan { Files = files, Warnings = warnings };
+            return new ProjectScan { Files = files, Warnings = warnings, Complete = complete };
 
             void AddFile(string absolutePath)
             {
@@ -473,8 +566,19 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 if (string.IsNullOrWhiteSpace(relative) || files.ContainsKey(relative))
                     return;
 
-                var snapshot = BuildSnapshot(relative, absolutePath, capture, sessionId, computeHashes);
-                files[relative] = snapshot;
+                try
+                {
+                    EnsureNoReparsePoints(absolutePath, ProjectRoot);
+                    var snapshot = BuildSnapshot(relative, absolutePath, capture, sessionId, computeHashes);
+                    files[relative] = snapshot;
+                    if (computeHashes && string.IsNullOrWhiteSpace(snapshot.Sha256))
+                        throw new IOException("File fingerprint could not be read.");
+                }
+                catch (Exception ex)
+                {
+                    complete = false;
+                    warnings.Add($"File scan could not verify '{relative}': {ex.Message}");
+                }
             }
         }
 
@@ -519,7 +623,15 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             {
                 var capturePath = GetCapturedFilePath(sessionId, relativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(capturePath));
-                File.Copy(absolutePath, capturePath, overwrite: true);
+                // Fingerprint and capture the same locked byte stream. A separate hash
+                // followed by File.Copy can snapshot a different concurrent revision.
+                using var source = new FileStream(absolutePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using (var destination = new FileStream(capturePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    source.CopyTo(destination);
+                source.Position = 0;
+                using var sha = SHA256.Create();
+                snapshot.Sha256 = BytesToHex(sha.ComputeHash(source));
+                snapshot.SizeBytes = source.Length;
                 snapshot.Captured = true;
                 snapshot.CapturePath = ToSessionRelativePath(sessionId, capturePath);
             }
@@ -539,6 +651,9 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 state.Files.TryGetValue(path, out var before);
                 current.Files.TryGetValue(path, out var after);
 
+                // Missing entries in a bounded scan mean unknown, not added/deleted.
+                if ((before == null && state.Baseline?.ScanComplete != true) || (after == null && !current.Complete))
+                    continue;
                 var changeType = GetChangeType(before, after);
                 if (changeType == "Unchanged")
                     continue;
@@ -553,6 +668,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 All = items,
                 Items = limited,
                 TotalChanged = totalChanged,
+                ScanComplete = current.Complete,
                 Warnings = current.Warnings.ToArray(),
                 Summary = BuildChangeSummary(items, totalChanged, limited.Length)
             };
@@ -587,7 +703,10 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
         static FileChange ToFileChange(SessionState state, string changeType, FileSnapshot before, FileSnapshot after, string path)
         {
             var effective = after ?? before;
-            var canRevert = changeType == "Added" || (before?.Captured == true && CaptureFileExists(state, before));
+            var canRevert = state.Version >= 2 && state.Baseline?.ScanComplete == true &&
+                state.OwnedWrites != null && state.OwnedWrites.TryGetValue(path, out var owned) && !owned.Conflict &&
+                owned.AfterExists == (after != null) && (!owned.AfterExists || string.Equals(owned.AfterSha256, after.Sha256, StringComparison.OrdinalIgnoreCase)) &&
+                (changeType == "Added" || (before?.Captured == true && CaptureFileExists(state, before)));
             var risks = BuildRiskFlags(changeType, path);
             return new FileChange
             {
@@ -686,7 +805,10 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 canRevert = plan.CanRevert,
                 reason = plan.Reason,
                 captured = plan.Captured,
-                capturePath = plan.CapturePath
+                capturePath = plan.CapturePath,
+                expectedExists = plan.ExpectedExists,
+                expectedSha256 = plan.ExpectedSha256,
+                baselineSha256 = plan.BaselineSha256
             };
         }
 
@@ -750,7 +872,8 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             {
                 foreach (var path in wanted.ToArray())
                 {
-                    if (!path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
+                    if (!path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) &&
+                        changes.Any(change => change.ChangeType == "Added" && string.Equals(change.Path, path, StringComparison.OrdinalIgnoreCase)))
                         wanted.Add(path + ".meta");
                 }
             }
@@ -765,8 +888,10 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 Path = change.Path,
                 ChangeType = change.ChangeType,
                 Operation = change.ChangeType == "Added" ? "Delete added file" : "Restore baseline file",
-                CanRevert = change.CanRevert,
-                Reason = change.CanRevert ? null : "Baseline bytes were not captured for this file."
+                CanRevert = true,
+                ExpectedExists = change.ChangeType != "Deleted",
+                ExpectedSha256 = change.AfterSha256,
+                BaselineSha256 = change.BeforeSha256
             };
 
             if (change.ChangeType == "Deleted" || change.ChangeType == "Modified")
@@ -778,29 +903,14 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 }
             }
 
+            plan.Reason = GetRevertBlocker(state, change);
+            plan.CanRevert = plan.Reason == null;
             return plan;
         }
 
         static object ExecuteRevert(SessionState state, FileChange change)
         {
-            var absolute = ToAbsoluteProjectPath(change.Path);
-            if (change.ChangeType == "Added")
-            {
-                if (File.Exists(absolute))
-                    File.Delete(absolute);
-                return new { path = change.Path, operation = "Deleted added file" };
-            }
-
-            if (!state.Files.TryGetValue(change.Path, out var snapshot) ||
-                !snapshot.Captured ||
-                !CaptureFileExists(state, snapshot))
-            {
-                throw new InvalidOperationException("No captured baseline bytes are available.");
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(absolute));
-            File.Copy(GetAbsoluteCapturePath(state, snapshot), absolute, overwrite: true);
-            return new { path = change.Path, operation = "Restored baseline file", bytes = new FileInfo(absolute).Length };
+            return ExecuteGuardedRevert(state, change);
         }
 
         static string ReadBaselineText(SessionState state, string path)
@@ -940,7 +1050,12 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
 
         static string GetAbsoluteCapturePath(SessionState state, FileSnapshot snapshot)
         {
-            return Path.Combine(GetSessionDir(state.SessionId), snapshot.CapturePath.Replace('/', Path.DirectorySeparatorChar));
+            var root = Path.GetFullPath(GetSessionDir(state.SessionId));
+            var full = Path.GetFullPath(Path.Combine(root, snapshot.CapturePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (!full.StartsWith(root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Captured baseline path is outside its session.");
+            EnsureNoReparsePoints(full, ProjectRoot);
+            return full;
         }
 
         static SessionState LoadRequestedState(JObject parameters, bool required)
@@ -964,13 +1079,22 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 return null;
             }
 
-            return JsonConvert.DeserializeObject<SessionState>(File.ReadAllText(path));
+            return ReadSessionState(path);
         }
 
         static void SaveState(SessionState state)
         {
             Directory.CreateDirectory(GetSessionDir(state.SessionId));
-            File.WriteAllText(GetSessionFile(state.SessionId), JsonConvert.SerializeObject(state, Formatting.Indented));
+            var path = GetSessionFile(state.SessionId);
+            EnsureNoReparsePoints(path, ProjectRoot);
+            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temporary, McpJson.SerializeObject(state, Formatting.Indented));
+                if (File.Exists(path)) File.Replace(temporary, path, null);
+                else File.Move(temporary, path);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
         static object[] ListSessionSummaries(int limit)
@@ -995,7 +1119,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
 
         static SessionState LoadStateById(string sessionId)
         {
-            return JsonConvert.DeserializeObject<SessionState>(File.ReadAllText(GetSessionFile(sessionId)));
+            return ReadSessionState(GetSessionFile(sessionId));
         }
 
         static object ToSessionSummary(SessionState state)
@@ -1011,6 +1135,9 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
                 fileCount = state.Baseline?.FileCount ?? state.Files?.Count ?? 0,
                 capturedFiles = state.Baseline?.CapturedFiles ?? 0,
                 captureTruncated = state.Baseline?.CaptureTruncated ?? false,
+                scanComplete = state.Baseline?.ScanComplete == true,
+                guardedRevertAvailable = state.Version >= 2 && state.Baseline?.ScanComplete == true,
+                ownedWriteCount = state.OwnedWrites?.Count ?? 0,
                 sceneSemanticBaseline = state.SemanticBaseline != null ? new
                 {
                     enabled = state.SemanticBaseline.Enabled,
@@ -1184,6 +1311,8 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
 
         static string GetSessionDir(string sessionId)
         {
+            if (string.IsNullOrWhiteSpace(sessionId) || sessionId != Path.GetFileName(sessionId) || sessionId.Contains("..") || sessionId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                throw new InvalidOperationException("Invalid work session id.");
             return Path.Combine(SessionRoot, sessionId);
         }
 
@@ -1260,6 +1389,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             public SessionBaseline Baseline;
             public SessionSemanticBaseline SemanticBaseline;
             public Dictionary<string, FileSnapshot> Files = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, OwnedWriteReceipt> OwnedWrites = new(StringComparer.OrdinalIgnoreCase);
         }
 
         sealed class SessionBaseline
@@ -1268,6 +1398,7 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             public int CapturedFiles;
             public long CapturedBytes;
             public bool CaptureTruncated;
+            public bool ScanComplete;
             public List<string> Warnings = new();
         }
 
@@ -1310,6 +1441,9 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             public string Reason;
             public bool Captured;
             public string CapturePath;
+            public bool ExpectedExists;
+            public string ExpectedSha256;
+            public string BaselineSha256;
         }
 
         sealed class ChangeSet
@@ -1319,12 +1453,14 @@ The tool writes only session metadata/snapshots under Library unless Revert is e
             public int TotalChanged;
             public object Summary;
             public string[] Warnings;
+            public bool ScanComplete;
         }
 
         sealed class ProjectScan
         {
             public Dictionary<string, FileSnapshot> Files;
             public List<string> Warnings;
+            public bool Complete;
         }
 
         sealed class ScanRoot

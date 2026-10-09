@@ -97,7 +97,7 @@ Recipes:
                 build.Batch["DryRun"] = dryRun;
 
                 var result = await McpToolRegistry.ExecuteToolInsideCurrentLeaseAsync("UniBridge_BatchActions", build.Batch);
-                var resultJson = JObject.FromObject(result);
+                var resultJson = McpJson.ObjectFromObject(result);
                 var batchSucceeded = resultJson.Value<bool?>("success") ?? true;
                 var message = dryRun
                     ? $"Workflow recipe '{definition.Name}' dry-run completed."
@@ -818,7 +818,7 @@ Recipes:
                 var token = parameters.Options?[key];
                 if (token != null && token.Type != JTokenType.Null)
                 {
-                    return token.ToObject<bool>();
+                    return token.ToObjectIndependent<bool>();
                 }
             }
 
@@ -832,7 +832,7 @@ Recipes:
                 var token = parameters.Options?[key];
                 if (token != null && token.Type != JTokenType.Null)
                 {
-                    return token.ToObject<float>();
+                    return token.ToObjectIndependent<float>();
                 }
             }
 
@@ -846,7 +846,7 @@ Recipes:
                 var token = parameters.Options?[key];
                 if (token != null && token.Type != JTokenType.Null)
                 {
-                    return token.ToObject<int>();
+                    return token.ToObjectIndependent<int>();
                 }
             }
 
@@ -876,7 +876,7 @@ Recipes:
             {
                 if (obj?[key] is JArray array)
                 {
-                    return array.Select(token => token.ToObject<float>()).ToArray();
+                    return array.Select(token => token.ToObjectIndependent<float>()).ToArray();
                 }
             }
 

@@ -149,7 +149,7 @@ namespace Cidonix.UniBridge.Tracing
             try
             {
                 // Try deserializing as the new PersistedData format first
-                var stored = JsonConvert.DeserializeObject<PersistedData>(json);
+                var stored = TraceJson.DeserializeObject<PersistedData>(json);
                 if (stored != null)
                 {
                     s_Data = stored;
@@ -172,7 +172,7 @@ namespace Cidonix.UniBridge.Tracing
             try
             {
                 // Backward compat: try the old Dictionary<string, TraceConfig> format
-                var legacyConfigs = JsonConvert.DeserializeObject<Dictionary<string, TraceConfig>>(json);
+                var legacyConfigs = TraceJson.DeserializeObject<Dictionary<string, TraceConfig>>(json);
                 if (legacyConfigs != null)
                     s_Data.Configs = legacyConfigs;
             }
@@ -186,7 +186,7 @@ namespace Cidonix.UniBridge.Tracing
         {
             try
             {
-                var json = JsonConvert.SerializeObject(s_Data, Formatting.None,
+                var json = TraceJson.SerializeObject(s_Data, Formatting.None,
                     new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
                 EditorUserSettings.SetConfigValue(k_SettingKey, json);
             }

@@ -926,9 +926,9 @@ Returns:
             }
 
             return new Vector3(
-                array[0].ToObject<float>(),
-                array[1].ToObject<float>(),
-                array[2].ToObject<float>());
+                array[0].ToObjectIndependent<float>(),
+                array[1].ToObjectIndependent<float>(),
+                array[2].ToObjectIndependent<float>());
         }
 
         static PrefabUnpackMode ResolveUnpackMode(string mode)
@@ -1248,13 +1248,13 @@ Returns:
         static bool GetBool(JObject obj, bool defaultValue, params string[] names)
         {
             var token = GetToken(obj, names);
-            return token == null ? defaultValue : token.ToObject<bool>();
+            return token == null ? defaultValue : token.ToObjectIndependent<bool>();
         }
 
         static int GetInt(JObject obj, int defaultValue, params string[] names)
         {
             var token = GetToken(obj, names);
-            return token == null ? defaultValue : token.ToObject<int>();
+            return token == null ? defaultValue : token.ToObjectIndependent<int>();
         }
 
         static long? GetLong(JObject obj, params string[] names)
@@ -1265,7 +1265,7 @@ Returns:
                 return null;
             }
 
-            return token.ToObject<long>();
+            return token.ToObjectIndependent<long>();
         }
 
         static string[] GetStringArray(JObject obj, params string[] names)

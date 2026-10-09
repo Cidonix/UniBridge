@@ -24,15 +24,20 @@ Use this after creating or editing scripts, or before asking Unity to compile/re
 
 Args:
     uri: unity://path/..., file://..., Assets/..., Packages/..., or an absolute path to a .cs file.
-    level: basic or standard.
+    level: basic, standard, comprehensive, or strict.
     include_diagnostics: When true, returns detailed diagnostics; otherwise returns summary counts.
 
 Validation levels:
     basic: Fast syntax and structural checks.
-    standard: Adds common Unity/C# checks when available.
+    standard: Adds common Unity/C# checks and semantic deprecated API hints when available.
+    comprehensive: Adds further Unity coding rules and the same advisory hints.
+    strict: Adds semantic validation when enabled and the same advisory hints.
 
 Returns:
-    success, message, and data with warning/error counts plus optional diagnostics.";
+    success, message, and data with warning/error counts plus optional diagnostics.
+    data.obsoleteApiHints is independent advisory metadata: status available/partial/unavailable/skipped,
+    source locations, ObsoleteAttribute messages, and verified replacement signatures/return-type changes.
+    It never changes validation success or counts and never rewrites source. Basic skips semantic hints.";
 
         /// <summary>
         /// Gets the JSON schema describing the output format of the UniBridge_ValidateScript tool.
@@ -48,6 +53,8 @@ Returns:
                 {
                     success = new { type = "boolean", description = "Whether the operation succeeded" },
                     message = new { type = "string", description = "Human-readable message about the operation" },
+                    code = new { type = "string", description = "Error code or message when validation fails" },
+                    error = new { type = "string", description = "Error message when validation fails" },
                     data = new
                     {
                         type = "object",
@@ -56,6 +63,7 @@ Returns:
                         {
                             warnings = new { type = "integer", description = "Number of warnings found" },
                             errors = new { type = "integer", description = "Number of errors found" },
+                            obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema(),
                             diagnostics = new
                             {
                                 type = "array",
@@ -85,7 +93,7 @@ Returns:
                         }
                     }
                 },
-                required = new[] { "success", "message" }
+                required = new[] { "success" }
             };
         }
 
@@ -104,9 +112,9 @@ Returns:
             }
 
             string level = parameters.Level ?? "basic";
-            if (level != "basic" && level != "standard")
+            if (level != "basic" && level != "standard" && level != "comprehensive" && level != "strict")
             {
-                return Response.Error("bad_level: level must be 'basic' or 'standard'.");
+                return Response.Error("bad_level: level must be 'basic', 'standard', 'comprehensive', or 'strict'.");
             }
 
             bool includeDiagnostics = parameters.IncludeDiagnostics;
@@ -130,8 +138,8 @@ Returns:
 
             try
             {
-                var validation = ManageScript.ValidateScriptSource(File.ReadAllText(resolved.AbsolutePath), level);
-                var diagnostics = JArray.FromObject(validation.Diagnostics ?? Array.Empty<ManageScript.ScriptDiagnostic>());
+                var validation = ManageScript.ValidateScriptSource(File.ReadAllText(resolved.AbsolutePath), level, resolved.AbsolutePath);
+                var diagnostics = McpJson.ArrayFromObject(validation.Diagnostics ?? Array.Empty<ManageScript.ScriptDiagnostic>());
                 var warnings = diagnostics.Count(diag => string.Equals(diag["severity"]?.ToString(), "warning", StringComparison.OrdinalIgnoreCase));
                 var errors = diagnostics.Count(diag =>
                 {
@@ -144,10 +152,11 @@ Returns:
                 {
                     ["warnings"] = warnings,
                     ["errors"] = errors,
-                    ["summary"] = JObject.FromObject(new { warnings, errors }),
+                    ["obsoleteApiHints"] = McpJson.ObjectFromObject(validation.ObsoleteApiHints),
+                    ["summary"] = McpJson.ObjectFromObject(new { warnings, errors }),
                     ["path"] = resolved.AssetPath ?? resolved.ProjectRelativePath,
                     ["absolutePath"] = resolved.AbsolutePath.Replace('\\', '/'),
-                    ["pathResolution"] = JObject.FromObject(new
+                    ["pathResolution"] = McpJson.ObjectFromObject(new
                     {
                         requested = resolved.Input,
                         displayPath = resolved.DisplayPath,

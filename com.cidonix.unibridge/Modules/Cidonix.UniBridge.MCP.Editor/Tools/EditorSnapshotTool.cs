@@ -28,7 +28,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         static readonly JsonSerializerSettings JsonSettings = new()
         {
             Formatting = Formatting.Indented,
-            NullValueHandling = NullValueHandling.Ignore
+            NullValueHandling = NullValueHandling.Ignore,
+            CheckAdditionalContent = true
         };
 
         public const string Title = "Capture or restore Editor state";
@@ -46,7 +47,10 @@ Actions:
     Clear: Delete persisted snapshots.
 
 Restore safety:
-    Scene restore refuses to reload or close dirty scenes unless SaveDirtyScenes or AllowDirtySceneReload is true.
+    Already loaded snapshot scenes are preserved without reopening or saving them.
+    Closing dirty extra scenes requires SaveDirtyScenes or AllowDirtySceneReload. Untitled scenes cannot be saved automatically; a failed save stops restore.
+    A dirty Prefab Stage must be saved or discarded manually before a stage change.
+    Results report blocked, partial, or completed; a failed restore never reports success.
     DryRun reports the exact restore plan without changing Unity.
     Window/layout restore is intentionally conservative: it focuses matching window types and active dock tabs, and optionally restores maximized state, but does not rewrite Unity layouts.";
 
@@ -121,6 +125,9 @@ Restore safety:
                 return Response.Error("Editor snapshot restore is blocked by safety checks.", new
                 {
                     snapshotId = snapshot.snapshotId,
+                    status = "blocked",
+                    restored = false,
+                    mutationAttempted = false,
                     dryRun = options.DryRun,
                     plan
                 });
@@ -131,6 +138,9 @@ Restore safety:
                 return Response.Success("Editor snapshot restore dry-run completed.", new
                 {
                     snapshotId = snapshot.snapshotId,
+                    status = "dry_run",
+                    restored = false,
+                    mutationAttempted = false,
                     dryRun = true,
                     plan
                 });
@@ -138,55 +148,97 @@ Restore safety:
 
             var applied = new List<string>();
             var warnings = new List<string>(plan.warnings ?? Array.Empty<string>());
+            var errors = new List<string>();
+            var informationalWarnings = warnings.Count;
+            var attempted = false;
+            var mutationAttempted = false;
 
-            if (options.RestoreScenes)
+            try
             {
-                RestoreScenes(snapshot, options, applied, warnings);
+                // All scene saves finish before any scene is opened or closed. An
+                // exception or false return aborts the remaining restore steps.
+                if (options.RestoreScenes)
+                {
+                    attempted = true;
+                    RestoreScenes(snapshot, options, applied, warnings, ref mutationAttempted);
+                }
+
+                if (options.RestorePrefabStage)
+                {
+                    attempted = true;
+                    RestorePrefabStage(snapshot, applied, warnings, ref mutationAttempted);
+                }
+
+                if (options.RestorePrefabAutoSave)
+                {
+                    attempted = true;
+                    mutationAttempted = true;
+                    RestorePrefabAutoSave(snapshot, applied, warnings);
+                }
+
+                if (options.RestoreSceneView)
+                {
+                    attempted = true;
+                    mutationAttempted = true;
+                    RestoreSceneView(snapshot, applied, warnings);
+                }
+
+                if (options.RestoreSelection)
+                {
+                    attempted = true;
+                    mutationAttempted = true;
+                    RestoreSelection(snapshot, applied, warnings);
+                }
+
+                if (options.RestoreActiveTool)
+                {
+                    attempted = true;
+                    mutationAttempted = true;
+                    RestoreActiveTool(snapshot, applied, warnings);
+                }
+
+                if (options.RestoreDockTabs)
+                {
+                    attempted = true;
+                    mutationAttempted = true;
+                    RestoreDockTabs(snapshot, applied, warnings);
+                }
+
+                if (options.RestoreFocusedWindow)
+                {
+                    attempted = true;
+                    mutationAttempted = true;
+                    RestoreFocusedWindow(snapshot, options, applied, warnings);
+                }
+            }
+            catch (SnapshotRestoreBlockedException ex)
+            {
+                errors.Add(ex.Message);
+                attempted = applied.Count > 0;
+            }
+            catch (Exception ex)
+            {
+                // Unity callbacks may already have changed state before throwing.
+                // Report partial conservatively instead of claiming no mutation.
+                errors.Add(ex.Message);
             }
 
-            if (options.RestorePrefabStage)
-            {
-                RestorePrefabStage(snapshot, applied, warnings);
-            }
-
-            if (options.RestorePrefabAutoSave)
-            {
-                RestorePrefabAutoSave(snapshot, applied, warnings);
-            }
-
-            if (options.RestoreSceneView)
-            {
-                RestoreSceneView(snapshot, applied, warnings);
-            }
-
-            if (options.RestoreSelection)
-            {
-                RestoreSelection(snapshot, applied, warnings);
-            }
-
-            if (options.RestoreActiveTool)
-            {
-                RestoreActiveTool(snapshot, applied, warnings);
-            }
-
-            if (options.RestoreDockTabs)
-            {
-                RestoreDockTabs(snapshot, applied, warnings);
-            }
-
-            if (options.RestoreFocusedWindow)
-            {
-                RestoreFocusedWindow(snapshot, options, applied, warnings);
-            }
-
-            return Response.Success("Editor snapshot restored.", new
+            var restored = errors.Count == 0 && warnings.Count == informationalWarnings;
+            var status = restored ? "completed" : mutationAttempted || attempted || applied.Count > 0 ? "partial" : "blocked";
+            var data = new
             {
                 snapshotId = snapshot.snapshotId,
-                restored = true,
+                status,
+                restored,
+                mutationAttempted,
                 applied,
                 warnings,
+                errors,
                 current = BuildCurrentSummary()
-            });
+            };
+            return restored
+                ? Response.Success("Editor snapshot restored.", data)
+                : Response.Error(status == "blocked" ? "Editor snapshot restore was blocked." : "Editor snapshot restore completed only partially.", data);
         }
 
         static object ListSnapshots(EditorSnapshotParams parameters)
@@ -505,13 +557,7 @@ Restore safety:
             if (options.RestoreScenes && snapshot.scenes?.loadedScenes != null)
             {
                 var currentScenes = GetLoadedScenes().ToArray();
-                var targetPaths = snapshot.scenes.loadedScenes
-                    .Select(scene => scene.path)
-                    .Where(path => !string.IsNullOrWhiteSpace(path))
-                    .Select(NormalizePath)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-
+                var targetPaths = GetTargetScenePaths(snapshot);
                 var currentPaths = currentScenes
                     .Select(scene => NormalizePath(scene.path))
                     .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -519,29 +565,48 @@ Restore safety:
                     .ToArray();
 
                 var missing = targetPaths.Except(currentPaths, StringComparer.OrdinalIgnoreCase).ToArray();
-                var extra = currentPaths.Except(targetPaths, StringComparer.OrdinalIgnoreCase).ToArray();
-                var dirty = currentScenes.Where(scene => scene.isDirty).Select(scene => new { scene.name, path = NormalizePath(scene.path) }).ToArray();
+                var extra = GetScenesToClose(currentScenes, targetPaths, options);
+                var dirty = extra.Where(scene => scene.isDirty).ToArray();
+
+                if (targetPaths.Length == 0 || (options.CloseExtraScenes && snapshot.scenes.loadedScenes.Any(scene => scene == null || string.IsNullOrWhiteSpace(scene.path))))
+                {
+                    blockers.Add("The snapshot contains no restorable saved scene set, or contains an untitled scene without a persistent identity. Keep the current scenes by setting RestoreScenes=false or CloseExtraScenes=false with saved target scenes.");
+                }
 
                 if (missing.Length > 0 && options.OpenMissingScenes)
                 {
                     actions.Add($"Open {missing.Length} missing scene(s).");
+                    foreach (var path in missing)
+                    {
+                        if (!File.Exists(path))
+                            blockers.Add($"Snapshot scene path not found: '{path}'.");
+                    }
                 }
 
-                if (extra.Length > 0 && options.CloseExtraScenes)
+                if (extra.Length > 0)
                 {
-                    actions.Add($"Close/reload {extra.Length} extra scene(s).");
+                    actions.Add($"Close {extra.Length} extra scene(s); already loaded target scenes stay open.");
+                    if (!currentScenes.Any(scene => targetPaths.Contains(NormalizePath(scene.path), StringComparer.OrdinalIgnoreCase)) && (!options.OpenMissingScenes || missing.Length == 0))
+                        blockers.Add("Closing extra scenes would leave no loaded saved target scene. Enable OpenMissingScenes or preserve the extra scenes.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(snapshot.scenes.activeScenePath))
                 {
                     actions.Add($"Set active scene to '{snapshot.scenes.activeScenePath}'.");
+                    var activePath = NormalizePath(snapshot.scenes.activeScenePath);
+                    if (!currentPaths.Contains(activePath, StringComparer.OrdinalIgnoreCase) && !(options.OpenMissingScenes && missing.Contains(activePath, StringComparer.OrdinalIgnoreCase)))
+                        blockers.Add($"The requested active scene '{activePath}' is not loaded and will not be opened.");
+                    else if (options.CloseExtraScenes && !targetPaths.Contains(activePath, StringComparer.OrdinalIgnoreCase))
+                        blockers.Add($"The requested active scene '{activePath}' is absent from the snapshot scene set.");
                 }
 
-                if (dirty.Length > 0 && (missing.Length > 0 || (extra.Length > 0 && options.CloseExtraScenes)))
+                if (dirty.Length > 0)
                 {
                     if (options.SaveDirtyScenes)
                     {
                         actions.Add($"Save {dirty.Length} dirty scene(s) before restore.");
+                        foreach (var scene in dirty.Where(scene => string.IsNullOrWhiteSpace(scene.path)))
+                            blockers.Add($"Dirty untitled scene '{scene.name}' cannot be saved automatically. Save it manually or preserve it before restoring.");
                     }
                     else if (!options.AllowDirtySceneReload)
                     {
@@ -552,10 +617,20 @@ Restore safety:
                         warnings.Add("Dirty scenes may lose unsaved changes because AllowDirtySceneReload is true.");
                     }
                 }
+
+                var currentStage = PrefabStageUtility.GetCurrentPrefabStage();
+                if (currentStage != null && currentStage.scene.IsValid() && currentStage.scene.isDirty && (extra.Length > 0 || (options.OpenMissingScenes && missing.Length > 0)))
+                    blockers.Add("Save or discard the dirty Prefab Stage manually before changing the loaded scene set.");
             }
 
             if (options.RestorePrefabStage && snapshot.prefabStage != null)
             {
+                var currentStage = PrefabStageUtility.GetCurrentPrefabStage();
+                var stageChanges = currentStage != null && (!snapshot.prefabStage.isOpen || !string.Equals(NormalizePath(currentStage.assetPath), NormalizePath(snapshot.prefabStage.assetPath), StringComparison.OrdinalIgnoreCase));
+                if (stageChanges && currentStage.scene.IsValid() && currentStage.scene.isDirty)
+                    blockers.Add("Save or discard the dirty Prefab Stage manually before restoring another stage.");
+                if (snapshot.prefabStage.isOpen && (string.IsNullOrWhiteSpace(snapshot.prefabStage.assetPath) || AssetDatabase.LoadAssetAtPath<GameObject>(snapshot.prefabStage.assetPath) == null))
+                    blockers.Add($"Snapshot prefab asset could not be loaded: '{snapshot.prefabStage.assetPath}'.");
                 actions.Add(snapshot.prefabStage.isOpen
                     ? $"Open Prefab Stage '{snapshot.prefabStage.assetPath}'."
                     : "Return to Main Stage.");
@@ -603,72 +678,79 @@ Restore safety:
             };
         }
 
-        static void RestoreScenes(EditorSnapshotData snapshot, RestoreOptions options, List<string> applied, List<string> warnings)
+        static void RestoreScenes(EditorSnapshotData snapshot, RestoreOptions options, List<string> applied, List<string> warnings, ref bool mutationAttempted)
         {
-            var targetScenes = snapshot.scenes?.loadedScenes?
-                .Where(scene => !string.IsNullOrWhiteSpace(scene.path))
-                .ToArray();
-
-            if (targetScenes == null || targetScenes.Length == 0)
-            {
-                warnings.Add("Snapshot has no saved scene paths to restore.");
+            if (snapshot.scenes?.loadedScenes == null)
                 return;
-            }
 
+            // Re-evaluate safety against the state at execution, not only the
+            // earlier plan. Loaded targets are never reloaded, even when dirty.
+            var checkedPlan = BuildRestorePlan(snapshot, options);
+            if (!checkedPlan.canRestore)
+                throw new SnapshotRestoreBlockedException(string.Join(" ", checkedPlan.blockers));
+
+            var targetPaths = GetTargetScenePaths(snapshot);
             var currentScenes = GetLoadedScenes().ToArray();
-            var dirtyScenes = currentScenes.Where(scene => scene.isDirty).ToArray();
-            if (dirtyScenes.Length > 0 && options.SaveDirtyScenes)
+            var scenesToClose = GetScenesToClose(currentScenes, targetPaths, options);
+            var dirtyScenes = scenesToClose.Where(scene => scene.isDirty).ToArray();
+            if (options.SaveDirtyScenes)
             {
                 foreach (var scene in dirtyScenes)
                 {
                     if (string.IsNullOrWhiteSpace(scene.path))
-                    {
-                        warnings.Add($"Dirty untitled scene '{scene.name}' could not be saved automatically.");
-                        continue;
-                    }
+                        throw new SnapshotRestoreBlockedException($"Dirty untitled scene '{scene.name}' cannot be saved automatically.");
 
-                    if (EditorSceneManager.SaveScene(scene))
-                    {
-                        applied.Add($"Saved dirty scene '{scene.path}'.");
-                    }
-                    else
-                    {
-                        warnings.Add($"Unity failed to save dirty scene '{scene.path}'.");
-                    }
+                    // Unity save callbacks can change state even when SaveScene
+                    // returns false or throws. Preserve that uncertainty in the
+                    // response independently of acknowledged applied operations.
+                    mutationAttempted = true;
+                    if (!EditorSceneManager.SaveScene(scene))
+                        throw new SnapshotRestoreBlockedException($"Unity failed to save dirty scene '{scene.path}'. No further scene opens or closes will be attempted.");
+                    applied.Add($"Saved dirty scene '{scene.path}'.");
+                    if (!scene.IsValid() || scene.isDirty)
+                        throw new SnapshotRestoreBlockedException($"Scene '{scene.path}' remained dirty or became unavailable after saving. Restore stopped before opening or closing scenes.");
                 }
             }
 
-            if (options.CloseExtraScenes)
-            {
-                var firstPath = targetScenes[0].path;
-                if (File.Exists(firstPath))
-                {
-                    EditorSceneManager.OpenScene(firstPath, OpenSceneMode.Single);
-                    applied.Add($"Opened scene '{firstPath}' as Single.");
-                }
-                else
-                {
-                    warnings.Add($"Snapshot scene path not found: '{firstPath}'.");
-                }
+            if ((!options.AllowDirtySceneReload || options.SaveDirtyScenes) && scenesToClose.Any(scene => scene.IsValid() && scene.isDirty))
+                throw new SnapshotRestoreBlockedException("A scene scheduled for closing has unsaved changes. Restore stopped before opening or closing scenes.");
 
-                for (var i = 1; i < targetScenes.Length; i++)
-                {
-                    OpenSceneIfExists(targetScenes[i].path, OpenSceneMode.Additive, applied, warnings);
-                }
-            }
-            else if (options.OpenMissingScenes)
+            if (options.OpenMissingScenes)
             {
                 var currentPaths = new HashSet<string>(
                     GetLoadedScenes().Select(scene => NormalizePath(scene.path)),
                     StringComparer.OrdinalIgnoreCase);
 
-                foreach (var scene in targetScenes)
+                foreach (var path in targetPaths)
                 {
-                    if (!currentPaths.Contains(NormalizePath(scene.path)))
+                    if (!currentPaths.Contains(path))
                     {
-                        OpenSceneIfExists(scene.path, OpenSceneMode.Additive, applied, warnings);
+                        if (!File.Exists(path))
+                            throw new SnapshotRestoreBlockedException($"Snapshot scene path not found: '{path}'.");
+                        EnsureCleanPrefabStageForSceneChange();
+                        mutationAttempted = true;
+                        var opened = EditorSceneManager.OpenScene(path, OpenSceneMode.Additive);
+                        if (!opened.IsValid() || !opened.isLoaded)
+                            throw new InvalidOperationException($"Unity did not open scene '{path}'.");
+                        applied.Add($"Opened scene '{path}' as Additive.");
+                        currentPaths.Add(path);
                     }
                 }
+            }
+
+            // Only close scenes identified during preflight, after all required
+            // targets opened. A callback-created scene is never an implicit extra.
+            foreach (var scene in scenesToClose)
+            {
+                if (!scene.IsValid() || !scene.isLoaded)
+                    continue;
+                if (scene.isDirty && (!options.AllowDirtySceneReload || options.SaveDirtyScenes))
+                    throw new SnapshotRestoreBlockedException($"Scene '{scene.path}' became dirty during restore and was preserved.");
+                EnsureCleanPrefabStageForSceneChange();
+                mutationAttempted = true;
+                if (!EditorSceneManager.CloseScene(scene, true))
+                    throw new InvalidOperationException($"Unity failed to close extra scene '{scene.path}'.");
+                applied.Add($"Closed extra scene '{scene.path}'.");
             }
 
             if (!string.IsNullOrWhiteSpace(snapshot.scenes.activeScenePath))
@@ -677,17 +759,54 @@ Restore safety:
                     .FirstOrDefault(scene => string.Equals(NormalizePath(scene.path), NormalizePath(snapshot.scenes.activeScenePath), StringComparison.OrdinalIgnoreCase));
                 if (active.IsValid() && active.isLoaded)
                 {
-                    SceneManager.SetActiveScene(active);
-                    applied.Add($"Set active scene to '{snapshot.scenes.activeScenePath}'.");
+                    if (SceneManager.GetActiveScene().handle != active.handle)
+                    {
+                        mutationAttempted = true;
+                        if (!SceneManager.SetActiveScene(active))
+                            throw new InvalidOperationException($"Unity failed to set active scene '{snapshot.scenes.activeScenePath}'.");
+                        applied.Add($"Set active scene to '{snapshot.scenes.activeScenePath}'.");
+                    }
                 }
                 else
                 {
-                    warnings.Add($"Could not restore active scene '{snapshot.scenes.activeScenePath}'.");
+                    throw new InvalidOperationException($"Could not restore active scene '{snapshot.scenes.activeScenePath}'.");
                 }
             }
+
+            var restoredPaths = GetLoadedScenes().Select(scene => NormalizePath(scene.path)).ToArray();
+            if (options.OpenMissingScenes && targetPaths.Except(restoredPaths, StringComparer.OrdinalIgnoreCase).Any())
+                throw new InvalidOperationException("A requested snapshot scene is no longer loaded after restore.");
+            if (options.CloseExtraScenes && restoredPaths.Except(targetPaths, StringComparer.OrdinalIgnoreCase).Any())
+                throw new InvalidOperationException("An extra scene appeared during restore and was preserved. The requested scene set was not fully restored.");
         }
 
-        static void RestorePrefabStage(EditorSnapshotData snapshot, List<string> applied, List<string> warnings)
+        static string[] GetTargetScenePaths(EditorSnapshotData snapshot)
+        {
+            return snapshot.scenes?.loadedScenes?
+                .Where(scene => scene != null && !string.IsNullOrWhiteSpace(scene.path))
+                .Select(scene => NormalizePath(scene.path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? Array.Empty<string>();
+        }
+
+        static Scene[] GetScenesToClose(Scene[] currentScenes, string[] targetPaths, RestoreOptions options)
+        {
+            return options.CloseExtraScenes
+                ? currentScenes.Where(scene => !targetPaths.Contains(NormalizePath(scene.path), StringComparer.OrdinalIgnoreCase)).ToArray()
+                : Array.Empty<Scene>();
+        }
+
+        static void EnsureCleanPrefabStageForSceneChange()
+        {
+            // Save/open/close callbacks can change Prefab Mode after preflight.
+            // Check at every scene-set mutation boundary and preserve a newly
+            // dirty stage rather than relying on the earlier snapshot of state.
+            var stage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (stage != null && stage.scene.IsValid() && stage.scene.isDirty)
+                throw new SnapshotRestoreBlockedException("The Prefab Stage became dirty during restore and was preserved. Save or discard it manually before changing the loaded scene set.");
+        }
+
+        static void RestorePrefabStage(EditorSnapshotData snapshot, List<string> applied, List<string> warnings, ref bool mutationAttempted)
         {
             var currentStage = PrefabStageUtility.GetCurrentPrefabStage();
             var targetStage = snapshot.prefabStage;
@@ -700,7 +819,12 @@ Restore safety:
             {
                 if (currentStage != null)
                 {
+                    if (currentStage.scene.IsValid() && currentStage.scene.isDirty)
+                        throw new SnapshotRestoreBlockedException("The Prefab Stage became dirty and was preserved. Save or discard it manually before restoring another stage.");
+                    mutationAttempted = true;
                     StageUtility.GoToMainStage();
+                    if (PrefabStageUtility.GetCurrentPrefabStage() != null)
+                        throw new InvalidOperationException("Unity did not return to Main Stage.");
                     applied.Add("Returned to Main Stage.");
                 }
 
@@ -722,7 +846,14 @@ Restore safety:
 
             if (currentStage == null || !string.Equals(NormalizePath(currentStage.assetPath), NormalizePath(targetStage.assetPath), StringComparison.OrdinalIgnoreCase))
             {
-                AssetDatabase.OpenAsset(prefab);
+                if (currentStage != null && currentStage.scene.IsValid() && currentStage.scene.isDirty)
+                    throw new SnapshotRestoreBlockedException("The Prefab Stage became dirty and was preserved. Save or discard it manually before restoring another stage.");
+                mutationAttempted = true;
+                if (!AssetDatabase.OpenAsset(prefab))
+                    throw new InvalidOperationException($"Unity failed to open Prefab Stage '{targetStage.assetPath}'.");
+                var opened = PrefabStageUtility.GetCurrentPrefabStage();
+                if (opened == null || !string.Equals(NormalizePath(opened.assetPath), NormalizePath(targetStage.assetPath), StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"Unity did not activate Prefab Stage '{targetStage.assetPath}'.");
                 applied.Add($"Opened Prefab Stage '{targetStage.assetPath}'.");
             }
         }
@@ -917,24 +1048,11 @@ Restore safety:
                 applied.Add($"Restored active dock tabs ({restored}/{tabs.Length}).");
         }
 
-        static void OpenSceneIfExists(string path, OpenSceneMode mode, List<string> applied, List<string> warnings)
-        {
-            if (File.Exists(path))
-            {
-                EditorSceneManager.OpenScene(path, mode);
-                applied.Add($"Opened scene '{path}' as {mode}.");
-            }
-            else
-            {
-                warnings.Add($"Snapshot scene path not found: '{path}'.");
-            }
-        }
-
         static EditorSnapshotData LoadSnapshot(EditorSnapshotParams parameters)
         {
             if (!string.IsNullOrWhiteSpace(parameters.SnapshotJson))
             {
-                return JsonConvert.DeserializeObject<EditorSnapshotData>(parameters.SnapshotJson, JsonSettings);
+                return McpJson.DeserializeObject<EditorSnapshotData>(parameters.SnapshotJson, JsonSettings);
             }
 
             if (string.IsNullOrWhiteSpace(parameters.SnapshotId))
@@ -948,14 +1066,14 @@ Restore safety:
                 return null;
             }
 
-            return JsonConvert.DeserializeObject<EditorSnapshotData>(File.ReadAllText(path), JsonSettings);
+            return McpJson.DeserializeObject<EditorSnapshotData>(File.ReadAllText(path), JsonSettings);
         }
 
         static string SaveSnapshot(EditorSnapshotData snapshot)
         {
             Directory.CreateDirectory(SnapshotDirectory);
             var path = GetSnapshotPath(snapshot.snapshotId);
-            File.WriteAllText(path, JsonConvert.SerializeObject(snapshot, JsonSettings));
+            File.WriteAllText(path, McpJson.SerializeObject(snapshot, JsonSettings));
             return path;
         }
 
@@ -1297,7 +1415,7 @@ Restore safety:
         {
             if (!string.IsNullOrWhiteSpace(assemblyQualifiedName))
             {
-                var type = Type.GetType(assemblyQualifiedName);
+                var type = LoadedAssemblyCatalog.ResolveType(assemblyQualifiedName);
                 if (type != null)
                 {
                     return type;
@@ -1309,8 +1427,8 @@ Restore safety:
                 return null;
             }
 
-            return AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType(fullName))
+            return LoadedAssemblyCatalog.GetLoadedAssemblies()
+                .Select(assembly => LoadedAssemblyCatalog.LookupType(assembly,fullName))
                 .FirstOrDefault(type => type != null);
         }
 
@@ -1441,6 +1559,11 @@ Restore safety:
                     AllowDirtySceneReload = parameters.AllowDirtySceneReload ?? false
                 };
             }
+        }
+
+        sealed class SnapshotRestoreBlockedException : Exception
+        {
+            public SnapshotRestoreBlockedException(string message) : base(message) { }
         }
 
         sealed class RestorePlan

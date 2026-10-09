@@ -404,9 +404,9 @@ Returns:
                 if (property.PropertyType == typeof(Vector3))
                     converted = ParseVector3(value) ?? Vector3.zero;
                 else if (property.PropertyType.IsEnum)
-                    converted = value.Type == JTokenType.Integer ? Enum.ToObject(property.PropertyType, value.ToObject<int>()) : Enum.Parse(property.PropertyType, value.ToString(), true);
+                    converted = value.Type == JTokenType.Integer ? Enum.ToObject(property.PropertyType, value.ToObjectIndependent<int>()) : Enum.Parse(property.PropertyType, value.ToString(), true);
                 else
-                    converted = value.ToObject(property.PropertyType);
+                    converted = value.ToObjectIndependent(property.PropertyType);
                 property.SetValue(target, converted);
                 return true;
             }

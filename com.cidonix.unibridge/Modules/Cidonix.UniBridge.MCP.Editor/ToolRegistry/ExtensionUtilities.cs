@@ -28,15 +28,16 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             {
                 try
                 {
-                    annotations = JObject.FromObject(handler.Attribute.Annotations);
+                    annotations = McpJson.ObjectFromObject(handler.Attribute.Annotations);
                 }
                 catch
                 {
-                    annotations["custom"] = JToken.FromObject(handler.Attribute.Annotations);
+                    annotations["custom"] = McpJson.TokenFromObject(handler.Attribute.Annotations);
                 }
             }
 
-            annotations["uniBridgeExecution"] = JToken.FromObject(ToolExecutionScheduler.BuildAnnotation(handler.Attribute?.Name, handler));
+            annotations["uniBridgeExecution"] = McpJson.TokenFromObject(ToolExecutionScheduler.BuildAnnotation(handler.Attribute?.Name, handler));
+            annotations["uniBridgeOutput"] = McpJson.TokenFromObject(OutputContractProvider.Annotation(handler));
             annotations["uniBridgeProject"] = ProjectContextGuard.BuildProjectContext();
             return annotations;
         }

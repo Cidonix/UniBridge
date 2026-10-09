@@ -1165,7 +1165,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
         {
             try
             {
-                return value as JObject ?? JObject.FromObject(value ?? new { });
+                return value as JObject ?? McpJson.ObjectFromObject(value ?? new { });
             }
             catch (Exception ex)
             {
