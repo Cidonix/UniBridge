@@ -40,6 +40,7 @@ Args:
     TagName: Tag name for AddTag or RemoveTag.
     LayerName: Layer name for AddLayer or RemoveLayer.
     TimeoutMs/PollIntervalMs/RequireNotPlaying: Readiness wait controls.
+    Wait failures remain errors, including through reload checkpoints; a timeout does not undo an earlier refresh or authoring operation.
     ModifiedAssetPaths/RestoreScenes/RestorePrefabStage/AllowDirtySceneReload: ReloadCheckpoint controls.
     Force: Force refresh or clean script compilation when supported.
 
@@ -802,8 +803,9 @@ Returns:
             var timeoutMs = Clamp(parameters.TimeoutMs ?? 30000, 100, 300000);
             var pollIntervalMs = Clamp(parameters.PollIntervalMs ?? 100, 25, 5000);
             var start = DateTime.UtcNow;
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-            while ((DateTime.UtcNow - start).TotalMilliseconds <= timeoutMs)
+            while (elapsed.ElapsedMilliseconds <= timeoutMs)
             {
                 var reachedTarget = targetPlaying
                     ? EditorApplication.isPlaying
@@ -822,14 +824,15 @@ Returns:
 
                 try
                 {
-                    await WaitForEditorUpdateAsync(pollIntervalMs);
+                    var remainingMs = Math.Max(1, timeoutMs - (int)elapsed.ElapsedMilliseconds);
+                    await WaitForEditorUpdateAsync(Math.Min(pollIntervalMs, remainingMs));
                 }
                 catch (OperationCanceledException ex)
                 {
-                    return Response.Success(
+                    return Response.Error(
                         targetPlaying
-                            ? "Play mode wait crossed a Unity reload boundary. Reconnect, then call WaitForPlayMode again."
-                            : "Edit mode wait crossed a Unity reload boundary. Reconnect, then call WaitForEditMode again.",
+                            ? "Play mode wait was interrupted by Unity reload before confirming the target. Reconnect, then call WaitForPlayMode again."
+                            : "Edit mode wait was interrupted by Unity reload before confirming the target. Reconnect, then call WaitForEditMode again.",
                         BuildPlayModeBoundaryData(targetPlaying, start, ex.Message));
                 }
             }
@@ -853,6 +856,8 @@ Returns:
                 reconnectRequired = true,
                 reloadSafe = true,
                 changedProject = false,
+                completed = false,
+                waitSucceeded = false,
                 requestId = s_PendingPlayModeRequestId,
                 queuedAtUtc = s_PendingPlayModeQueuedAtUtc == default ? (DateTime?)null : s_PendingPlayModeQueuedAtUtc,
                 boundaryReason,
@@ -971,12 +976,11 @@ Returns:
             var pollIntervalMs = Clamp(parameters.PollIntervalMs ?? 100, 25, 5000);
             var requireNotPlaying = parameters.RequireNotPlaying == true;
             var start = DateTime.UtcNow;
-            object lastReadiness = null;
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-            while ((DateTime.UtcNow - start).TotalMilliseconds <= timeoutMs)
+            while (elapsed.ElapsedMilliseconds <= timeoutMs)
             {
                 var readiness = BuildReadinessData(requireNotPlaying, start);
-                lastReadiness = readiness;
                 if (IsEditorReady(requireNotPlaying))
                 {
                     return Response.Success("Unity editor is ready.", new
@@ -986,20 +990,35 @@ Returns:
                     });
                 }
 
-                await WaitForEditorUpdateAsync(pollIntervalMs);
+                var remainingMs = Math.Max(1, timeoutMs - (int)elapsed.ElapsedMilliseconds);
+                await WaitForEditorUpdateAsync(Math.Min(pollIntervalMs, remainingMs));
             }
 
             return Response.Error("Timed out waiting for Unity editor readiness.", new
             {
-                readiness = lastReadiness,
+                readiness = BuildReadinessData(requireNotPlaying, start),
                 timeoutMs,
-                requireNotPlaying
+                requireNotPlaying,
+                completed = false,
+                waitSucceeded = false
             });
+        }
+
+        static bool WaitSucceeded(object response)
+        {
+            if (response == null)
+                return false;
+
+            var success = JObject.FromObject(response)["success"];
+            return success?.Type == JTokenType.Boolean && success.Value<bool>();
         }
 
         static async Task<object> WaitForReadyAfterReload(ManageEditorParams parameters)
         {
             var waitResult = await WaitForReady(parameters);
+            if (!WaitSucceeded(waitResult))
+                return waitResult ?? Response.Error("Editor readiness wait returned no result.", new { completed = false, waitSucceeded = false });
+
             var buildSystemHealth = ReadConsole.BuildBuildSystemHealth(maxIssues: 5, includeStacktrace: true);
             var assemblyFreshness = BuildScriptAssemblyFreshness();
             var buildSystemHealthToken = JToken.FromObject(buildSystemHealth);
@@ -1577,11 +1596,16 @@ Returns:
                 if (parameters.RepaintEditor != false)
                     RepaintEditorViews();
 
+                object waitResult = null;
                 if (parameters.WaitForCompletion == true)
-                    await WaitForReady(parameters);
+                    waitResult = await WaitForReady(parameters);
 
-                return Response.Success("ReloadCheckpoint completed.", new
+                var completed = parameters.WaitForCompletion != true || WaitSucceeded(waitResult);
+                var result = new
                 {
+                    completed,
+                    waitSucceeded = parameters.WaitForCompletion == true ? (bool?)completed : null,
+                    waitResult,
                     modifiedAssetPaths = modified.ToArray(),
                     refreshed = true,
                     forced = force,
@@ -1592,7 +1616,14 @@ Returns:
                     savedScenes = savedScenes.ToArray(),
                     warnings = warnings.ToArray(),
                     readiness = BuildReadinessData(parameters.RequireNotPlaying == true, DateTime.UtcNow)
-                });
+                };
+                if (!completed)
+                {
+                    var waitError = waitResult == null ? null : JObject.FromObject(waitResult)["error"]?.Value<string>();
+                    return Response.Error(waitError ?? "Editor readiness wait failed after ReloadCheckpoint refresh.", result);
+                }
+
+                return Response.Success("ReloadCheckpoint completed.", result);
             }
             catch (Exception e)
             {

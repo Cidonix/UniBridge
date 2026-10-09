@@ -845,6 +845,24 @@ Use `UniBridge_ManageEditor` for editor-level operations that should not require
 - `GenerateSolutionFiles` / `GenerateSolutionFile` asks Unity to regenerate solution/project files when that editor API is available;
 - `ReloadCheckpoint` refreshes externally changed assets and, when a modified scene or prefab-stage asset is involved, safely closes/reopens loaded scenes and Prefab Mode after saving unmodified dirty scenes.
 
+As of 0.2.57 / relay `1.1.0-build.21`, readiness and Play/Edit waits require
+an affirmative result. A timeout stays an error through
+`WaitForReadyAfterReload`, `ReloadCheckpoint WaitForCompletion=true`, and relay
+reload recovery. MCP responses set `isError=true` for failed tools, including
+older bridge responses whose nested wait failed while their outer response
+claimed success. Inspect `completed`, `waitSucceeded`, `waitResult` and
+`readiness` before continuing. Queued Play/compile acknowledgements still mean
+the request was accepted; verify completion with a separate wait.
+
+Recovery spends one timeout budget across reconnect, waiting and compatibility
+fallback. Only an explicit unsupported-action response enables fallback;
+timeout, cancellation, unknown or contradictory readiness never do. Recovery
+does not replay the original mutation or infer batch completion. A failed
+checkpoint can still have refreshed assets or reopened scenes; its failure
+retains that evidence and does not claim rollback. Legacy wait actions are
+instantaneous readiness probes (`waitSupported=false`, `waitedMs=0`), with an
+error when the requested condition is false.
+
 For Play Mode smoke tests, prefer a split-phase workflow: clear/prepare console, queue `RequestPlayModeNoWait` or `Play`, then after reconnect call `WaitForPlayMode`, `WaitForReady RequireNotPlaying=false`, and `ReadConsole DiagnosticSummary`. Do not rely on a single in-process batch to span a Play Mode domain reload.
 
 For script workflows, prefer `RefreshAssets WaitForCompletion=true`, `RequestScriptCompilationNoWait`, `WaitForReadyAfterReload`, then `GetCompilationDiagnostics` / `ReadConsole DiagnosticSummary` instead of interpreting console output while Unity is still compiling/importing. If `RefreshAssets` crosses a reload boundary, treat the returned `nextSuggestedCalls` as the continuation plan.

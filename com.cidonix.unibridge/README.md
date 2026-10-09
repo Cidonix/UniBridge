@@ -108,6 +108,23 @@ AI agent/MCP client so it reloads the available Unity projects.
 
 ## Documentation
 
+### Editor Waits In 0.2.57
+
+Relay `1.1.0-build.21` and the Editor bridge preserve failed wait results.
+`WaitForReadyAfterReload` never wraps a readiness timeout in success.
+`ReloadCheckpoint WaitForCompletion=true` returns an error and
+`completed=false` when waiting fails, retaining what was already refreshed or
+reopened. A timeout does not undo a prior operation or authorize repeating it.
+
+Reload recovery requires affirmative readiness and the requested Play/Edit
+state. Reconnect and compatibility fallback share one timeout budget; fallback
+is allowed only for an explicitly unsupported action. Tool failures are also
+reported as MCP `isError=true`, including nested wait failures from older
+bridges. Legacy readiness calls are instantaneous probes with
+`waitSupported=false`; they fail when the Editor does not meet the condition.
+
+Focused regressions are under `Tools~/EditorWaitRegression`.
+
 ### Command Recovery In 0.2.56
 
 Relay `1.1.0-build.20` gives each command one stable operation ID. When a reply

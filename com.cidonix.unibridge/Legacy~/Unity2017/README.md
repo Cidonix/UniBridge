@@ -46,6 +46,13 @@ Close modal Editor dialogs, including `Tools > UniBridge Legacy > Show Status`,
 before making MCP calls. Unity pauses its Editor update loop while these
 dialogs are open; the pipe can stay connected while main-thread commands wait.
 
+`ManageEditor` actions `WaitForReady`, `WaitIdle`, and `WaitForReadyAfterReload`
+are instantaneous readiness probes in the legacy adapter. They explicitly
+return `waitSupported=false` and do not consume `TimeoutMs` or block the main
+thread. A busy Editor, or Play Mode when `RequireNotPlaying=true`, returns a
+failure. A ready probe confirms current readiness and does not prove modern
+compilation health. `GetState` remains a successful observation even when busy.
+
 ## Tool Surface
 
 The relay exposes `_server_info` plus these Unity tools:

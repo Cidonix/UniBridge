@@ -2,6 +2,39 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.57
+
+### Fixed
+
+- `WaitForReadyAfterReload` propagates a failed readiness wait; it no longer
+  reports success after the timeout or collects checkpoint diagnostics first.
+- `ReloadCheckpoint WaitForCompletion=true` retains the wait failure and
+  refresh/reopen evidence with `completed=false`. It does not claim rollback.
+- Modern waits use monotonic elapsed time and cap the next poll to the
+  remaining deadline. Interrupted Play/Edit waits cannot claim target success.
+- Relay `1.1.0-build.21` verifies affirmative readiness and actual Play/Edit
+  state after reconnect. Reconnect, waits and unsupported-action fallback
+  share one deadline; failures cannot trigger a new full-budget fallback.
+- MCP `isError` reflects explicit tool or nested wait failures, including
+  contradictory older bridge wrappers. Missing readiness is not success.
+- Legacy readiness aliases are truthful instantaneous probes and disclose
+  `waitSupported=false`; busy or mismatched Editor state returns an error.
+
+### Added
+
+- Focused production-source regression harness under `Tools~/EditorWaitRegression`.
+
+### Validation
+
+- 103 focused production-source regression assertions pass; the exact previous
+  release fails 75 of those assertions. Three real 200 ms recovery budgets
+  reject delayed replies without extending the deadline.
+- The existing 39 command-replay regressions pass. Live Unity 6000.6.5f1
+  qualification passes 23 checks, including actual timeout errors, healthy
+  waits, MCP error flags, required-batch stop and original scene preservation.
+- Legacy compilation passes all five supported installed Editors. All four
+  relay artifacts build; Windows is live-tested, Linux/macOS are build-tested.
+
 ## 0.2.56
 
 ### Added

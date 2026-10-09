@@ -25,6 +25,8 @@ This repository is used as a public project page for overview, documentation lin
 - Includes visual self-check tools so agents can verify Unity output before reporting success.
 - Recovers lost command results through an Editor-session journal and reports
   unknown outcomes without automatically repeating project mutations.
+- Reports Editor wait timeouts as failures, including after reload/reconnect,
+  and preserves MCP error flags instead of wrapping failed waits in success.
 
 ## Requirements
 

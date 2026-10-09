@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.20";
+    public const string Version = "1.1.0-build.21";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -457,8 +457,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         }
 
         var response = await SendUnityCommandWithReconnectAsync(name, args, ct).ConfigureAwait(false);
-        var status = response["status"]?.GetValue<string>();
-        var success = string.Equals(status, "success", StringComparison.OrdinalIgnoreCase);
+        var success = IsUnityResponseSuccess(response);
 
         if (success)
         {
@@ -467,7 +466,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         }
         else
         {
-            await WriteToolTextResultAsync(id, response.DeepClone(), isError: true, ct).ConfigureAwait(false);
+            await WriteToolTextResultAsync(id, ExtractUnityFailureForMcp(response), isError: true, ct).ConfigureAwait(false);
         }
     }
 
@@ -818,201 +817,131 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
 
     async Task<JsonObject> RecoverScriptCompilationAfterReloadAsync(string originalTool, JsonObject originalArgs, Exception failure, CancellationToken ct)
     {
-        var started = DateTime.UtcNow;
-        var timeoutMs = ReadInt(originalArgs, 120000, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
-        timeoutMs = Math.Clamp(timeoutMs, 5000, 300000);
-        var pollIntervalMs = ReadInt(originalArgs, 500, "PollIntervalMs", "pollIntervalMs", "poll_interval_ms", "poll");
-        pollIntervalMs = Math.Clamp(pollIntervalMs, 50, 5000);
-        var requireNotPlaying = ReadBool(originalArgs, false, "RequireNotPlaying", "requireNotPlaying", "require_not_playing");
-
-        await ReconnectUnityUntilAsync(timeoutMs, ct).ConfigureAwait(false);
-
-        var remainingMs = RemainingTimeoutMs(started, timeoutMs);
-        var waitResponse = await CallManageEditorWithFallbackAsync(
-            primaryAction: "WaitForReadyAfterReload",
-            fallbackAction: "WaitForReady",
-            timeoutMs: remainingMs,
-            pollIntervalMs: pollIntervalMs,
-            requireNotPlaying: requireNotPlaying,
-            ct: ct).ConfigureAwait(false);
-
-        var diagnosticsResponse = await TryCallManageEditorAsync(new JsonObject
-        {
-            ["Action"] = "GetCompilationDiagnostics"
-        }, ct).ConfigureAwait(false);
-
-        var elapsedMs = (int)(DateTime.UtcNow - started).TotalMilliseconds;
-        var data = new JsonObject
-        {
-            ["recoveredAfterReload"] = true,
-            ["originalTool"] = originalTool,
-            ["originalAction"] = ReadString(originalArgs, "Action", "action"),
-            ["connectionFailure"] = failure.Message,
-            ["elapsedMs"] = elapsedMs,
-            ["timeoutMs"] = timeoutMs,
-            ["waitResult"] = ExtractUnityResult(waitResponse),
-            ["compilationDiagnostics"] = diagnosticsResponse != null ? ExtractUnityResult(diagnosticsResponse) : null,
-            ["nextSuggestedCalls"] = new JsonArray(
-                "UniBridge_ManageEditor Action=GetCompilationDiagnostics",
-                "UniBridge_ReadConsole Action=DiagnosticSummary")
-        };
-
-        var result = new JsonObject
-        {
-            ["success"] = true,
-            ["message"] = originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal)
-                ? "Unity reloaded during a script-compilation batch. Relay reconnected and confirmed the editor is ready."
-                : "Script compilation completed after Unity reload. Relay reconnected and confirmed the editor is ready.",
-            ["data"] = data
-        };
-
-        if (originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal))
-        {
-            data["batchInterruptedByReload"] = true;
-            data["batchResumeNote"] = "Steps before RequestScriptCompilation may have completed, but the Unity domain reload interrupted the in-process BatchActions result. Run post-compile verification calls after this recovered response.";
-        }
-
-        return new JsonObject
-        {
-            ["status"] = "success",
-            ["result"] = result
-        };
+        return await RecoverReloadCheckpointAsync(originalTool, originalArgs, failure,
+            "WaitForReadyAfterReload", "recoveredAfterReload", targetPlaying: null, ct).ConfigureAwait(false);
     }
 
     async Task<JsonObject> RecoverPlayModeAfterReloadAsync(string originalTool, JsonObject playModeArgs, Exception failure, bool targetPlaying, CancellationToken ct)
     {
-        var started = DateTime.UtcNow;
-        var timeoutMs = ReadInt(playModeArgs, 120000, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
-        timeoutMs = Math.Clamp(timeoutMs, 5000, 300000);
-        var pollIntervalMs = ReadInt(playModeArgs, 500, "PollIntervalMs", "pollIntervalMs", "poll_interval_ms", "poll");
-        pollIntervalMs = Math.Clamp(pollIntervalMs, 50, 5000);
-        var requireNotPlaying = ReadBool(playModeArgs, !targetPlaying, "RequireNotPlaying", "requireNotPlaying", "require_not_playing");
-
-        await ReconnectUnityUntilAsync(timeoutMs, ct).ConfigureAwait(false);
-
-        var remainingMs = RemainingTimeoutMs(started, timeoutMs);
-        var waitAction = targetPlaying ? "WaitForPlayMode" : "WaitForEditMode";
-        var waitResponse = await CallManageEditorWithFallbackAsync(
-            primaryAction: waitAction,
-            fallbackAction: "WaitForReady",
-            timeoutMs: remainingMs,
-            pollIntervalMs: pollIntervalMs,
-            requireNotPlaying: requireNotPlaying,
-            ct: ct).ConfigureAwait(false);
-
-        var playModeStateResponse = await TryCallManageEditorAsync(new JsonObject
-        {
-            ["Action"] = "GetPlayModeState"
-        }, ct).ConfigureAwait(false);
-
-        var elapsedMs = (int)(DateTime.UtcNow - started).TotalMilliseconds;
-        var data = new JsonObject
-        {
-            ["recoveredAfterPlayModeReload"] = true,
-            ["originalTool"] = originalTool,
-            ["originalAction"] = ReadString(playModeArgs, "Action", "action"),
-            ["targetPlaying"] = targetPlaying,
-            ["connectionFailure"] = failure.Message,
-            ["elapsedMs"] = elapsedMs,
-            ["timeoutMs"] = timeoutMs,
-            ["waitResult"] = ExtractUnityResult(waitResponse),
-            ["playModeState"] = playModeStateResponse != null ? ExtractUnityResult(playModeStateResponse) : null,
-            ["nextSuggestedCalls"] = targetPlaying
-                ? new JsonArray(
-                    "UniBridge_ManageEditor Action=WaitForReady RequireNotPlaying=false",
-                    "UniBridge_ReadConsole Action=DiagnosticSummary")
-                : new JsonArray(
-                    "UniBridge_ManageEditor Action=WaitForReady RequireNotPlaying=true",
-                    "UniBridge_ReadConsole Action=DiagnosticSummary")
-        };
-
-        var result = new JsonObject
-        {
-            ["success"] = true,
-            ["message"] = originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal)
-                ? "Unity reloaded during a Play Mode batch. Relay reconnected and confirmed the requested play-mode state."
-                : "Unity reloaded during Play Mode transition. Relay reconnected and confirmed the requested play-mode state.",
-            ["data"] = data
-        };
-
-        if (originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal))
-        {
-            data["batchInterruptedByReload"] = true;
-            data["batchResumeNote"] = "Steps before the Play Mode transition may have completed, but Unity domain reload interrupted the in-process BatchActions result. Run the suggested post-reconnect verification calls before continuing.";
-        }
-
-        return new JsonObject
-        {
-            ["status"] = "success",
-            ["result"] = result
-        };
+        return await RecoverReloadCheckpointAsync(originalTool, playModeArgs, failure,
+            targetPlaying ? "WaitForPlayMode" : "WaitForEditMode", "recoveredAfterPlayModeReload", targetPlaying, ct).ConfigureAwait(false);
     }
 
     async Task<JsonObject> RecoverRefreshAssetsAfterReloadAsync(string originalTool, JsonObject refreshArgs, Exception failure, CancellationToken ct)
     {
+        return await RecoverReloadCheckpointAsync(originalTool, refreshArgs, failure,
+            "WaitForReadyAfterReload", "recoveredAfterRefreshReload", targetPlaying: null, ct).ConfigureAwait(false);
+    }
+
+    async Task<JsonObject> RecoverReloadCheckpointAsync(string originalTool, JsonObject originalArgs, Exception failure,
+        string waitAction, string recoveryFlag, bool? targetPlaying, CancellationToken ct)
+    {
         var started = DateTime.UtcNow;
-        var timeoutMs = ReadInt(refreshArgs, 120000, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout");
-        timeoutMs = Math.Clamp(timeoutMs, 5000, 300000);
-        var pollIntervalMs = ReadInt(refreshArgs, 500, "PollIntervalMs", "pollIntervalMs", "poll_interval_ms", "poll");
+        var timeoutMs = Math.Clamp(ReadInt(originalArgs, 120000, "TimeoutMs", "timeoutMs", "timeout_ms", "timeout"), 100, 300000);
+        var pollIntervalMs = ReadInt(originalArgs, 500, "PollIntervalMs", "pollIntervalMs", "poll_interval_ms", "poll");
         pollIntervalMs = Math.Clamp(pollIntervalMs, 50, 5000);
-        var requireNotPlaying = ReadBool(refreshArgs, false, "RequireNotPlaying", "requireNotPlaying", "require_not_playing");
-
-        await ReconnectUnityUntilAsync(timeoutMs, ct).ConfigureAwait(false);
-
-        var remainingMs = RemainingTimeoutMs(started, timeoutMs);
-        var waitResponse = await CallManageEditorWithFallbackAsync(
-            primaryAction: "WaitForReadyAfterReload",
-            fallbackAction: "WaitForReady",
-            timeoutMs: remainingMs,
-            pollIntervalMs: pollIntervalMs,
-            requireNotPlaying: requireNotPlaying,
-            ct: ct).ConfigureAwait(false);
-
-        var diagnosticsResponse = await TryCallManageEditorAsync(new JsonObject
-        {
-            ["Action"] = "GetCompilationDiagnostics"
-        }, ct).ConfigureAwait(false);
-
-        var elapsedMs = (int)(DateTime.UtcNow - started).TotalMilliseconds;
+        var requireNotPlaying = ReadBool(originalArgs, targetPlaying == false, "RequireNotPlaying", "requireNotPlaying", "require_not_playing");
         var data = new JsonObject
         {
-            ["recoveredAfterRefreshReload"] = true,
+            [recoveryFlag] = false,
             ["reloadBoundary"] = true,
             ["reconnectRequired"] = true,
             ["reloadSafe"] = true,
+            ["automaticReplay"] = false,
             ["originalTool"] = originalTool,
-            ["originalAction"] = ReadString(refreshArgs, "Action", "action"),
+            ["originalAction"] = ReadString(originalArgs, "Action", "action"),
             ["connectionFailure"] = failure.Message,
-            ["elapsedMs"] = elapsedMs,
             ["timeoutMs"] = timeoutMs,
-            ["waitResult"] = ExtractUnityResult(waitResponse),
-            ["compilationDiagnostics"] = diagnosticsResponse != null ? ExtractUnityResult(diagnosticsResponse) : null,
             ["nextSuggestedCalls"] = new JsonArray(
-                "UniBridge_ManageEditor Action=WaitForReadyAfterReload",
+                $"UniBridge_ManageEditor Action={waitAction}",
                 "UniBridge_ManageEditor Action=GetCompilationDiagnostics",
                 "UniBridge_ReadConsole Action=DiagnosticSummary")
         };
-
-        var result = new JsonObject
-        {
-            ["success"] = true,
-            ["message"] = originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal)
-                ? "Unity reloaded during an AssetDatabase refresh batch. Relay reconnected and confirmed the editor is ready."
-                : "AssetDatabase refresh crossed a Unity reload boundary. Relay reconnected and confirmed the editor is ready.",
-            ["data"] = data
-        };
-
+        if (targetPlaying.HasValue)
+            data["targetPlaying"] = targetPlaying.Value;
         if (originalTool.Equals("UniBridge_BatchActions", StringComparison.Ordinal))
         {
             data["batchInterruptedByReload"] = true;
-            data["batchResumeNote"] = "Steps before RefreshAssets may have completed, but Unity reload/import interrupted the in-process BatchActions result. Run the suggested post-reconnect verification calls before continuing.";
+            return EditorRecoveryResponse(false, "batch_interrupted", "A lost batch result cannot be recovered from Editor readiness alone.", data, started);
         }
 
-        return new JsonObject
+        // A single budget covers reconnect, the primary wait, any compatibility
+        // fallback and play-state verification. None of these helpers replay a mutation.
+        using var timeout = new CancellationTokenSource(timeoutMs);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+        try
         {
-            ["status"] = "success",
-            ["result"] = result
-        };
+            await ReconnectUnityUntilAsync(timeoutMs, budget.Token).ConfigureAwait(false);
+            var waitResponse = await CallManageEditorWithFallbackAsync(waitAction, "WaitForReady",
+                RemainingTimeoutMs(started, timeoutMs), pollIntervalMs, requireNotPlaying, budget.Token).ConfigureAwait(false);
+            data["waitResult"] = ExtractUnityResult(waitResponse);
+            var waitFailure = ValidateEditorWaitResponse(waitResponse, requireNotPlaying, targetPlaying);
+            if (waitFailure != null)
+                return EditorRecoveryResponse(false, waitFailure, "Editor recovery wait did not confirm the requested state.", data, started);
+
+            if (targetPlaying.HasValue)
+            {
+                var stateResponse = await TryCallManageEditorAsync(new JsonObject { ["Action"] = "GetPlayModeState" },
+                    budget.Token, RemainingTimeoutMs(started, timeoutMs)).ConfigureAwait(false);
+                data["playModeState"] = stateResponse != null ? ExtractUnityResult(stateResponse) : null;
+                if (stateResponse == null || !IsUnityResponseSuccess(stateResponse) ||
+                    !HasConfirmedPlayModeState(stateResponse, targetPlaying.Value))
+                    return EditorRecoveryResponse(false, "editor_state_unconfirmed", "The requested play-mode state was not confirmed after reconnect.", data, started);
+            }
+            else
+            {
+                // Compilation health is additional evidence, not a substitute for
+                // successful readiness and not a prerequisite for the readiness wait.
+                JsonObject? diagnostics = null;
+                try
+                {
+                    if (RemainingTimeoutMs(started, timeoutMs) > 0)
+                        diagnostics = await TryCallManageEditorAsync(new JsonObject { ["Action"] = "GetCompilationDiagnostics" },
+                            budget.Token, RemainingTimeoutMs(started, timeoutMs)).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+                catch (TimeoutException) { }
+                data["compilationDiagnostics"] = diagnostics != null ? ExtractUnityResult(diagnostics) : null;
+            }
+
+            ct.ThrowIfCancellationRequested();
+            data[recoveryFlag] = true;
+            data["reconnectRequired"] = false;
+            return EditorRecoveryResponse(true, null, targetPlaying.HasValue
+                ? "Relay reconnected and confirmed Editor readiness and the requested play-mode state."
+                : "Relay reconnected and confirmed Editor readiness after the reload boundary.", data, started);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return EditorRecoveryResponse(false, "editor_wait_timeout", "Editor recovery timed out before the requested state was confirmed.", data, started);
+        }
+        catch (TimeoutException ex)
+        {
+            data["recoveryFailure"] = ex.Message;
+            return EditorRecoveryResponse(false, "editor_wait_timeout", "Editor recovery timed out before the requested state was confirmed.", data, started);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            data["recoveryFailure"] = ex.Message;
+            return EditorRecoveryResponse(false, "editor_wait_failed", "Editor recovery failed before the requested state was confirmed.", data, started);
+        }
+    }
+
+    static JsonObject EditorRecoveryResponse(bool success, string? code, string message, JsonObject data, DateTime started)
+    {
+        data["elapsedMs"] = (int)(DateTime.UtcNow - started).TotalMilliseconds;
+        var result = new JsonObject { ["success"] = success, ["data"] = data };
+        if (success)
+            result["message"] = message;
+        else
+        {
+            result["code"] = code;
+            result["error"] = message;
+            data["completed"] = false;
+            data["mutationMayHaveApplied"] = true;
+        }
+        return new JsonObject { ["status"] = success ? "success" : "error", ["result"] = result };
     }
 
     async Task ReconnectUnityUntilAsync(int timeoutMs, CancellationToken ct)
@@ -1028,15 +957,18 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
                 await ReconnectUnityAsync(ct).ConfigureAwait(false);
                 return;
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 last = ex;
                 logger.Warn($"Unity reload reconnect attempt failed; waiting for bridge to republish: {ex.Message}");
-                await Task.Delay(500, ct).ConfigureAwait(false);
+                var remainingMs = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+                if (remainingMs > 0)
+                    await Task.Delay(Math.Min(500, remainingMs), ct).ConfigureAwait(false);
             }
         }
 
-        throw new IOException($"Unity reload recovery timed out after {timeoutMs}ms waiting for a fresh bridge connection.", last);
+        throw new TimeoutException($"Unity reload recovery timed out after {timeoutMs}ms waiting for a fresh bridge connection.", last);
     }
 
     async Task<JsonObject> CallManageEditorWithFallbackAsync(
@@ -1047,30 +979,53 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         bool requireNotPlaying,
         CancellationToken ct)
     {
+        if (timeoutMs <= 0)
+            throw new TimeoutException("The Editor recovery budget expired before the readiness wait.");
+        var started = DateTime.UtcNow;
         var primaryArgs = BuildWaitManageEditorArgs(primaryAction, timeoutMs, pollIntervalMs, requireNotPlaying);
-        var primary = await TryCallManageEditorAsync(primaryArgs, ct).ConfigureAwait(false);
-        if (primary != null && IsUnityResponseSuccess(primary))
+        var primary = await TryCallManageEditorAsync(primaryArgs, ct, timeoutMs).ConfigureAwait(false);
+        if (primary == null)
+            return new JsonObject { ["status"] = "error", ["error"] = "Editor recovery wait returned no result." };
+
+        // Timeout, readiness failure and malformed success are terminal. A second
+        // wait may only bridge an explicitly unsupported action on an older bridge.
+        if (IsUnityResponseSuccess(primary) || !IsUnsupportedEditorAction(primary) ||
+            ClassifyEditorWaitFailure(EditorWaitEvidence(primary)) == "editor_wait_timeout")
             return primary;
 
-        var primaryText = primary?.ToJsonString(CompactJson) ?? "(no response)";
-        logger.Warn($"ManageEditor {primaryAction} did not succeed during reload recovery; falling back to {fallbackAction}: {Truncate(primaryText, 240)}");
+        var primaryText = primary.ToJsonString(CompactJson);
+        logger.Warn($"ManageEditor {primaryAction} is unsupported; using {fallbackAction} within the remaining recovery budget: {Truncate(primaryText, 240)}");
 
-        var fallbackArgs = BuildWaitManageEditorArgs(fallbackAction, timeoutMs, pollIntervalMs, requireNotPlaying);
-        return await unity.SendCommandAsync("UniBridge_ManageEditor", AddExpectedProjectRoot(fallbackArgs), ct).ConfigureAwait(false);
+        var remainingMs = RemainingTimeoutMs(started, timeoutMs);
+        if (remainingMs <= 0)
+            throw new TimeoutException("The Editor recovery budget expired before the compatibility fallback.");
+        var fallbackArgs = BuildWaitManageEditorArgs(fallbackAction, remainingMs, pollIntervalMs, requireNotPlaying);
+        return await TryCallManageEditorAsync(fallbackArgs, ct, remainingMs).ConfigureAwait(false)
+            ?? new JsonObject { ["status"] = "error", ["error"] = "Editor recovery fallback returned no result." };
     }
 
-    async Task<JsonObject?> TryCallManageEditorAsync(JsonObject args, CancellationToken ct)
+    async Task<JsonObject?> TryCallManageEditorAsync(JsonObject args, CancellationToken ct, int responseTimeoutMs)
     {
+        if (responseTimeoutMs <= 0)
+            throw new TimeoutException("The Editor recovery budget expired before a verification query.");
+        var started = DateTime.UtcNow;
         try
         {
-            return await unity.SendCommandAsync("UniBridge_ManageEditor", AddExpectedProjectRoot(args), ct).ConfigureAwait(false);
+            return await unity.SendCommandAsync("UniBridge_ManageEditor", AddExpectedProjectRoot(args), ct,
+                responseTimeoutMs: responseTimeoutMs).ConfigureAwait(false);
         }
         catch (Exception ex) when (UnityConnection.IsConnectionFailure(ex))
         {
             logger.Warn($"Unity connection dropped during reload recovery helper call; reconnecting once: {ex.Message}");
             await ReconnectUnityAsync(ct).ConfigureAwait(false);
-            return await unity.SendCommandAsync("UniBridge_ManageEditor", AddExpectedProjectRoot(args), ct).ConfigureAwait(false);
+            var remainingMs = RemainingTimeoutMs(started, responseTimeoutMs);
+            if (remainingMs <= 0)
+                throw new TimeoutException("The Editor recovery budget expired while reconnecting a verification query.");
+            return await unity.SendCommandAsync("UniBridge_ManageEditor", AddExpectedProjectRoot(args), ct,
+                responseTimeoutMs: remainingMs).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException ex) { throw new TimeoutException("The Editor recovery verification query timed out.", ex); }
         catch (Exception ex)
         {
             logger.Warn($"ManageEditor helper call failed during reload recovery: {ex.Message}");
@@ -1089,47 +1044,150 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
 
     static bool IsUnityResponseSuccess(JsonObject response)
     {
-        var status = response["status"]?.GetValue<string>();
-        if (!string.Equals(status, "success", StringComparison.OrdinalIgnoreCase))
+        return string.Equals(ReadString(response, "status"), "success", StringComparison.OrdinalIgnoreCase) &&
+               !HasExplicitToolFailure(response) &&
+               (response["result"] is not JsonObject result || !HasExplicitToolFailure(result));
+    }
+
+    static JsonNode ExtractUnityFailureForMcp(JsonObject response)
+    {
+        var result = response["result"] as JsonObject;
+        if (result != null && ReadBoolean(result, "success") == false &&
+            (result["structuredContent"] is not JsonObject structured || ReadBoolean(structured, "success") != true))
+            return result.DeepClone();
+        if (result == null && !string.Equals(ReadString(response, "status"), "success", StringComparison.OrdinalIgnoreCase))
+            return response.DeepClone();
+
+        // A transport success can carry a failed tool response, or an older
+        // checkpoint can contain contradictory nested success flags. Expose an
+        // unambiguous failure contract while retaining the original as evidence.
+        var failure = new JsonObject
+        {
+            ["success"] = false,
+            ["code"] = ReadString(result ?? response, "code") ?? "TOOL_RESULT_FAILED",
+            ["error"] = ReadString(result ?? response, "error") ?? "Unity tool execution did not succeed. Inspect the retained original response.",
+            ["data"] = new JsonObject { ["originalResponse"] = response.DeepClone() }
+        };
+        if (result?["structuredContent"] != null)
+            failure["structuredContent"] = failure.DeepClone();
+        return failure;
+    }
+
+    static bool HasExplicitToolFailure(JsonObject result)
+    {
+        var status = ReadString(result, "status");
+        if (ReadBoolean(result, "success") == false || ReadBoolean(result, "isError") == true ||
+            string.Equals(status, "error", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
+            return true;
+        foreach (var name in new[] { "result", "structuredContent", "waitResult" })
+            if (result[name] is JsonObject nested && HasExplicitToolFailure(nested))
+                return true;
+        return result["data"] is JsonObject data &&
+               ((data["waitResult"] is JsonObject wait && HasExplicitToolFailure(wait)) ||
+                (data["structuredContent"] is JsonObject structured && HasExplicitToolFailure(structured)));
+    }
+
+    static IEnumerable<JsonObject> EditorWaitEvidence(JsonObject response)
+    {
+        yield return response;
+        foreach (var name in new[] { "result", "data", "structuredContent", "waitResult" })
+        {
+            if (response[name] is not JsonObject child)
+                continue;
+            foreach (var nested in EditorWaitEvidence(child))
+                yield return nested;
+        }
+    }
+
+    static string? ValidateEditorWaitResponse(JsonObject response, bool requireNotPlaying, bool? targetPlaying)
+    {
+        var evidence = EditorWaitEvidence(response).ToArray();
+        if (!IsUnityResponseSuccess(response) || evidence.Any(HasExplicitToolFailure))
+            return ClassifyEditorWaitFailure(evidence);
+        var result = response["result"] as JsonObject;
+        if (result == null ||
+            (ReadBoolean(result, "success") != true &&
+             (result["structuredContent"] is not JsonObject structured || ReadBoolean(structured, "success") != true)))
+            return "editor_state_unconfirmed";
+        if (evidence.Any(item => ReadBoolean(item, "timedOut") == true ||
+                                 ReadBoolean(item, "completed") == false ||
+                                 ReadBoolean(item, "reconnectRequired") == true))
+            return ClassifyEditorWaitFailure(evidence);
+
+        var readinessFound = false;
+        foreach (var item in evidence.Where(item => item.ContainsKey("readiness")))
+        {
+            if (item["readiness"] is not JsonObject readiness)
+                return "editor_state_unconfirmed";
+            readinessFound = true;
+            if (ReadBoolean(readiness, "isReady") != true ||
+                ReadBoolean(readiness, "isCompiling") != false || ReadBoolean(readiness, "isUpdating") != false)
+                return "editor_not_ready";
+            if ((requireNotPlaying || targetPlaying == false) &&
+                (ReadBoolean(readiness, "isPlaying") != false || ReadBoolean(readiness, "isPlayingOrWillChangePlaymode") != false))
+                return "editor_not_ready";
+            if (targetPlaying == true &&
+                (ReadBoolean(readiness, "isPlaying") != true || ReadBoolean(readiness, "isPlayingOrWillChangePlaymode") != true))
+                return "editor_state_unconfirmed";
+        }
+        return readinessFound ? null : "editor_state_unconfirmed";
+    }
+
+    static string ClassifyEditorWaitFailure(IEnumerable<JsonObject> evidence)
+    {
+        foreach (var item in evidence)
+        {
+            if (ReadBoolean(item, "timedOut") == true)
+                return "editor_wait_timeout";
+            foreach (var field in new[] { "code", "error", "message" })
+            {
+                var detail = ReadString(item, field) ?? string.Empty;
+                if (detail.Contains("timeout", StringComparison.OrdinalIgnoreCase) || detail.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+                    return "editor_wait_timeout";
+            }
+        }
+        return "editor_wait_failed";
+    }
+
+    static bool IsUnsupportedEditorAction(JsonObject response)
+    {
+        foreach (var item in EditorWaitEvidence(response))
+        {
+            var code = ReadString(item, "code")?.Replace("-", "_").ToUpperInvariant();
+            var error = ReadString(item, "error") ?? string.Empty;
+            if (code is "UNKNOWN_ACTION" or "UNSUPPORTED_ACTION" or "ACTION_NOT_SUPPORTED" ||
+                error.StartsWith("Unknown action:", StringComparison.OrdinalIgnoreCase) ||
+                (error.StartsWith("Unsupported ManageEditor action '", StringComparison.OrdinalIgnoreCase) &&
+                 error.EndsWith("'.", StringComparison.Ordinal)))
+                return true;
+        }
+        return false;
+    }
+
+    static bool HasConfirmedPlayModeState(JsonObject response, bool targetPlaying)
+    {
+        var result = response["result"] as JsonObject;
+        var data = result?["data"] as JsonObject ?? result;
+        if (data == null)
             return false;
-
-        if (response["result"] is JsonObject result &&
-            result["success"] is JsonValue value &&
-            value.TryGetValue<bool>(out var successValue))
-        {
-            return successValue;
-        }
-
-        return true;
+        var states = new[] { data, data["state"] as JsonObject }.Where(state => state != null && state.ContainsKey("isPlaying")).ToArray();
+        return states.Length > 0 && states.All(state =>
+            ReadBoolean(state!, "isPlaying") == targetPlaying &&
+            ReadBoolean(state!, "isPlayingOrWillChangePlaymode") == targetPlaying);
     }
 
-    static JsonNode? ExtractUnityResult(JsonObject response)
-    {
-        var clone = response["result"]?.DeepClone() ?? response.DeepClone();
-        RemoveStructuredContent(clone);
-        return clone;
-    }
+    static bool? ReadBoolean(JsonObject value, string name) =>
+        value[name] is JsonValue node && node.TryGetValue<bool>(out var boolean) ? boolean : null;
 
-    static void RemoveStructuredContent(JsonNode? node)
-    {
-        switch (node)
-        {
-            case JsonObject obj:
-                obj.Remove("structuredContent");
-                foreach (var child in obj.Select(property => property.Value).ToArray())
-                    RemoveStructuredContent(child);
-                break;
-            case JsonArray array:
-                foreach (var child in array)
-                    RemoveStructuredContent(child);
-                break;
-        }
-    }
+    // Retain the original failure, including MCP structured content; dropping its
+    // nested error evidence would make contradictory legacy envelopes misleading.
+    static JsonNode? ExtractUnityResult(JsonObject response) => response["result"]?.DeepClone() ?? response.DeepClone();
 
     static int RemainingTimeoutMs(DateTime startedUtc, int timeoutMs)
     {
         var elapsedMs = (int)(DateTime.UtcNow - startedUtc).TotalMilliseconds;
-        return Math.Max(1000, timeoutMs - elapsedMs);
+        return Math.Max(0, timeoutMs - elapsedMs);
     }
 
     static string? ReadString(JsonObject args, params string[] names)

@@ -1,4 +1,38 @@
-# UniBridge 0.2.56 Release Notes
+# UniBridge 0.2.57 Release Notes
+
+Release date: 2026-10-09
+
+The bundled relay is `1.1.0-build.21`. Editor wait timeouts and interruptions
+remain errors across checkpoint wrappers and reconnect recovery. Readiness
+success requires a successful wait and affirmative state; Play/Edit recovery
+also confirms the requested target. Contradictory nested wait results from
+older bridges cannot become a successful MCP response.
+
+`ReloadCheckpoint WaitForCompletion=true` retains refresh/reopen details and
+`completed=false` on a failed wait. A prior operation may already have applied;
+the timeout does not undo it or authorize replay. Queued Play/compile requests
+remain acknowledgements, not completion proof.
+
+Recovery uses one deadline for reconnect, wait and compatibility fallback.
+Fallback is allowed only for an explicitly unsupported action. Legacy wait
+actions remain non-blocking readiness probes with `waitSupported=false` and
+return an error when their condition is unmet.
+
+See `Tools~/EditorWaitRegression` for deterministic regression instructions.
+The dedicated test project qualifies real Play Mode readiness timeouts and
+the corresponding healthy paths without saving author scenes.
+
+Qualification passed 103 focused assertions and the previous 39 command-replay
+regressions. The same focused suite fails 75 assertions on release 0.2.56.
+Three real 200 ms recovery budgets complete at approximately 213 ms while
+rejecting replies delayed 600 ms. Live Unity 6000.6.5f1 passed 23 checks;
+required batches stop after the failed wait, and scene/selection/hash checks
+match the original state. Final compiler and Console diagnostics have no
+errors or warnings and all 110 script assemblies are fresh. The five legacy
+Editor compile targets and all four relay builds pass; Windows has live
+transport qualification, Linux/macOS have build qualification.
+
+## Previous 0.2.56 Notes
 
 Release date: 2026-10-09
 

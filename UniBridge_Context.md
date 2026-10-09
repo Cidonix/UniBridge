@@ -1,5 +1,98 @@
 # UniBridge Context
 
+## 2026-10-09 - UniBridge 0.2.57 host delivery and publication
+
+- Owner authorized updating Domovyk, installing UniBridge in Corgi Engine v10,
+  and committing/pushing the qualified source release. Corgi explicitly has
+  no repository and requires local installation only.
+- Domovyk upgraded from 0.2.56 to 0.2.57 / relay 1.1.0-build.21 by a guarded,
+  non-deleting overlay. All 590 controlled source files match byte-for-byte;
+  target-only Unity metadata and the prior context history are preserved.
+- The changed modern ManageEditor script passed standard validation. Actual
+  refresh crossed the domain-reload boundary and relay recovered by observing
+  successful readiness, without repeating the refresh. Edit Mode is ready,
+  all 115 assemblies are fresh, and compiler/Console errors, exceptions and
+  critical build issues are zero. The 45 existing host warnings are unchanged.
+- Loaded scene, dirty flags, Prefab Stage and selected object match the live
+  baseline; authored scene and metadata SHA256 are unchanged. CommandStatus
+  and replay-safety tool annotations are confirmed over project-scoped MCP.
+- Domovyk server changeset 279 on /main contains only the embedded package and
+  its context update (19 files, one added directory). Server paths, Ukrainian
+  comment and sampled contents match; both Plastic status checks are clean.
+- Corgi received the same 590 controlled files as a new embedded package,
+  a local manifest dependency and its project context file. Existing dependency
+  values are preserved; Newtonsoft remains resolved at 3.2.2. Its already-open
+  Unity Editor resolved packages once through the existing Unity CLI pipeline.
+- Corgi live MCP qualification confirms 0.2.57, affirmative reload readiness,
+  68 tools and 140 fresh assemblies with no errors, missing outputs or critical
+  build issues. Before/after author state matches exactly; all 200 authored
+  scene/metadata hashes are unchanged. No author scene was saved or reopened.
+- Corgi's pipeline Console retains 24 UniBridge analyzer warnings: UAC0005 x19,
+  UAC0007 x1 and UAC1015 x4. Its newly initialized UniBridge capture reports
+  no warnings; the pipeline is the authoritative compiler-warning evidence.
+  These existing source analyzer findings are outside this timeout correction.
+  A transient fresh-install empty-folder metadata warning is retained in local
+  history and is not included in the final visible 24 warnings.
+- Detailed host evidence stays in each project's
+  Library/AgentValidation/UniBridge0257-20261009; source publication evidence
+  stays in Temp/UniBridge0257-Hosts-20261009. Global Codex config is untouched.
+- Source delivery uses the existing main branch and a non-force GitHub push.
+  The audited scope is 22 files; qualified production sources and all four
+  relay artifacts retain their recorded hashes. Release qualification remains
+  103 focused cases, 39 replay cases and 23 live test-project assertions.
+  Windows transport is live-tested; Linux/macOS artifacts are build-qualified.
+
+## 2026-10-09 - Editor wait timeout correctness (point 2)
+
+- Owner requested completing the false-success fix for Editor wait timeouts.
+  Source starts clean at e2154ea17359e951884c2c828b68082cafd9452b, package
+  0.2.56 / relay 1.1.0-build.20. The dedicated open UniBridge_Test_Project
+  remains the authorized live test target; author scenes and selection must
+  be preserved. Other project updates and publication are separate tasks.
+- Audit confirmed WaitForReadyAfterReload wraps a failed WaitForReady result
+  in success, and ReloadCheckpoint discards the wait result. Relay compilation,
+  refresh and play-mode recovery wrappers also report success without proving
+  the requested wait succeeded; generic fallback can hide a timeout.
+- Implement explicit wait-result propagation, affirmative readiness/target
+  evidence and a single bounded recovery budget. A wait failure does not mean
+  prior refresh or scene changes were undone and does not authorize a replay.
+- Legacy readiness currently aliases GetState and can return success while
+  busy; it must report truthful readiness within the legacy transport limits.
+- Completed in package 0.2.57 / relay 1.1.0-build.21. Modern waits preserve
+  explicit failure, bound polling to a monotonic remaining deadline, and do
+  not collect reload checkpoint diagnostics after readiness timed out.
+  ReloadCheckpoint retains applied refresh/reopen evidence with completed=false.
+- Relay requires affirmative Boolean readiness/target evidence, keeps one
+  reconnect/wait/fallback budget, and allows fallback only for explicit modern
+  or legacy unsupported-action responses. MCP isError and the response body
+  both report failure, including contradictory old nested/structured results.
+- Legacy calls are truthful instantaneous probes with waitSupported=false;
+  GetState remains a successful observation. Native legacy C#4/.NET2 compile
+  gates passed on all five supported installed Editors.
+- Exact prior source e2154ea fails 75 of the 103 focused assertions; current
+  production source passes 103/103. Three actual 200 ms recovery budgets reject
+  replies delayed 600 ms and finish at approximately 213 ms. MCP wire tests
+  cover nested failures, legacy compatibility and intentional optional batches.
+- Previous command-replay safety regression passed 39/39 on build.21. Live
+  baseline proved optimistic success; updated live qualification passed all
+  23 checks, including five real readiness timeout actions, four healthy paths,
+  actual Play/Edit transitions, long-poll deadline, and required batch failure.
+  The batch executed one failed wait and did not run its second step.
+- Test project reload/compile is ready in Edit Mode, all 110 assemblies fresh,
+  compiler/Console errors and warnings zero, no critical build issues. Loaded
+  scenes, clean state, Prefab Stage and selection match the baseline; authored
+  scene/meta hashes are unchanged. No fixture assets or author saves were used.
+- All 590 controlled package files match the test-project overlay. All four
+  relay artifacts were rebuilt; Windows was qualified live, Linux/macOS by
+  build. Existing versioned relay executables were preserved. Only the test
+  project's Codex MCP command was moved to a verified build.21 executable;
+  all other parsed configuration values matched exactly. Direct project-scoped
+  MCP is the verified current-session path; native Codex tools are not exposed
+  in this session's tool inventory.
+- Final evidence stays under Temp/EditorWait-20261009 and the test project's
+  Library/UniBridge/EditorWait-20261009. Source changes are uncommitted; no other
+  project update or publication was performed in this point-2 task.
+
 ## 2026-10-09 - Domovyk upgrade and release publication
 
 - Owner authorized updating Domovyk and committing/pushing this release.

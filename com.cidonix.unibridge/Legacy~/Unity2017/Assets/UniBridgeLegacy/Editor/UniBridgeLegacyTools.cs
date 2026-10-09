@@ -26,7 +26,7 @@ namespace Cidonix.UniBridge.Legacy
             tools.Add(Descriptor(
                 "UniBridge_ManageEditor",
                 "Manage legacy Unity Editor lifecycle",
-                "Inspect Editor state or run basic lifecycle actions. Actions: GetState, RefreshAssets, SaveAssets, SaveAll, Play, ExitPlayMode, Pause, Resume, Undo, Redo, GetCompilationDiagnostics."));
+                "Inspect Editor state or run basic lifecycle actions. Actions: GetState, RefreshAssets, SaveAssets, SaveAll, Play, ExitPlayMode, Pause, Resume, Undo, Redo, GetCompilationDiagnostics, WaitForReady, WaitIdle, WaitForReadyAfterReload. Legacy readiness actions are instantaneous probes with waitSupported=false: they succeed only when the Editor is ready now, otherwise return failure without blocking the Unity main thread. RequireNotPlaying additionally requires Edit Mode without a pending Play Mode transition."));
             tools.Add(Descriptor(
                 "UniBridge_ReadConsole",
                 "Read legacy Unity console diagnostics",
@@ -105,6 +105,7 @@ namespace Cidonix.UniBridge.Legacy
             properties["Height"] = IntegerSchema("PNG height for immediate captures, clamped to 64..4096.");
             properties["SuperSize"] = IntegerSchema("Exact Game View supersampling multiplier, clamped to 1..4.");
             properties["TimeoutMs"] = IntegerSchema("Exact Game View file timeout, clamped to 1000..30000 milliseconds.");
+            properties["RequireNotPlaying"] = BooleanSchema("For legacy readiness probes, also require Edit Mode without a pending Play Mode transition. The adapter does not wait inline or consume TimeoutMs.");
             properties["RestoreFocus"] = BooleanSchema("Restore the previously focused Unity window after exact Game View capture.");
             properties["CreateViewIfMissing"] = BooleanSchema("Allow creation of a missing Scene View or Game View window. Default false.");
             properties["Label"] = StringSchema("Optional human-readable filename label; sanitized by the adapter.");
@@ -272,12 +273,53 @@ namespace Cidonix.UniBridge.Legacy
                 diagnostics["note"] = "Legacy Unity does not expose the modern CompilationPipeline surface used by the full package; captured Console errors remain authoritative.";
                 return diagnostics;
             }
-            if (!EqualsAction(action, "GetState") && !EqualsAction(action, "Status") && !EqualsAction(action, "WaitForReady"))
+            bool readinessProbe = EqualsAction(action, "WaitForReady") || EqualsAction(action, "WaitIdle") || EqualsAction(action, "WaitForReadyAfterReload");
+            if (!EqualsAction(action, "GetState") && !EqualsAction(action, "Status") && !readinessProbe)
                 throw new InvalidOperationException("Unsupported ManageEditor action '" + action + "'.");
 
-            Dictionary<string, object> state = Result("Editor state captured.");
-            state["editor"] = BuildEditorState();
-            state["ready"] = !EditorApplication.isCompiling && !EditorApplication.isUpdating;
+            bool requireNotPlaying = UniBridgeLegacyValue.GetBool(parameters, "RequireNotPlaying", false);
+            Dictionary<string, object> editor = BuildEditorState();
+            bool ready = UniBridgeLegacyValue.GetBool(editor, "ready", false) &&
+                (!requireNotPlaying || (!UniBridgeLegacyValue.GetBool(editor, "isPlaying", false) &&
+                    !UniBridgeLegacyValue.GetBool(editor, "isPlayingOrWillChangePlaymode", false)));
+            Dictionary<string, object> readiness = new Dictionary<string, object>(editor);
+            readiness["ready"] = ready;
+            readiness["isReady"] = ready;
+            readiness["requireNotPlaying"] = requireNotPlaying;
+            readiness["elapsedMs"] = 0;
+
+            Dictionary<string, object> state = Result(readinessProbe
+                ? ready ? "Legacy Unity Editor readiness verified by an instantaneous probe."
+                    : "Legacy Unity Editor is not ready. Inline waiting is unsupported; readiness was not verified."
+                : "Editor state captured.");
+            state["editor"] = editor;
+            state["ready"] = ready;
+            state["readiness"] = readiness;
+            if (readinessProbe)
+            {
+                state["success"] = ready;
+                state["status"] = ready ? "ready" : "not_ready";
+                state["completed"] = ready;
+                state["waitSucceeded"] = ready;
+                state["waitSupported"] = false;
+                state["waitedMs"] = 0;
+                state["timedOut"] = false;
+                state["timeoutConsumed"] = false;
+                state["compilationHealthVerified"] = false;
+                state["requestedTimeoutMs"] = UniBridgeLegacyValue.Get(parameters, "TimeoutMs");
+                state["action"] = action;
+                state["note"] = "The legacy adapter checks current readiness without blocking the Unity main thread. TimeoutMs is not consumed; observe or probe again before continuing.";
+                if (!ready)
+                {
+                    List<string> reasons = new List<string>();
+                    if (UniBridgeLegacyValue.GetBool(editor, "isCompiling", false)) reasons.Add("compiling");
+                    if (UniBridgeLegacyValue.GetBool(editor, "isUpdating", false)) reasons.Add("updating");
+                    if (requireNotPlaying && UniBridgeLegacyValue.GetBool(editor, "isPlaying", false)) reasons.Add("playing");
+                    if (requireNotPlaying && UniBridgeLegacyValue.GetBool(editor, "isPlayingOrWillChangePlaymode", false)) reasons.Add("play_mode_transition_or_playing");
+                    state["notReadyReasons"] = reasons.ToArray();
+                    state["nextSuggestedCalls"] = new string[] { "UniBridge_ManageEditor Action=GetState", "UniBridge_ManageEditor Action=" + action + " RequireNotPlaying=" + (requireNotPlaying ? "true" : "false") };
+                }
+            }
             return state;
         }
 
@@ -850,6 +892,7 @@ namespace Cidonix.UniBridge.Legacy
         {
             Dictionary<string, object> state = new Dictionary<string, object>();
             state["isPlaying"] = EditorApplication.isPlaying;
+            state["isPlayingOrWillChangePlaymode"] = EditorApplication.isPlayingOrWillChangePlaymode;
             state["isPaused"] = EditorApplication.isPaused;
             state["isCompiling"] = EditorApplication.isCompiling;
             state["isUpdating"] = EditorApplication.isUpdating;
