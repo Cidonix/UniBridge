@@ -40,6 +40,96 @@ static class CommandReplayRegression
 
     static async Task RunCasesAsync()
     {
+        foreach (var reconnect in new[] { false, true })
+        {
+            await CaseAsync(reconnect ? "reconnected_reader_survives_connecting_request_cancellation" : "reader_survives_connecting_request_cancellation", async () =>
+            {
+                await using var test = await FaultUnity.StartAsync();
+                if (reconnect)
+                {
+                    await test.DirectCommandAsync("UniBridge_Discover", new(), CancellationToken.None, 3000);
+                    await test.ResetConnectionAsync();
+                }
+                using var opener = new CancellationTokenSource();
+                await test.DirectCommandAsync("UniBridge_Discover", new(), opener.Token, 3000);
+                var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                test.Respond = async (command, _) =>
+                {
+                    admitted.TrySetResult();
+                    await release.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return FaultUnity.Success(new() { ["otherRequestCompleted"] = true });
+                };
+                var other = test.DirectCommandAsync("UniBridge_Discover", new(), CancellationToken.None, 2000);
+                await admitted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                opener.Cancel();
+                release.TrySetResult();
+                var result = await other;
+                Assert(result["status"]?.GetValue<string>() == "success", "Cancellation stopped the shared reader");
+                Assert(test.Commands("set_client_info").Count == (reconnect ? 2 : 1), "Other call needed a replacement connection");
+                return new() { ["otherRequestCompleted"] = true, ["reconnected"] = reconnect };
+            });
+        }
+
+        foreach (var callerCancellation in new[] { true, false })
+        {
+            await CaseAsync(callerCancellation ? "caller_cancellation_control_no_replay" : "response_timeout_control_no_replay", async () =>
+            {
+                await using var test = await FaultUnity.StartAsync(new JsonObject
+                {
+                    ["requestCancellation"] = new JsonObject { ["version"] = 1, ["mode"] = "transport-scoped" }
+                });
+                var admitted = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var cancelled = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+                test.Respond = async (command, _) =>
+                {
+                    if (command["type"]?.GetValue<string>() == "cancel_command")
+                    {
+                        cancelled.TrySetResult(command.DeepClone().AsObject());
+                        return FaultUnity.Success(new());
+                    }
+                    admitted.TrySetResult(command.DeepClone().AsObject());
+                    await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return FaultUnity.Success(new() { ["mutationCompleted"] = true });
+                };
+                using var cancellation = new CancellationTokenSource();
+                var call = test.DirectCommandAsync("UniBridge_ManageGameObject", new() { ["Action"] = "Create" },
+                    cancellation.Token, callerCancellation ? 5000 : 200);
+                var original = await admitted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                if (callerCancellation) cancellation.Cancel();
+                try { await call; throw new InvalidOperationException("Cancelled wait returned a successful response"); }
+                catch (OperationCanceledException) { }
+                var control = await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert(control["params"]?["originalRequestId"]?.GetValue<string>() == original["requestId"]?.GetValue<string>(), "Cancellation targeted another command");
+                Assert(control["params"]?["reason"]?.GetValue<string>() == (callerCancellation ? "mcp_request_cancelled" : "response_timeout"), "Cancellation reason incorrect");
+                Assert(test.Commands("UniBridge_ManageGameObject").Count == 1, "Cancellation replayed mutation");
+                return new() { ["dispatchCount"] = 1, ["control"] = control.DeepClone() };
+            });
+        }
+
+        await CaseAsync("legacy_cancellation_does_not_send_unsupported_control", async () =>
+        {
+            await using var test = await FaultUnity.StartAsync();
+            var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            test.Respond = async (command, _) =>
+            {
+                admitted.TrySetResult();
+                await release.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return FaultUnity.Success(new());
+            };
+            using var cancellation = new CancellationTokenSource();
+            var call = test.DirectCommandAsync("UniBridge_ManageGameObject", new() { ["Action"] = "Create" }, cancellation.Token, 5000);
+            await admitted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancellation.Cancel();
+            try { await call; throw new InvalidOperationException("Cancelled wait succeeded"); }
+            catch (OperationCanceledException) { }
+            release.TrySetResult();
+            Assert(test.Commands("cancel_command").Count == 0, "Old bridge received unsupported control");
+            Assert(test.Commands("UniBridge_ManageGameObject").Count == 1, "Cancelled command replayed");
+            return new() { ["dispatchCount"] = 1, ["controlCount"] = 0 };
+        });
+
         await CaseAsync("transport_success", async () =>
         {
             await using var test = await FaultUnity.StartAsync();
@@ -499,6 +589,20 @@ static class CommandReplayRegression
             try { task = (Task<JsonObject>)method.Invoke(relay, new object[] { tool, arguments, ct })!; }
             catch (TargetInvocationException ex) { throw ex.InnerException ?? ex; }
             return await task.WaitAsync(wait ?? TimeSpan.FromSeconds(20));
+        }
+
+        public async Task<JsonObject> DirectCommandAsync(string tool, JsonObject arguments, CancellationToken ct, int timeoutMs)
+        {
+            var ensure = typeof(McpServer).GetMethod("EnsureUnityConnectedAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            await ((Task)ensure.Invoke(relay, new object[] { ct })!).WaitAsync(TimeSpan.FromSeconds(5));
+            var unity = (UnityConnection)typeof(McpServer).GetField("unity", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(relay)!;
+            return await unity.SendCommandAsync(tool, arguments, ct, responseTimeoutMs: timeoutMs);
+        }
+
+        public Task ResetConnectionAsync()
+        {
+            var unity = (UnityConnection)typeof(McpServer).GetField("unity", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(relay)!;
+            return unity.DisconnectAsync("Owned regression reconnect");
         }
 
         public async Task<JsonObject> CommandStatusAsync(JsonObject arguments)

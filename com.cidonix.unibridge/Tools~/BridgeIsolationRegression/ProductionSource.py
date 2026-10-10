@@ -54,6 +54,7 @@ def build(repo, work):
         'Lifecycle: unchanged production methods with deterministic owned listener/scheduler/discovery substrate; no native named-pipe handle acquisition.',
         'Persisted models and producers: unchanged declarations and SaveState/SaveWriteToken/SaveSnapshot bodies, owned storage-path adapters only.',
         'Runtime converter: unchanged UnityObjectId and UnityEngineObjectConverter with deterministic typed ID lookup substrate.',
+        'OutputContractProvider is an empty-schema fixture; output schema inference/validation is outside this lifecycle/JSON suite.',
     ]}
 
     def read(relative):
@@ -77,6 +78,7 @@ def build(repo, work):
         'Modules/Cidonix.UniBridge.MCP.Editor/Connection/ServerDiscovery.cs',
         'Modules/Cidonix.UniBridge.MCP.Editor/Connection/TransportStore.cs',
         'Modules/Cidonix.UniBridge.MCP.Editor/ToolRegistry/IToolHandler.cs',
+        'Modules/Cidonix.UniBridge.MCP.Editor/ToolRegistry/AsyncToolResult.cs',
         'Modules/Cidonix.UniBridge.MCP.Editor/ToolRegistry/McpAttributes.cs',
         'Modules/Cidonix.UniBridge.MCP.Editor/ToolRegistry/IUnityMcpTool.cs',
         'Modules/Cidonix.UniBridge.Tracing/TraceJson.cs',
@@ -88,13 +90,18 @@ def build(repo, work):
     ):
         whole(relative)
 
+    output_provider = read('Modules/Cidonix.UniBridge.MCP.Editor/ToolRegistry/OutputContractProvider.cs')
+    (work / 'OutputUnwrapProduction.cs').write_text('using System; using System.Threading.Tasks; namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry { static partial class OutputContractProvider {\n' + method(output_provider, 'UnwrapAsync') + '\n}}', encoding='utf-8')
+    provenance['extraction']['OutputContractProvider'] = ['UnwrapAsync']
+
     bridge = read('Modules/Cidonix.UniBridge.MCP.Editor/Bridge.cs')
     names = ['Bridge', 'Start', 'Stop', 'Dispose', 'OnPlayModeStateChanged', 'CancelScheduledStart', 'ScheduleInitRetry', 'EnsureStartedOnEditorIdle',
              'InitializeAfterCompilation', 'OnBeforeAssemblyReload', 'OnAfterAssemblyReload',
              'OnToolsChanged', 'ComputeToolsSnapshotAndHash', 'IsCompiling', 'IsCurrentGeneration', 'RunForGeneration',
              'TryQueueCommand', 'CloseAndDisposeTransport', 'ListenerLoopAsync', 'ProcessCommands',
              'InjectRequestId', 'WaitForExistingAndComplete', 'CompleteQueuedCommandAsync',
-             'WriteWithLockAsync', 'CreateTransportCancellation', 'DisposeWriteResourcesWhenIdle']
+             'WriteWithLockAsync', 'CreateTransportCancellation', 'DisposeWriteResourcesWhenIdle',
+             'CancelRequest', 'ReleaseRequestCancellation']
     bodies = [model(bridge, 'BridgeGeneration')] + [method(bridge, name) for name in names]
     provenance['extraction']['Bridge'] = names
     provenance['extraction']['BridgeModels'] = ['BridgeGeneration']

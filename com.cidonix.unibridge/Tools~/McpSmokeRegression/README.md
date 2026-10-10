@@ -13,6 +13,7 @@ Requirements:
 
 - Unity project open with UniBridge compiled and connected.
 - Python available on `PATH`.
+- An Administrator terminal on Windows; relay children inherit its token.
 
 ## Basic Run
 
@@ -28,11 +29,27 @@ powershell -ExecutionPolicy Bypass `
 - `RuntimeStateProbe.Assertions` is advertised as an array of objects, and a
   legacy/simplified single assertion object is safely normalized at execution.
 - `UniBridge_Discover Action=Ping` returns package/project identity.
+- Malformed MCP requests return protocol errors without terminating the session;
+  cancellation notifications and other notifications do not receive responses.
+- Admitted requests are cancelled by notification, client timeout followed by
+  cancellation, and client EOF. Exact operation history, released slots and a
+  subsequent successful read prove completion; stale operations are not reaped
+  to manufacture a passing result. A queued write must create no object.
 - Console clear/read workflows work.
 - `WaitForReady`, `RefreshAssets`, `RequestScriptCompilationNoWait`, and
   `WaitForReadyAfterReload` survive reload boundaries.
 - New smoke clients retry MCP initialization across a bounded expected
   reload/discovery gap without retrying an already-issued mutating tool.
+- Confirmed script writes are followed by bridge readiness checks. Writes that
+  import immediately or schedule refresh additionally require fresh compilation;
+  intentional `refresh=none` writes verify file text/SHA without demanding an
+  unrequested import. Pure resource/SHA
+  reads may retry after reload; writes never retry automatically. Readiness and
+  fresh compilation/Console health are polled within the configured reload budget,
+  including the gap before queued compilation starts.
+- Only explicitly expected negative tool responses may use `isError=true`.
+  An unknown original write outcome remains a failure unless its exact journal
+  response confirms completion; a healthy Editor alone cannot prove it.
 - `GetCompilationDiagnostics` reports no compile/build-system failures.
 - `ValidateScript` can validate a script under `Packages/...`.
 - `VersionControl` advertises `AssetPaths` as a non-empty array and accepts
@@ -86,3 +103,27 @@ powershell -ExecutionPolicy Bypass `
 
 Use `-SkipRefresh` or `-SkipCompile` only when you need a short connectivity
 smoke and do not want to cross Unity reload boundaries.
+
+## Runner Contract Tests
+
+These mock-only tests protect the runner's failure assertions, response IDs,
+request cancellation, no-write-replay rules, cleanup, and readiness/fresh-assembly
+polling. They launch no Unity or relay processes and do not replace the live suite.
+
+From the repository root:
+
+```powershell
+python -m unittest discover `
+  -s .\com.cidonix.unibridge\Tools~\McpSmokeRegression `
+  -p test_mcp_smoke_regression.py -v
+```
+
+To also save a JSON report, run the test file directly with an optional fresh path:
+
+```powershell
+python .\com.cidonix.unibridge\Tools~\McpSmokeRegression\test_mcp_smoke_regression.py `
+  --report .\Temp\runner-contracts-new.json
+```
+
+Existing reports are never overwritten. Test scratch files use temporary folders
+and are removed automatically.

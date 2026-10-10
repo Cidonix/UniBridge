@@ -75,6 +75,7 @@ Returns:
                     _ => Response.Error($"Unsupported UnitySearch action '{parameters.Action}'.")
                 };
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 Debug.LogError($"[UnitySearch] {parameters.Action} failed: {ex}");
@@ -204,6 +205,7 @@ Returns:
             var scanned = 0;
             foreach (var guid in guids)
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 if (scanned++ >= options.MaxScanAssets)
                     yield break;
 
@@ -228,6 +230,7 @@ Returns:
             var scanned = 0;
             foreach (var gameObject in EnumerateSceneObjects(options.IncludeInactive))
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 if (scanned++ >= options.MaxSceneObjects)
                     yield break;
 
@@ -239,6 +242,8 @@ Returns:
 
         static async Task<List<SearchResultRecord>> SearchNativeSearchService(SearchOptions options)
         {
+            var cancellationToken = ToolExecutionScheduler.CurrentCancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
             var providers = new List<string>();
             if (options.HasSource("Assets"))
                 providers.Add("asset");
@@ -253,6 +258,7 @@ Returns:
 
             using var context = SearchService.CreateContext(providers.ToArray(), options.Query, (SearchFlags)2);
             var tcs = new TaskCompletionSource<IList<SearchItem>>();
+            using var cancellationRegistration = cancellationToken.Register(() => tcs.TrySetCanceled());
             SearchService.Request(context, (_, items) => tcs.TrySetResult(items ?? Array.Empty<SearchItem>()), (SearchFlags)0);
 
             var completed = await Task.WhenAny(tcs.Task, Task.Delay(options.NativeTimeoutMs));
@@ -260,7 +266,7 @@ Returns:
                 throw new TimeoutException($"Unity SearchService did not complete within {options.NativeTimeoutMs} ms.");
 
             var records = new List<SearchResultRecord>();
-            foreach (var item in tcs.Task.Result.Take(options.Limit * 4))
+            foreach (var item in (await tcs.Task).Take(options.Limit * 4))
             {
                 var record = BuildNativeSearchResult(item, options);
                 if (record != null)
@@ -347,6 +353,7 @@ Returns:
             var scanned = 0;
             foreach (var guid in guids)
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 if (scanned++ >= options.MaxScanScripts)
                     yield break;
 
@@ -402,6 +409,7 @@ Returns:
         {
             foreach (var type in GetAllLoadedTypes())
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 if (type == null || (!type.IsClass && !type.IsEnum && !type.IsValueType))
                     continue;
                 if (type.IsGenericTypeDefinition)
@@ -458,6 +466,7 @@ Returns:
 
             foreach (var guid in guids.Take(options.MaxScanAssets))
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 if (!ShouldIncludeAssetPath(path, options))
                     continue;
@@ -505,6 +514,7 @@ Returns:
 
             foreach (var menuItem in menuItems)
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 var score = Score(options, new[]
                 {
                     Field(menuItem, 10, "menuPath"),
@@ -566,6 +576,7 @@ Returns:
 
             foreach (var go in EnumerateSceneObjects(options.IncludeInactive))
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 var path = GetHierarchyPath(go);
                 if (string.Equals(go.name, target, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(path, target, StringComparison.OrdinalIgnoreCase) ||
@@ -1112,6 +1123,7 @@ Returns:
         {
             foreach (var assembly in LoadedAssemblyCatalog.GetLoadedAssemblies())
             {
+                ToolExecutionScheduler.ThrowIfCancellationRequested();
                 Type[] types;
                 try
                 {

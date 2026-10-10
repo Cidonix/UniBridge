@@ -17,6 +17,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$smokePrincipal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $smokePrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Run the MCP smoke suite from an Administrator terminal; Python and relay processes inherit its privileges."
+}
+
 $python = Get-Command python -ErrorAction SilentlyContinue
 if ($null -eq $python) {
     throw "Python is required to run the UniBridge MCP smoke regression suite."

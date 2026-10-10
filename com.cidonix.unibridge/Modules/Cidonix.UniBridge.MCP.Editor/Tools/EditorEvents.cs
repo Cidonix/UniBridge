@@ -873,6 +873,9 @@ Returns:
             }
 
             var tcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var cancellationToken = ToolExecutionScheduler.CurrentCancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
+            using var cancellationRegistration = cancellationToken.Register(() => tcs.TrySetCanceled());
             var quietStartedUtc = initial.count > 0 ? DateTime.UtcNow : (DateTime?)null;
             var lastLatestId = EditorEventHistory.LatestId();
             var lastMatch = initial;
@@ -949,7 +952,8 @@ Returns:
             EditorApplication.update -= Tick;
             EditorApplication.update += Tick;
             EditorApplication.QueuePlayerLoopUpdate();
-            return await tcs.Task;
+            try { return await tcs.Task; }
+            finally { EditorApplication.update -= Tick; }
         }
 
         static object BuildResult(

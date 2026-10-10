@@ -46,6 +46,7 @@ partial class Bridge : IDisposable
     int generationNumber, processingCommands;
     volatile BridgeGeneration currentGeneration;
     readonly ConcurrentDictionary<string, TaskCompletionSource<string>> commandWaiters = new();
+    readonly ConcurrentDictionary<string, (IConnectionTransport client, string requestId, CancellationTokenSource source)> requestCancellations = new();
     const string StoppedResponse = "{\"status\":\"error\",\"error\":\"Bridge stopped\"}";
     public static event Action<string> OnConnectionAttempt;
     public static Task<string> DispatchResult = Task.FromResult("{\"status\":\"success\",\"result\":{\"owned\":true}}");

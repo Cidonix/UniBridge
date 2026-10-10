@@ -90,6 +90,16 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 }
 namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 {
+    // Output schema inference/validation is qualified by its separate suite.
+    // These fixtures retain handler construction for lifecycle/JSON qualification.
+    interface IOutputContractHandler { OutputContract OutputContract { get; } }
+    sealed class OutputContract { public Newtonsoft.Json.Linq.JToken Schema { get; set; } }
+    static partial class OutputContractProvider
+    {
+        public static OutputContract Resolve(string name, System.Reflection.MethodInfo executeMethod,
+            System.Reflection.MethodInfo outputSchemaMethod = null, object instance = null,
+            Func<object> provider = null, string registrationIssue = null) => new();
+    }
     public enum ToolExecutionPolicy { Auto, ReadOnly, Observer, Mutating, Lifecycle, Capture }
     static class SchemaGenerator
     {

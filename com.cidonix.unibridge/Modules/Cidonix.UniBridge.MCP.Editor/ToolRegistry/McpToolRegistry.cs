@@ -260,17 +260,13 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
                 McpLog.Log($"[McpToolRegistry] Executing tool '{toolName}'", new() { Data = new { tool = toolName, executionPolicy = useScheduler ? policy.ToString() : $"CurrentLease:{policy}", @params = parameters } });
 
-                var schedulerCancellationToken = policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer
-                    ? cancellationToken
-                    : CancellationToken.None;
-
                 var result = useScheduler
                     ? await ToolExecutionScheduler.ExecuteAsync(
                         toolName,
                         parameters,
                         handler,
                         () => handler.ExecuteAsync(parameters),
-                        schedulerCancellationToken)
+                        cancellationToken)
                     : await handler.ExecuteAsync(parameters);
 
                 // Output contracts were cached at registration before any handler ran.

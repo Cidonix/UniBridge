@@ -1,4 +1,14 @@
-# UniBridge 0.2.69 Release Notes
+# UniBridge 0.2.70 Release Notes
+
+Release date: 2026-10-11
+
+Per-request MCP cancellation now reaches the Editor through a transport-scoped control message. Read-only tools, event waits and queued operations release their scheduling resources. An exclusive mutation already past its start boundary finishes with its real result retained in the recovery journal; cancellation does not justify replay or a claim that no changes were made. Relay build23 also validates malformed MCP requests without losing the stdio session.
+
+The smoke runner distinguishes expected negative tool responses from failures, waits for actual readiness after reload, and verifies admission before testing cancellation, timeout and disconnect. Qualification passed all 26 default smoke steps in x64 Mono Unity 6000.6.5f1. A separate native batch proves cancellation during a started mutation, deferred cancellation, actual final object state, exact retained journal response and typed-ID cleanup. Production-linked relay/journal regression passed 44/44, scheduler/consumer/schema regression 22/22, Bridge lifecycle regression 49/49, and portable smoke-runner contracts 38/38. Earlier failed smoke reports remain preserved. Windows native runtime proof and cross-built Linux/macOS binaries are distinct; no native legacy cancellation or Unity CoreCLR qualification is claimed.
+
+Native Unity CoreCLR qualification (point 12) remains deferred until released Unity 7.
+
+## Previous 0.2.69 Notes
 
 Release date: 2026-10-11
 

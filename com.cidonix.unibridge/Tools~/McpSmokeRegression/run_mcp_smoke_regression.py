@@ -38,6 +38,12 @@ def read_stream(stream, output_queue, sink):
         sink.append(f"<reader failed: {exc}>")
 
 
+class ToolCallError(RuntimeError):
+    def __init__(self, name, result):
+        super().__init__(f"Tool {name} returned isError=true: {result['raw']}")
+        self.result = result
+
+
 class McpClient:
     def __init__(self, relay_path, project_path, default_timeout, trace_path=None):
         self.relay_path = str(relay_path)
@@ -49,6 +55,7 @@ class McpClient:
         self.stdout_lines = []
         self.stderr_lines = []
         self.next_id = 1
+        self.pending_responses = {}
 
     def __enter__(self):
         args = [
@@ -96,11 +103,15 @@ class McpClient:
                     )
                 )
                 if not reload_boundary or time.monotonic() >= deadline:
+                    self.close()
                     raise
                 time.sleep(0.5)
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def close(self):
         if not self.process:
             return
         try:
@@ -129,9 +140,14 @@ class McpClient:
         with self.trace_path.open("a", encoding="utf-8") as f:
             f.write(f"{iso(utc_now())} [{direction}] firstBytesUtf8={first} line={line}\n")
 
-    def send(self, method, params=None, expect_response=True, timeout=None):
+    def write_raw(self, line):
         if not self.process or not self.process.stdin:
             raise RuntimeError("MCP relay process is not running.")
+        self.trace("send", line)
+        self.process.stdin.write(line + "\n")
+        self.process.stdin.flush()
+
+    def start_request(self, method, params=None, expect_response=True):
         request = {
             "jsonrpc": "2.0",
             "method": method,
@@ -143,16 +159,27 @@ class McpClient:
             self.next_id += 1
             request["id"] = request_id
         line = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
-        self.trace("send", line)
-        self.process.stdin.write(line + "\n")
-        self.process.stdin.flush()
+        self.write_raw(line)
+        return request_id
+
+    def send(self, method, params=None, expect_response=True, timeout=None):
+        request_id = self.start_request(method, params, expect_response)
         if not expect_response:
             return None
-        return self.wait_for_response(request_id, timeout or self.default_timeout)
+        return self.wait_for_response(request_id, self.default_timeout if timeout is None else timeout)
 
-    def wait_for_response(self, request_id, timeout):
+    @staticmethod
+    def response_key(request_id):
+        # JSON-RPC integer and string IDs identify different requests.
+        return type(request_id).__name__, request_id
+
+    def wait_for_response(self, request_id, timeout, allow_error=False):
         deadline = time.monotonic() + timeout
         seen = []
+        key = self.response_key(request_id)
+        buffered = self.pending_responses.pop(key, None)
+        if buffered is not None:
+            return self.check_response(buffered, allow_error)
         while time.monotonic() < deadline:
             remaining = max(0.05, deadline - time.monotonic())
             try:
@@ -167,14 +194,32 @@ class McpClient:
                 message = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if message.get("id") == request_id:
-                if "error" in message:
-                    raise RuntimeError(f"MCP error: {message['error'].get('message')}")
-                return message
+            if not isinstance(message, dict) or "id" not in message:
+                continue
+            message_key = self.response_key(message["id"])
+            if message_key == key:
+                return self.check_response(message, allow_error)
+            self.pending_responses[message_key] = message
         tail = "\n".join(seen[-5:])
         raise TimeoutError(
             f"Timed out waiting for JSON-RPC response id={request_id} after {timeout}s. Output tail: {tail}"
         )
+
+    @staticmethod
+    def check_response(message, allow_error=False):
+        if "error" in message and not allow_error:
+            raise RuntimeError(f"MCP error: {message['error'].get('message')}")
+        return message
+
+    def cancel(self, request_id):
+        self.send("notifications/cancelled", {"requestId": request_id, "reason": "MCP smoke cancellation regression"}, expect_response=False)
+
+    def assert_no_response(self, request_id, timeout=0.3):
+        try:
+            response = self.wait_for_response(request_id, timeout, allow_error=True)
+        except TimeoutError:
+            return
+        raise AssertionError(f"Canceled request/notification unexpectedly received a response: {response}")
 
     def initialize(self):
         self.send(
@@ -191,15 +236,13 @@ class McpClient:
         response = self.send("tools/list", {})
         return response.get("result", {}).get("tools", [])
 
-    def call_tool(self, name, arguments=None, timeout=None):
+    def call_tool(self, name, arguments=None, timeout=None, allow_error=False):
         response = self.send(
             "tools/call",
             {"name": name, "arguments": arguments or {}},
             timeout=timeout,
         )
         result = response.get("result", {})
-        if result.get("isError"):
-            raise RuntimeError(f"Tool {name} returned isError=true: {result}")
         text = ""
         for item in result.get("content", []):
             if item.get("type") == "text":
@@ -211,7 +254,10 @@ class McpClient:
                 data = json.loads(text)
             except json.JSONDecodeError:
                 data = None
-        return {"text": text, "data": data, "raw": result}
+        parsed = {"text": text, "data": data, "raw": result}
+        if result.get("isError") and not allow_error:
+            raise ToolCallError(name, parsed)
+        return parsed
 
 
 def prop(data, *path, default=None):
@@ -270,7 +316,7 @@ def assert_console_healthy(data, require_evidence=False):
     )
 
 
-def assert_compilation_healthy(data, require_evidence=False):
+def assert_compilation_healthy(data, require_evidence=False, require_health=False):
     errors = first_count(data, ("diagnostics", "errors"), ("errors",), ("errorCount",), ("summary", "errors"), ("summary", "errorCount"))
     if require_evidence and errors is None:
         raise AssertionError(f"Compilation diagnostics did not include an error count: keys={sorted(data.keys())}")
@@ -281,6 +327,17 @@ def assert_compilation_healthy(data, require_evidence=False):
         raise AssertionError(f"Compilation health is not healthy: {prop(data, 'compileHealth')}")
     if prop(data, "assemblyFreshness", "staleLikely") is True or prop(data, "assemblyFreshness", "assemblyCSharpStaleLikely") is True:
         raise AssertionError(f"Assembly freshness reports stale output: {prop(data, 'assemblyFreshness')}")
+    if require_evidence or require_health:
+        if prop(data, "compileHealth", "healthy") is not True:
+            raise AssertionError(f"Positive compilation health evidence is missing: {prop(data, 'compileHealth')}")
+        health = prop(data, "buildSystemHealth", default={}) or {}
+        if health.get("hasCriticalIssues") is not False or health.get("criticalIssueCount") != 0 or health.get("warning"):
+            raise AssertionError(f"Build-system health could not be positively verified: {health}")
+        freshness = prop(data, "assemblyFreshness", default={}) or {}
+        if freshness.get("available") is not True or freshness.get("staleLikely") is not False:
+            raise AssertionError(f"Fresh output assembly evidence is missing or stale: {freshness}")
+        if freshness.get("staleAssemblyCount") != 0 or freshness.get("missingOutputAssemblyCount") != 0:
+            raise AssertionError(f"Output assemblies are stale or missing: {freshness}")
 
 
 def response_payload(data):
@@ -308,11 +365,11 @@ class SmokeSuite:
         stamp = utc_now().strftime("%Y%m%d-%H%M%S")
         return self.project_path / "Library" / "UniBridge" / f"mcp-smoke-regression-{stamp}.json"
 
-    def make_client(self):
+    def make_client(self, timeout=None):
         return McpClient(
             self.relay_path,
             self.project_path,
-            self.args.default_timeout_seconds,
+            self.args.default_timeout_seconds if timeout is None else timeout,
             self.args.trace_transport_path,
         )
 
@@ -375,12 +432,20 @@ class SmokeSuite:
                 "durationMs": int((time.monotonic() - started) * 1000),
                 "error": str(exc),
             }
+            if getattr(exc, "smoke_cleanup_errors", None):
+                record["cleanupErrors"] = list(exc.smoke_cleanup_errors)
             self.steps.append(record)
             self.failures.append(f"{step_id}: {exc}")
             self.write_report("running")
             print(f"[{step_id}] FAILED: {exc}", flush=True)
+            for cleanup_error in record.get("cleanupErrors", []):
+                print(f"[{step_id}] cleanup also failed: {cleanup_error}", flush=True)
 
     def run(self):
+        if os.name == "nt":
+            import ctypes
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                raise PermissionError("Run the MCP smoke suite from an Administrator terminal; child relay processes inherit its privileges.")
         if not self.project_path.exists():
             raise FileNotFoundError(f"ProjectPath does not exist: {self.project_path}")
         if not self.relay_path.exists():
@@ -402,6 +467,7 @@ class SmokeSuite:
             "UniBridge_WorkflowRecipes",
             "UniBridge_BatchActions",
             "UniBridge_RuntimeStateProbe",
+            "UniBridge_WaitForEvent",
             "UniBridge_ExecutionStatus",
             "UniBridge_ManageAsset",
             "UniBridge_ManageGameObject",
@@ -412,11 +478,13 @@ class SmokeSuite:
 
         self.run_step("tools_list", "List MCP tools and verify the core UniBridge surface.", lambda: self.step_tools_list(required))
         self.run_step("discover_ping", "Ping UniBridge and read package identity.", self.step_discover_ping)
+        self.run_step("mcp_protocol_errors", "Reject malformed MCP requests without terminating the relay or responding to notifications.", self.step_mcp_protocol_errors)
         self.run_step("clear_console", "Clear Unity Console before smoke diagnostics.", self.step_clear_console)
         self.run_step("wait_ready", "Wait for Unity editor readiness before reading project state.", self.step_wait_ready)
         self.run_step("validate_package_script", "Validate a UniBridge package script through MCP.", self.step_validate_package_script)
         self.run_step("version_control_paths", "Verify VersionControl accepts one or many paths and reports invalid path sets clearly.", self.step_version_control_paths)
         self.run_step("script_apply_edits", "Verify structured and anchor ScriptApplyEdits previews are strictly no-write before actual apply.", self.step_script_anchor_edits)
+        self.run_step("wait_ready_after_script_edits", "Wait for actual Editor readiness after temporary script cleanup and domain reload.", self.step_wait_ready_after_reload)
         self.run_step("asset_read_text", "Read package.json via AssetIntelligence Action=ReadText alias.", self.step_asset_read_text)
         self.run_step("context_snapshot_brief", "Read compact ContextSnapshot with compact console summary.", self.step_context_snapshot)
         self.run_step("scene_hierarchy_brief", "Read a bounded SceneObjectView hierarchy including inactive objects.", self.step_scene_hierarchy)
@@ -426,10 +494,14 @@ class SmokeSuite:
             self.step_batch_scene_hierarchy_paths,
         )
         self.run_step("workflow_core_recipe", "Execute RunCoreSmokeTest recipe and cleanup its temporary object.", self.step_core_recipe)
-        self.run_step("runtime_probe_timeout_releases_slot", "Verify a timed-out RuntimeStateProbe releases its read-only scheduler slot.", self.step_runtime_probe_timeout_releases_slot)
+        self.run_step("runtime_probe_timeout_releases_slot", "After proven Editor admission, time out the client response wait, send cancellation, and verify the read slot is released.", self.step_runtime_probe_timeout_releases_slot)
+        self.run_step("runtime_probe_explicit_cancel", "Cancel an admitted RuntimeStateProbe through notifications/cancelled and verify exact operation completion.", lambda: self.step_runtime_probe_cancel("explicit"))
+        self.run_step("runtime_probe_disconnect", "Disconnect a short-lived client after Editor admission and verify its read slot is released.", lambda: self.step_runtime_probe_cancel("disconnect"))
+        self.run_step("wait_for_event_explicit_cancel", "Cancel an admitted native WaitForEvent observer and verify its exact canceled history plus a subsequent editor update wait.", self.step_wait_for_event_cancel)
+        self.run_step("queued_write_cancel", "Cancel an admitted queued write before it starts and prove that it created no GameObject.", self.step_queued_write_cancel)
 
         if not self.args.skip_refresh:
-            self.run_step("refresh_assets", "Run reload-safe RefreshAssets with WaitForCompletion.", self.step_refresh_assets)
+            self.run_step("refresh_assets", "Request RefreshAssets without an inline reload wait, then separately verify actual readiness and fresh compilation health.", self.step_refresh_assets)
         if not self.args.skip_compile:
             self.run_step("request_compile_no_wait", "Request script compilation as a reload boundary.", self.step_request_compile)
             self.run_step("wait_ready_after_reload", "Wait after refresh/compile reload boundary and read health evidence.", self.step_wait_ready_after_reload)
@@ -468,14 +540,104 @@ class SmokeSuite:
         print(f"{SUITE_NAME} {status}. Report: {self.report_path}", flush=True)
         return 0 if status == "passed" else 1
 
-    def tool(self, name, args=None, timeout=None):
-        with self.make_client() as client:
-            result = client.call_tool(name, args or {}, timeout=timeout)
+    @staticmethod
+    def is_reload_error(exc):
+        message = str(exc).lower()
+        return any(marker in message for marker in (
+            "unity connection lost", "unity connection closed", "unity not detected",
+            "no matching unibridge discovery file", "unity disconnected",
+        ))
+
+    def tool(self, name, args=None, timeout=None, allow_error=False, retry_after_reload=False):
+        # Retry is opt-in for reads/readiness only. A failed write may already have run.
+        pure_read = name in ("UniBridge_ReadResource", "UniBridge_GetSha", "UniBridge_ContextSnapshot", "UniBridge_CommandStatus")
+        action = (args or {}).get("Action")
+        allowed_read = pure_read or (
+            name == "UniBridge_ManageEditor" and action in ("WaitForReady", "WaitForReadyAfterReload", "GetCompilationDiagnostics")
+        ) or (name == "UniBridge_ReadConsole" and action == "DiagnosticSummary") or (
+            name == "UniBridge_SceneObjectView" and action in ("Hierarchy", "View", "Query", "Selection") and not (args or {}).get("Select")
+        )
+        if retry_after_reload and not allowed_read:
+            raise ValueError(f"Reload retry is restricted to explicit read-only calls; {name} {action} cannot be replayed.")
+        retry_after_reload = retry_after_reload or name in ("UniBridge_ReadResource", "UniBridge_GetSha")
+        deadline = time.monotonic() + self.args.reload_timeout_seconds
+        while True:
+            try:
+                with self.make_client(timeout) as client:
+                    result = client.call_tool(name, args or {}, timeout=timeout, allow_error=allow_error)
+                break
+            except RuntimeError as exc:
+                if not retry_after_reload or not self.is_reload_error(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.5)
+                if name != "UniBridge_ManageEditor" or (args or {}).get("Action") not in ("WaitForReady", "WaitForReadyAfterReload"):
+                    if name in ("UniBridge_ReadResource", "UniBridge_GetSha"):
+                        self.wait_for_script_cleanup_ready()
+                    else:
+                        self.step_wait_ready_after_reload()
         envelope = result.get("data") if isinstance(result, dict) else None
         if isinstance(envelope, dict) and any(key in envelope for key in ("success", "message", "data")):
             result["envelope"] = envelope
             result["data"] = response_payload(envelope)
         return result
+
+    def step_mcp_protocol_errors(self):
+        cases = [
+            ("malformed_json", "{", -32700, None),
+            ("array_envelope", "[]", -32600, None),
+            ("scalar_envelope", "42", -32600, None),
+            ("wrong_jsonrpc", {"jsonrpc": "1.0", "id": "bad-version", "method": "tools/list"}, -32600, "bad-version"),
+            ("numeric_method", {"jsonrpc": "2.0", "id": "bad-method", "method": 7}, -32600, "bad-method"),
+            ("missing_method", {"jsonrpc": "2.0", "id": "missing-method"}, -32600, "missing-method"),
+            ("invalid_id", {"jsonrpc": "2.0", "id": {}, "method": "tools/list"}, -32600, None),
+            ("boolean_id", {"jsonrpc": "2.0", "id": True, "method": "tools/list"}, -32600, None),
+            ("null_id", {"jsonrpc": "2.0", "id": None, "method": "tools/list"}, -32600, None),
+            ("array_params", {"jsonrpc": "2.0", "id": "bad-params", "method": "tools/call", "params": []}, -32602, "bad-params"),
+            ("missing_tool_name", {"jsonrpc": "2.0", "id": "bad-name", "method": "tools/call", "params": {}}, -32602, "bad-name"),
+            ("numeric_tool_name", {"jsonrpc": "2.0", "id": "numeric-name", "method": "tools/call", "params": {"name": 7}}, -32602, "numeric-name"),
+            ("array_arguments", {"jsonrpc": "2.0", "id": "bad-arguments", "method": "tools/call", "params": {"name": "UniBridge_Discover", "arguments": []}}, -32602, "bad-arguments"),
+            ("initialize_array_client_info", {"jsonrpc": "2.0", "id": "init-client-info", "method": "initialize", "params": {"clientInfo": []}}, -32602, "init-client-info"),
+            ("initialize_array_capabilities", {"jsonrpc": "2.0", "id": "init-capabilities", "method": "initialize", "params": {"capabilities": []}}, -32602, "init-capabilities"),
+            ("initialize_numeric_protocol", {"jsonrpc": "2.0", "id": "init-protocol", "method": "initialize", "params": {"protocolVersion": 7}}, -32602, "init-protocol"),
+            ("initialize_numeric_name", {"jsonrpc": "2.0", "id": "init-name", "method": "initialize", "params": {"clientInfo": {"name": 7}}}, -32602, "init-name"),
+            ("initialize_numeric_version", {"jsonrpc": "2.0", "id": "init-version", "method": "initialize", "params": {"clientInfo": {"version": 7}}}, -32602, "init-version"),
+        ]
+        passed = []
+        with self.make_client() as client:
+            for label, payload, error_code, response_id in cases:
+                client.write_raw(payload if isinstance(payload, str) else json.dumps(payload))
+                response = client.wait_for_response(response_id, 5, allow_error=True)
+                if prop(response, "error", "code") != error_code:
+                    raise AssertionError(f"{label} returned the wrong protocol error: {response}")
+                if not client.list_tools():
+                    raise AssertionError(f"Relay stopped serving tools after {label}.")
+                passed.append(label)
+            for request_id in (77, "77"):
+                client.write_raw(json.dumps({"jsonrpc": "2.0", "id": request_id, "method": "tools/list", "params": {}}))
+            for request_id in ("77", 77):
+                response = client.wait_for_response(request_id, 5)
+                if not prop(response, "result", "tools"):
+                    raise AssertionError(f"Integer/string request ID was not preserved: {response}")
+            initialize_id = client.start_request("initialize", {
+                "protocolVersion": "2025-03-26", "capabilities": {},
+                "clientInfo": {"name": "UniBridge MCP Smoke Regression", "version": "1.0"},
+            })
+            client.cancel(initialize_id)
+            if not prop(client.wait_for_response(initialize_id, 5), "result", "protocolVersion"):
+                raise AssertionError("Cancellation incorrectly suppressed the initialize response.")
+            notifications = [
+                {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": "unknown-request"}},
+                {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": []},
+                {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": {}}},
+                {"jsonrpc": "2.0", "method": "tools/call", "params": []},
+                {"jsonrpc": "2.0", "method": "notifications/unknown", "params": {}},
+            ]
+            for payload in notifications:
+                client.write_raw(json.dumps(payload))
+            if not client.list_tools():
+                raise AssertionError("Relay stopped serving tools after ignored notifications.")
+            client.assert_no_response(None)
+        return {"rejectedRequests": passed, "ignoredNotifications": len(notifications), "integerAndStringIdsDistinct": True, "initializeNotCanceled": True, "sameRelaySurvived": True}
 
     def step_tools_list(self, required):
         with self.make_client() as client:
@@ -609,13 +771,14 @@ class SmokeSuite:
         blocked_result = self.tool(
             "UniBridge_VersionControl",
             {"Action": "EnsureEditable", "AssetPaths": [valid_paths[0], missing_path], "Checkout": False, "ThrowOnBlocked": True},
+            allow_error=True,
         )
         blocked_envelope = blocked_result.get("envelope") or {}
         blocked_data = blocked_result.get("data") or {}
         if blocked_envelope.get("success") is not False or prop(blocked_data, "blockedCount") != 1:
             raise AssertionError(f"Partially invalid EnsureEditable did not return one blocked asset: {blocked_envelope}")
 
-        empty_result = self.tool("UniBridge_VersionControl", {"Action": "EnsureEditable", "AssetPaths": []})
+        empty_result = self.tool("UniBridge_VersionControl", {"Action": "EnsureEditable", "AssetPaths": []}, allow_error=True)
         empty_envelope = empty_result.get("envelope") or {}
         if empty_envelope.get("success") is not False or "at least one" not in json.dumps(empty_envelope, ensure_ascii=False).lower():
             raise AssertionError(f"Empty AssetPaths did not return a clear validation error: {empty_envelope}")
@@ -676,7 +839,7 @@ class SmokeSuite:
                 raise AssertionError(f"{label} did not report '{expected_text}': {envelope}")
 
         def read_script():
-            result = self.tool("UniBridge_ReadResource", {"Uri": script_path})
+            result = self.tool("UniBridge_ReadResource", {"Uri": script_path}, retry_after_reload=True)
             data = require_success(result, "ReadResource")
             text_value = prop(data, "text", default=prop(data, "Text"))
             sha_value = prop(data, "metadata", "sha256", default=prop(data, "Metadata", "Sha256"))
@@ -684,8 +847,8 @@ class SmokeSuite:
                 raise AssertionError(f"ReadResource returned incomplete script evidence: {data}")
             return text_value, sha_value
 
-        def call_edit(edit, preview, sha):
-            return self.tool(
+        def call_edit(edit, preview, sha, allow_error=False):
+            result = self.tool(
                 "UniBridge_ScriptApplyEdits",
                 {
                     "Name": script_name,
@@ -695,7 +858,11 @@ class SmokeSuite:
                     "PreconditionSha256": sha,
                     "Options": {"validate": "standard", "refresh": "none"},
                 },
+                allow_error=allow_error,
             )
+            if not preview and not allow_error:
+                self.wait_after_successful_script_edit(result)
+            return result
 
         def preview_then_apply(edit, expected_after):
             before_text, before_sha = read_script()
@@ -724,6 +891,7 @@ class SmokeSuite:
                 "CreateScript",
             )
             created = True
+            self.step_wait_ready_after_reload()
 
             initial_text, initial_sha = read_script()
 
@@ -850,6 +1018,7 @@ class SmokeSuite:
                 },
             )
             require_success(structured_apply, "replace_method apply")
+            self.wait_after_successful_script_edit(structured_apply)
             after_structured_apply_text, after_structured_apply_sha = read_script()
             if "structured-preview-update" not in after_structured_apply_text or after_structured_apply_sha == initial_sha:
                 raise AssertionError("replace_method actual apply did not change the script and SHA.")
@@ -864,6 +1033,7 @@ class SmokeSuite:
                     "Edits": [structured_edits[0]],
                     "Options": {"validate": "standard", "refresh": "none"},
                 },
+                allow_error=True,
             )
             require_failure(structured_stale, "stale_file", "structured stale SHA guard")
             if read_script() != (after_structured_apply_text, after_structured_apply_sha):
@@ -999,6 +1169,7 @@ class SmokeSuite:
                 },
             )
             mixed_apply_data = require_success(mixed_apply, "mixed Preview/apply parity")
+            self.wait_after_successful_script_edit(mixed_apply)
             mixed_applied_text, mixed_applied_sha = read_script()
             if mixed_applied_sha != mixed_predicted_sha:
                 raise AssertionError(
@@ -1054,6 +1225,7 @@ class SmokeSuite:
                 {"op": "anchor_insert", "anchor": "LineFullyShown", "position": "after", "text": " // stale"},
                 False,
                 "0" * 64,
+                allow_error=True,
             )
             require_failure(stale_result, "stale_file", "stale SHA guard")
             if read_script() != (final_text, final_sha):
@@ -1063,6 +1235,7 @@ class SmokeSuite:
                 {"op": "anchor_replace", "anchor": "ANCHOR_THAT_DOES_NOT_EXIST", "text": "never"},
                 True,
                 final_sha,
+                allow_error=True,
             )
             require_failure(missing_result, "anchor not found", "missing anchor validation")
 
@@ -1070,6 +1243,7 @@ class SmokeSuite:
                 {"op": "anchor_delete", "anchor": "ANCHOR_DUPLICATE"},
                 True,
                 final_sha,
+                allow_error=True,
             )
             require_failure(ambiguous_result, "ambiguous", "ambiguous anchor validation")
 
@@ -1102,8 +1276,51 @@ class SmokeSuite:
             }
         finally:
             if created:
-                delete_result = self.tool("UniBridge_DeleteScript", {"Uri": script_path})
-                require_success(delete_result, "DeleteScript cleanup")
+                self.cleanup_owned_script(script_path)
+
+    def wait_after_successful_script_edit(self, result, refresh_mode="none"):
+        envelope = result.get("envelope") or {}
+        if envelope.get("success") is not True:
+            raise AssertionError(f"ScriptApplyEdits did not confirm a successful write; refusing to treat readiness as its outcome: {result}")
+        data = result.get("data") or {}
+        scheduled_refresh = data.get("scheduledRefresh")
+        if scheduled_refresh is True or refresh_mode.lower() in ("immediate", "sync"):
+            # Immediate import reports scheduledRefresh=false because the import
+            # already ran; its requested compilation still requires fresh outputs.
+            self.step_wait_ready_after_reload()
+        elif scheduled_refresh is False and refresh_mode.lower() in ("none", "manual", "disabled"):
+            # A no-import write intentionally leaves compiled assemblies behind
+            # the source. Its contract is verified through exact text/SHA readback.
+            self.wait_for_script_cleanup_ready()
+        else:
+            raise AssertionError(f"Successful script write omitted explicit refresh evidence: {result}")
+
+    def wait_for_script_cleanup_ready(self):
+        ready = self.tool("UniBridge_ManageEditor", {
+            "Action": "WaitForReady", "TimeoutMs": 120000, "PollIntervalMs": 500, "RequireNotPlaying": True,
+        }, timeout=self.args.reload_timeout_seconds, retry_after_reload=True)["data"] or {}
+        if prop(ready, "readiness", "isReady", default=prop(ready, "ready")) is not True:
+            raise AssertionError(f"Editor bridge was not ready for script readback/cleanup: {ready}")
+        return ready
+
+    def cleanup_owned_script(self, script_path):
+        original_error = sys.exc_info()[1]
+        try:
+            # Temporary scripts can trigger an asynchronous domain reload. Reach
+            # a verified ready Editor before the first and only cleanup write.
+            self.wait_for_script_cleanup_ready()
+            delete_result = self.tool("UniBridge_DeleteScript", {"Uri": script_path})
+            envelope = delete_result.get("envelope") or {}
+            if envelope.get("success") is not True:
+                raise AssertionError(f"DeleteScript cleanup did not report success for {script_path}: {delete_result}")
+        except Exception as cleanup_error:
+            if original_error is None:
+                raise
+            errors = list(getattr(original_error, "smoke_cleanup_errors", []))
+            errors.append(f"{script_path}: {cleanup_error}")
+            original_error.smoke_cleanup_errors = errors
+            # Preserve the original failed assertion; its report also retains
+            # the cleanup failure and owned path for explicit later recovery.
 
     def step_asset_read_text(self):
         data = self.tool(
@@ -1125,6 +1342,7 @@ class SmokeSuite:
                 "MaxConsoleIssues": 10,
                 "MaxAssets": 20,
             },
+            retry_after_reload=True,
         )["data"] or {}
         return {"message": prop(data, "message"), "depth": prop(data, "snapshot", "depth"), "hints": prop(data, "hints")}
 
@@ -1141,6 +1359,7 @@ class SmokeSuite:
                 "MaxRoots": 40,
                 "MaxObjects": 120,
             },
+            retry_after_reload=True,
         )["data"] or {}
         return {"message": prop(data, "message"), "totalReturned": prop(data, "totalReturned"), "truncatedByCount": prop(data, "truncatedByCount")}
 
@@ -1319,102 +1538,289 @@ class SmokeSuite:
             "assertionPassed": prop(data, "passed"),
         }
 
-    def step_runtime_probe_timeout_releases_slot(self):
-        error_text = None
-        started = time.monotonic()
-        try:
-            self.tool(
-                "UniBridge_RuntimeStateProbe",
-                {
-                    "Action": "Sample",
-                    "Component": "Transform",
-                    "SearchMethod": "ByComponent",
-                    "MaxTargets": 50,
-                    "MaxComponents": 100,
-                    "MaxMembers": 500,
-                    "SampleFrames": 600,
-                    "TimeoutMs": 120000,
-                    "SchedulerTimeoutMs": 120000,
-                    "RequirePlayMode": False,
-                    "SaveToFile": False,
-                    "ReturnSamples": True,
-                },
-                timeout=0.2,
-            )
-        except (RuntimeError, TimeoutError) as exc:
-            error_text = str(exc)
-
-        if not error_text:
-            raise AssertionError("RuntimeStateProbe client-cancel regression did not cancel the MCP request before completion.")
-
-        duration_ms = int((time.monotonic() - started) * 1000)
-        if duration_ms > 12000:
-            raise AssertionError(f"RuntimeStateProbe client-cancel took too long to return: {duration_ms}ms")
-
-        # Give the editor-side cancellation/finally path a few updates to settle before checking the scheduler.
-        time.sleep(1.5)
-        status = response_payload(self.tool("UniBridge_ExecutionStatus", {"Action": "Snapshot", "RecentLimit": 12})["data"])
-        scheduler = prop(status, "scheduler", default={}) or {}
-        active_readers = prop(scheduler, "activeReaders", default=-1)
-        active_operations = prop(scheduler, "activeOperations", default=[]) or []
-        recent_operations = prop(scheduler, "recentOperations", default=[]) or []
-        active_runtime_probes = [
-            operation for operation in active_operations
-            if isinstance(operation, dict) and operation.get("tool") == "UniBridge_RuntimeStateProbe"
-        ]
-        recent_runtime_probes = [
-            operation for operation in recent_operations
-            if isinstance(operation, dict) and operation.get("tool") == "UniBridge_RuntimeStateProbe"
-        ]
-
-        if active_readers != 0:
-            # One manual reap should recover genuinely stale legacy state, but a fresh cancellation should not need it.
-            reaped = response_payload(self.tool("UniBridge_ExecutionStatus", {"Action": "ReapStale", "RecentLimit": 12, "GraceMs": 0})["data"])
-            scheduler = prop(prop(reaped, "result", default={}) or {}, "scheduler", default={}) or {}
-            active_readers = prop(scheduler, "activeReaders", default=-1)
-            active_operations = prop(scheduler, "activeOperations", default=[]) or []
-            active_runtime_probes = [
-                operation for operation in active_operations
-                if isinstance(operation, dict) and operation.get("tool") == "UniBridge_RuntimeStateProbe"
-            ]
-
-        if active_readers != 0:
-            raise AssertionError(f"Scheduler still has activeReaders={active_readers} after client-canceled/timed-out RuntimeStateProbe.")
-        if active_runtime_probes:
-            raise AssertionError(f"Canceled RuntimeStateProbe is still active: {active_runtime_probes}")
-        if not any((operation.get("outcome") in ("timedOut", "canceled")) for operation in recent_runtime_probes):
-            raise AssertionError(f"No recent timedOut/canceled RuntimeStateProbe operation was recorded after client cancel: {recent_runtime_probes}")
-
+    @staticmethod
+    def probe_cancellation_arguments():
         return {
-            "clientCancelError": error_text[:300],
-            "durationMs": duration_ms,
-            "activeReaders": active_readers,
-            "recentRuntimeProbeOutcomes": [operation.get("outcome") for operation in recent_runtime_probes[:3]],
+            "Action": "Sample", "Component": "Transform", "SearchMethod": "ByComponent",
+            "MaxTargets": 50, "MaxComponents": 100, "MaxMembers": 500,
+            "SampleFrames": 600, "TimeoutMs": 120000, "SchedulerTimeoutMs": 120000,
+            "RequirePlayMode": False, "SaveToFile": False, "ReturnSamples": False,
         }
 
+    @staticmethod
+    def scheduler_snapshot(observer):
+        result = observer.call_tool("UniBridge_ExecutionStatus", {
+            "Action": "Snapshot", "RecentLimit": 100, "IncludeWorkSession": False,
+        })
+        return prop(response_payload(result["data"]), "scheduler", default={}) or {}
+
+    def await_operation_admission(self, observer, tool_name, previous_ids, queued=False):
+        deadline = time.monotonic() + 10
+        last = {}
+        while time.monotonic() < deadline:
+            last = self.scheduler_snapshot(observer)
+            matches = [operation for operation in last.get("activeOperations", [])
+                       if operation.get("tool") == tool_name and operation.get("operationId") not in previous_ids]
+            if len(matches) > 1:
+                raise AssertionError(f"Cannot correlate {tool_name}: several new operations are active: {matches}")
+            if matches:
+                operation = matches[0]
+                if queued:
+                    if operation.get("startedUtc") is not None or operation.get("outcome") != "queued":
+                        raise AssertionError(f"Expected an unstarted queued {tool_name}: {operation}")
+                    return operation
+                if operation.get("startedUtc") is not None and operation.get("outcome") == "running":
+                    return operation
+            time.sleep(0.1)
+        raise AssertionError(f"Editor admission of {tool_name} was not proven within 10s: {last}")
+
+    def await_canceled_operation(self, observer, operation_id, require_empty=True):
+        deadline = time.monotonic() + 10
+        last = {}
+        while time.monotonic() < deadline:
+            last = self.scheduler_snapshot(observer)
+            active = [operation for operation in last.get("activeOperations", [])
+                      if operation.get("operationId") == operation_id]
+            finished = next((operation for operation in last.get("recentOperations", [])
+                             if operation.get("operationId") == operation_id), None)
+            if not active and finished:
+                if finished.get("outcome") != "canceled":
+                    raise AssertionError(f"The exact admitted operation was not canceled: {finished}")
+                if finished.get("forcedRelease") is not None:
+                    raise AssertionError(f"Cancellation required forced scheduler recovery: {finished}")
+                if require_empty and (last.get("activeReaders") != 0 or last.get("activeExclusive") is not None
+                                      or prop(last, "pending", "readers") != 0 or prop(last, "pending", "exclusive") != 0):
+                    raise AssertionError(f"Cancellation left an occupied scheduler slot: {last}")
+                return finished, last
+            time.sleep(0.1)
+        raise AssertionError(f"Admitted operation {operation_id} did not finish cancellation within 10s: {last}")
+
+    def step_runtime_probe_timeout_releases_slot(self):
+        # A local response timeout is not server cancellation. Send the cancellation
+        # notification explicitly, while keeping the connection alive to prove it.
+        return self.step_runtime_probe_cancel("timeout")
+
+    def step_runtime_probe_cancel(self, mode):
+        started = time.monotonic()
+        with self.make_client() as observer, self.make_client() as client:
+            baseline = self.scheduler_snapshot(observer)
+            previous_ids = {operation.get("operationId") for operation in baseline.get("activeOperations", [])}
+            if baseline.get("activeReaders") != 0 or baseline.get("activeExclusive") is not None:
+                raise AssertionError(f"Cancellation regression requires an idle scheduler: {baseline}")
+            request_id = client.start_request("tools/call", {
+                "name": "UniBridge_RuntimeStateProbe", "arguments": self.probe_cancellation_arguments(),
+            })
+            admitted = self.await_operation_admission(observer, "UniBridge_RuntimeStateProbe", previous_ids)
+            if mode == "timeout":
+                try:
+                    response = client.wait_for_response(request_id, 0.2)
+                except TimeoutError:
+                    pass
+                else:
+                    raise AssertionError(f"Admitted RuntimeStateProbe completed before the client timeout: {response}")
+            if mode == "disconnect":
+                client.close()
+            else:
+                client.cancel(request_id)
+            finished, scheduler = self.await_canceled_operation(observer, admitted["operationId"])
+            if finished.get("changedProject") is not False:
+                raise AssertionError(f"Canceled read-only probe reported a project change: {finished}")
+            if mode != "disconnect":
+                if not client.list_tools():
+                    raise AssertionError("Relay connection stopped serving after request cancellation.")
+                client.assert_no_response(request_id)
+            follow_up = observer.call_tool("UniBridge_RuntimeStateProbe", {
+                "Action": "Sample", "Component": "Transform", "SearchMethod": "ByComponent",
+                "SampleFrames": 1, "TimeoutMs": 5000, "RequirePlayMode": False,
+                "SaveToFile": False, "ReturnSamples": False,
+            })
+            if prop(follow_up, "data", "success") is not True:
+                raise AssertionError(f"A short read did not complete after cancellation: {follow_up}")
+            return {
+                "mode": mode, "requestId": request_id, "operationId": admitted["operationId"],
+                "editorAdmissionProven": True, "outcome": finished.get("outcome"),
+                "activeReaders": scheduler.get("activeReaders"), "forcedRecovery": False,
+                "sameConnectionSurvived": mode != "disconnect", "followUpReadCompleted": True,
+                "durationMs": int((time.monotonic() - started) * 1000),
+            }
+
+    def step_wait_for_event_cancel(self):
+        with self.make_client() as observer, self.make_client() as client:
+            baseline = self.scheduler_snapshot(observer)
+            previous_ids = {operation.get("operationId") for operation in baseline.get("activeOperations", [])}
+            request_id = client.start_request("tools/call", {
+                "name": "UniBridge_WaitForEvent", "arguments": {
+                    "WaitFor": "Kind", "Kind": "__UB_Never_" + datetime.now().strftime("%H%M%S%f"),
+                    "StartFromLatest": True, "TimeoutMs": 120000,
+                },
+            })
+            admitted = self.await_operation_admission(observer, "UniBridge_WaitForEvent", previous_ids)
+            client.cancel(request_id)
+            finished, _ = self.await_canceled_operation(observer, admitted["operationId"])
+            if finished.get("changedProject") is not False:
+                raise AssertionError(f"Canceled observer reported a project change: {finished}")
+            if not client.list_tools():
+                raise AssertionError("Relay connection stopped serving after waiter cancellation.")
+            client.assert_no_response(request_id)
+            follow_up = client.call_tool("UniBridge_WaitForEvent", {"WaitFor": "NextEditorUpdate", "TimeoutMs": 5000})
+            if prop(follow_up, "data", "success") is not True:
+                raise AssertionError(f"WaitForEvent did not recover after cancellation: {follow_up}")
+            return {
+                "requestId": request_id, "operationId": admitted["operationId"],
+                "editorAdmissionProven": True, "outcome": finished.get("outcome"),
+                "followUpWaitCompleted": True, "sameConnectionSurvived": True,
+            }
+
+    def step_queued_write_cancel(self):
+        object_name = "__UB_CanceledQueuedWrite_" + datetime.now().strftime("%H%M%S%f")
+        with self.make_client() as observer, self.make_client() as reader, self.make_client() as writer:
+            baseline = self.scheduler_snapshot(observer)
+            if baseline.get("activeReaders") != 0 or baseline.get("activeExclusive") is not None:
+                raise AssertionError(f"Queued write regression requires an idle scheduler: {baseline}")
+            previous_ids = {operation.get("operationId") for operation in baseline.get("activeOperations", [])}
+            probe_id = reader.start_request("tools/call", {
+                "name": "UniBridge_RuntimeStateProbe", "arguments": self.probe_cancellation_arguments(),
+            })
+            admitted_probe = self.await_operation_admission(observer, "UniBridge_RuntimeStateProbe", previous_ids)
+            try:
+                request_id = writer.start_request("tools/call", {
+                    "name": "UniBridge_ManageGameObject",
+                    "arguments": {"Action": "Create", "Name": object_name, "SchedulerTimeoutMs": 120000},
+                })
+                queued_write = self.await_operation_admission(observer, "UniBridge_ManageGameObject", previous_ids, queued=True)
+                writer.cancel(request_id)
+                finished, _ = self.await_canceled_operation(observer, queued_write["operationId"], require_empty=False)
+                if finished.get("startedUtc") is not None or finished.get("changedProject") is not False:
+                    raise AssertionError(f"Canceled queued write falsely reported execution/project changes: {finished}")
+                writer.assert_no_response(request_id)
+            finally:
+                reader.cancel(probe_id)
+                self.await_canceled_operation(observer, admitted_probe["operationId"])
+            query = response_payload(observer.call_tool("UniBridge_SceneObjectView", {
+                "Action": "Query", "ExactName": object_name, "Detail": "Brief",
+                "IncludeInactive": True, "MaxObjects": 10,
+            })["data"])
+            if query.get("totalCount") != 0:
+                raise AssertionError(f"Canceled queued write created a GameObject: {query}")
+            return {
+                "operationId": queued_write["operationId"], "requestId": request_id,
+                "queuedAdmissionProven": True, "outcome": finished.get("outcome"),
+                "startedUtc": finished.get("startedUtc"), "changedProject": finished.get("changedProject"),
+                "createdObjects": query.get("totalCount"), "readerReleased": True,
+            }
+
     def step_refresh_assets(self):
-        data = self.tool(
-            "UniBridge_ManageEditor",
-            {"Action": "RefreshAssets", "WaitForCompletion": True, "Force": True, "TimeoutMs": 120000, "PollIntervalMs": 500, "RequireNotPlaying": True},
-            timeout=self.args.reload_timeout_seconds,
-        )["data"] or {}
-        return {"message": prop(data, "message"), "reloadBoundary": prop(data, "reloadBoundary"), "reconnectRequired": prop(data, "reconnectRequired"), "ready": prop(data, "ready")}
+        data = self.lifecycle_command_once({"Action": "RefreshAssets", "WaitForCompletion": False, "Force": True, "RequireNotPlaying": True})
+        if data.get("forced") is not True:
+            raise AssertionError(f"RefreshAssets did not return an admitted forced-refresh response: {data}")
+        verified = self.step_wait_ready_after_reload()
+        return {"refreshRequestAdmitted": True, "inlineWaitRequested": False, "originalCompletionReported": False,
+                "verifiedFinalState": True, "ready": verified["ready"], "compileHealth": verified["compileHealth"], "freshConsoleTotals": verified["freshConsoleTotals"],
+                "originalOutcomeRecovered": prop(data, "originalOutcomeRecovered", default=False), "automaticReplay": False}
 
     def step_request_compile(self):
-        data = self.tool("UniBridge_ManageEditor", {"Action": "RequestScriptCompilationNoWait", "Force": True})["data"] or {}
-        return {"message": prop(data, "message"), "reloadBoundary": prop(data, "reloadBoundary"), "reconnectRequired": prop(data, "reconnectRequired")}
+        data = self.lifecycle_command_once({"Action": "RequestScriptCompilationNoWait", "Force": True})
+        if data.get("status") != "queued" or not data.get("requestId"):
+            raise AssertionError(f"Script compilation did not return a queued request identity: {data}")
+        return {"requestId": data["requestId"], "status": data["status"], "queued": True,
+                "originalCompletionReported": False, "reconnectRequired": prop(data, "reconnectRequired"), "automaticReplay": False}
+
+    def lifecycle_command_once(self, arguments):
+        try:
+            # These may mutate/import or schedule compilation. Never opt into retry.
+            return self.tool("UniBridge_ManageEditor", arguments, timeout=self.args.reload_timeout_seconds)["data"] or {}
+        except ToolCallError as exc:
+            unknown = exc.result.get("data") or {}
+            if not isinstance(unknown, dict) or unknown.get("code") != "outcome_unknown":
+                raise
+            verified_state = self.step_wait_ready_after_reload()
+            suggested = unknown.get("nextSuggestedCall") or {}
+            recovery = None
+            if suggested.get("tool") == "UniBridge_CommandStatus" and isinstance(suggested.get("arguments"), dict):
+                recovery = response_payload(self.tool("UniBridge_CommandStatus", suggested["arguments"], retry_after_reload=True)["data"])
+                response = recovery.get("response") or {}
+                original_result = response.get("result") or {}
+                if recovery.get("state") == "completed" and response.get("status") == "success" and original_result.get("success") is True:
+                    recovered = response_payload(original_result)
+                    recovered["originalOutcomeRecovered"] = True
+                    recovered["automaticReplay"] = False
+                    return recovered
+            # Ready/clean now does not prove that an interrupted original write
+            # completed successfully. Preserve the uncertainty as a failed step.
+            raise AssertionError(f"Original {arguments.get('Action')} outcome remains unknown; command was not replayed. "
+                                 f"operationId={unknown.get('operationId')}; freshEditorReady={verified_state.get('ready')}; "
+                                 f"freshCompileHealth={verified_state.get('compileHealth')}; recovery={recovery}") from exc
 
     def step_wait_ready_after_reload(self):
-        data = self.tool(
-            "UniBridge_ManageEditor",
-            {"Action": "WaitForReadyAfterReload", "TimeoutMs": 120000, "PollIntervalMs": 500, "RequireNotPlaying": True},
-            timeout=self.args.reload_timeout_seconds,
-        )["data"] or {}
-        assert_compilation_healthy(data)
-        ready = prop(data, "readiness", "isReady", default=prop(data, "ready"))
-        if ready is not True:
-            raise AssertionError(f"Unity was not ready after reload: {prop(data, 'readiness', default=data)}")
-        return {"ready": ready, "readiness": prop(data, "readiness"), "compileHealth": prop(data, "compileHealth"), "buildSystemHealth": prop(data, "buildSystemHealth")}
+        started = time.monotonic()
+        deadline = started + self.args.reload_timeout_seconds
+        polls = 0
+        pending_assembly_polls = 0
+        last_evidence = None
+        last_error = None
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError(f"Editor readiness and fresh healthy compilation were not jointly verified within "
+                                     f"{self.args.reload_timeout_seconds}s. Last evidence={last_evidence}; last error={last_error}")
+            polls += 1
+            try:
+                # Poll only reads. A queued compilation can briefly report ready
+                # before importing its changed source or starting assembly reload.
+                data = self.tool("UniBridge_ManageEditor", {
+                    "Action": "WaitForReadyAfterReload", "TimeoutMs": max(1, min(120000, int(remaining * 1000))),
+                    "PollIntervalMs": 500, "RequireNotPlaying": True,
+                }, timeout=remaining)["data"] or {}
+                diagnostics = self.tool("UniBridge_ManageEditor", {"Action": "GetCompilationDiagnostics"},
+                                        timeout=max(0.1, deadline - time.monotonic()))["data"] or {}
+                console = self.tool("UniBridge_ReadConsole", {
+                    "Action": "DiagnosticSummary", "MaxIssues": 10, "IncludeStacktrace": True,
+                }, timeout=max(0.1, deadline - time.monotonic()))["data"] or {}
+            except (RuntimeError, TimeoutError) as exc:
+                if not isinstance(exc, TimeoutError) and not self.is_reload_error(exc):
+                    raise
+                last_error = str(exc)
+                time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+                continue
+
+            ready = prop(data, "readiness", "isReady", default=prop(data, "ready"))
+            freshness = prop(diagnostics, "assemblyFreshness", default={}) or {}
+            last_evidence = {
+                "ready": ready, "readiness": prop(data, "readiness"),
+                "compileHealth": prop(diagnostics, "compileHealth"), "buildSystemHealth": prop(diagnostics, "buildSystemHealth"),
+                "assemblyFreshness": {key: freshness.get(key) for key in (
+                    "available", "staleLikely", "staleAssemblyCount", "missingOutputAssemblyCount")},
+                "consoleTotals": prop(console, "totals"),
+            }
+            # Actual compiler/Console failures are not queued-work gaps. Fail
+            # immediately; neither waiting nor clearing Console may hide them.
+            assert_console_healthy(console, require_evidence=True)
+            errors = first_count(diagnostics, ("diagnostics", "errors"), ("errors",), ("errorCount",), ("summary", "errors"), ("summary", "errorCount"))
+            if errors is None:
+                raise AssertionError(f"Compilation error evidence is missing: {last_evidence}")
+            assert_zero_or_missing(errors, "Compilation has errors.")
+            health = prop(diagnostics, "buildSystemHealth", default={}) or {}
+            if health.get("hasCriticalIssues") is not False or health.get("criticalIssueCount") != 0 or health.get("warning"):
+                raise AssertionError(f"Build-system health failed while waiting for compilation: {last_evidence}")
+            if freshness.get("available") is not True:
+                raise AssertionError(f"Assembly freshness evidence is unavailable: {last_evidence}")
+            pending_assemblies = freshness.get("staleLikely") is True or any(
+                (count_value(freshness.get(key)) or 0) > 0
+                for key in ("staleAssemblyCount", "missingOutputAssemblyCount")
+            )
+            if ready is not True or pending_assemblies:
+                if pending_assemblies:
+                    pending_assembly_polls += 1
+                time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+                continue
+            assert_compilation_healthy(diagnostics, require_evidence=True)
+            return {
+                "ready": ready, "readiness": prop(data, "readiness"), "compileHealth": prop(diagnostics, "compileHealth"),
+                "buildSystemHealth": prop(diagnostics, "buildSystemHealth"), "assemblyFreshnessVerified": True,
+                "freshConsoleTotals": prop(console, "totals"), "freshDiagnosticsChecked": True,
+                "readinessPolls": polls, "pendingAssemblyPolls": pending_assembly_polls,
+                "durationMs": int((time.monotonic() - started) * 1000),
+            }
 
     def step_compilation_diagnostics(self):
         data = self.tool("UniBridge_ManageEditor", {"Action": "GetCompilationDiagnostics"})["data"] or {}
@@ -1845,6 +2251,7 @@ class SmokeSuite:
                     "ComponentsToAdd": [full_type_name],
                     "ComponentProperties": component_properties,
                 },
+                allow_error=True,
             )
             envelope = require_failure(result, expected_text, name)
             object_names.remove(name)
@@ -1999,11 +2406,7 @@ class SmokeSuite:
                 except Exception:
                     pass
             if script_created:
-                try:
-                    self.tool("UniBridge_DeleteScript", {"Uri": script_path})
-                    wait_after_script_change()
-                except Exception:
-                    pass
+                self.cleanup_owned_script(script_path)
 
     def step_ui_recipe(self):
         data = self.tool(

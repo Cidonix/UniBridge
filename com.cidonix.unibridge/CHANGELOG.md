@@ -2,6 +2,16 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.70
+
+### Fixed
+
+- MCP requests have individual cancellation tokens. `notifications/cancelled`, response timeout and client disconnect signal the originating Editor request; unknown/completed IDs are ignored and initialization cannot be cancelled.
+- Queued commands, read-only tools and observers stop cooperatively. Once an exclusive mutation starts, cancellation is deferred and its actual result remains available through command recovery without replay.
+- Editor cancellation is negotiated in the handshake; older and legacy bridges do not receive unsupported control commands.
+- Invalid MCP envelopes and parameters return protocol errors without terminating the relay. Notifications do not produce responses.
+- Smoke regression accepts only explicitly expected tool errors, waits through Editor reloads, and proves request admission before checking explicit cancellation, client timeout, disconnect and queued mutation cancellation.
+
 ## 0.2.69
 
 ### Fixed

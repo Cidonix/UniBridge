@@ -32,6 +32,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         static readonly SemaphoreSlim ResourceLock = new(1, 1);
         static readonly SemaphoreSlim ReaderLock = new(1, 1);
         static readonly AsyncLocal<CancellationToken> AmbientCancellation = new();
+        static readonly AsyncLocal<string> AmbientRequestId = new();
         static readonly AsyncLocal<int> ReadDepth = new();
         static readonly AsyncLocal<int> WriteDepth = new();
         static readonly object StatusLock = new();
@@ -148,6 +149,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             var policy = ResolvePolicy(toolName, parameters, handler);
             var timeoutMs = ReadTimeout(parameters);
             var operation = BeginOperation(toolName, policy, timeoutMs, parameters);
+            operation.CallerCancellation = cancellationToken;
             using var operationCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             operation.CancellationSource = operationCancellation;
             Exception capturedError = null;
@@ -202,7 +204,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 IncrementPending(policy);
                 try
                 {
-                    lease = await AcquireAsync(toolName, policy, timeoutMs);
+                    lease = await AcquireAsync(toolName, policy, timeoutMs, operationCancellation.Token);
                 }
                 finally
                 {
@@ -236,6 +238,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         }
 
         public static CancellationToken CurrentCancellationToken => AmbientCancellation.Value;
+        internal static string CurrentRequestId { get => AmbientRequestId.Value; set => AmbientRequestId.Value = value; }
 
         public static void ThrowIfCancellationRequested()
         {
@@ -261,11 +264,13 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             CancellationTokenSource operationCancellation)
         {
             var previousToken = AmbientCancellation.Value;
-            AmbientCancellation.Value = operationCancellation.Token;
+            var canCancelBody = policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer;
+            // Caller cancellation is honored through admission/queueing. Once an
+            // exclusive handler begins, retain its real result and recovery evidence.
+            AmbientCancellation.Value = canCancelBody ? operationCancellation.Token : CancellationToken.None;
             try
             {
-                operationCancellation.Token.ThrowIfCancellationRequested();
-                if (policy == ToolExecutionPolicy.ReadOnly)
+                if (canCancelBody)
                     return await AwaitReadOnlyBodyAsync(operation, timeoutMs, execute, operationCancellation);
 
                 return await execute();
@@ -290,32 +295,39 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 return completedResult;
             }
 
-            var cancellationTask = WaitForCancellationAsync(operationCancellation.Token);
-            var timeoutTask = Task.Delay(timeoutMs);
-            var completed = await Task.WhenAny(bodyTask, cancellationTask, timeoutTask);
-            if (ReferenceEquals(completed, bodyTask))
+            // Waiter lifetime is separate from operation cancellation. Completing a
+            // read successfully must dispose its cancellation registration and timer
+            // without marking the operation or caller as canceled.
+            using var waiterLifetime = CancellationTokenSource.CreateLinkedTokenSource(operationCancellation.Token);
+            var cancellationWaiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var cancellationRegistration = waiterLifetime.Token.Register(() => cancellationWaiter.TrySetCanceled());
+            var timeoutTask = Task.Delay(timeoutMs, waiterLifetime.Token);
+            try
             {
-                var completedResult = await bodyTask;
-                operationCancellation.Token.ThrowIfCancellationRequested();
-                return completedResult;
-            }
+                var completed = await Task.WhenAny(bodyTask, cancellationWaiter.Task, timeoutTask);
+                if (ReferenceEquals(completed, bodyTask))
+                {
+                    var completedResult = await bodyTask;
+                    operationCancellation.Token.ThrowIfCancellationRequested();
+                    return completedResult;
+                }
 
-            if (ReferenceEquals(completed, timeoutTask))
+                // A canceled delay can win the race against the cancellation waiter;
+                // only a normally elapsed delay represents an execution timeout.
+                if (ReferenceEquals(completed, timeoutTask) && !operationCancellation.IsCancellationRequested)
+                {
+                    SafeCancel(operationCancellation);
+                    ObserveLateCompletion(bodyTask, operation, "timed out");
+                    throw new TimeoutException($"Timed out after {timeoutMs}ms running UniBridge read-only tool '{operation.Tool}'. The read slot was released and the operation was marked timed out.");
+                }
+
+                ObserveLateCompletion(bodyTask, operation, "canceled");
+                throw new OperationCanceledException($"UniBridge read-only tool '{operation.Tool}' was canceled because the caller disconnected or canceled the request.", operationCancellation.Token);
+            }
+            finally
             {
-                SafeCancel(operationCancellation);
-                ObserveLateCompletion(bodyTask, operation, "timed out");
-                throw new TimeoutException($"Timed out after {timeoutMs}ms running UniBridge read-only tool '{operation.Tool}'. The read slot was released and the operation was marked timed out.");
+                SafeCancel(waiterLifetime);
             }
-
-            ObserveLateCompletion(bodyTask, operation, "canceled");
-            throw new OperationCanceledException($"UniBridge read-only tool '{operation.Tool}' was canceled because the caller disconnected or canceled the request.", operationCancellation.Token);
-        }
-
-        static async Task WaitForCancellationAsync(CancellationToken token)
-        {
-            while (!token.IsCancellationRequested)
-                await Task.Delay(50);
-            token.ThrowIfCancellationRequested();
         }
 
         static void ObserveLateCompletion(Task task, OperationRecord operation, string reason)
@@ -580,20 +592,20 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             McpLog.Log($"[ToolExecutionScheduler] Force-released read-only lease for operation {record.OperationId} ({record.Tool}): {reason}");
         }
 
-        static async Task<IDisposable> AcquireAsync(string toolName, ToolExecutionPolicy policy, int timeoutMs)
+        static async Task<IDisposable> AcquireAsync(string toolName, ToolExecutionPolicy policy, int timeoutMs, CancellationToken cancellationToken)
         {
             SweepExpiredReadOperations($"before acquiring {policy} slot for {toolName}");
             return policy == ToolExecutionPolicy.ReadOnly
-                ? await AcquireReadAsync(toolName, timeoutMs)
-                : await AcquireWriteAsync(toolName, policy, timeoutMs);
+                ? await AcquireReadAsync(toolName, timeoutMs, cancellationToken)
+                : await AcquireWriteAsync(toolName, policy, timeoutMs, cancellationToken);
         }
 
-        static async Task<IDisposable> AcquireReadAsync(string toolName, int timeoutMs)
+        static async Task<IDisposable> AcquireReadAsync(string toolName, int timeoutMs, CancellationToken cancellationToken)
         {
-            await WaitOrThrow(QueueLock, timeoutMs, toolName, ToolExecutionPolicy.ReadOnly);
+            await WaitOrThrow(QueueLock, timeoutMs, toolName, ToolExecutionPolicy.ReadOnly, cancellationToken);
             try
             {
-                await WaitOrThrow(ReaderLock, timeoutMs, toolName, ToolExecutionPolicy.ReadOnly);
+                await WaitOrThrow(ReaderLock, timeoutMs, toolName, ToolExecutionPolicy.ReadOnly, cancellationToken);
                 try
                 {
                     ActiveReaders++;
@@ -601,7 +613,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     {
                         try
                         {
-                            await WaitOrThrow(ResourceLock, timeoutMs, toolName, ToolExecutionPolicy.ReadOnly);
+                            await WaitOrThrow(ResourceLock, timeoutMs, toolName, ToolExecutionPolicy.ReadOnly, cancellationToken);
                         }
                         catch
                         {
@@ -623,14 +635,14 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             }
         }
 
-        static async Task<IDisposable> AcquireWriteAsync(string toolName, ToolExecutionPolicy policy, int timeoutMs)
+        static async Task<IDisposable> AcquireWriteAsync(string toolName, ToolExecutionPolicy policy, int timeoutMs, CancellationToken cancellationToken)
         {
             var queueHeld = false;
             try
             {
-                await WaitOrThrow(QueueLock, timeoutMs, toolName, policy);
+                await WaitOrThrow(QueueLock, timeoutMs, toolName, policy, cancellationToken);
                 queueHeld = true;
-                await WaitOrThrow(ResourceLock, timeoutMs, toolName, policy);
+                await WaitOrThrow(ResourceLock, timeoutMs, toolName, policy, cancellationToken);
                 QueueLock.Release();
                 queueHeld = false;
             }
@@ -715,9 +727,9 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             }
         }
 
-        static async Task WaitOrThrow(SemaphoreSlim semaphore, int timeoutMs, string toolName, ToolExecutionPolicy policy)
+        static async Task WaitOrThrow(SemaphoreSlim semaphore, int timeoutMs, string toolName, ToolExecutionPolicy policy, CancellationToken cancellationToken)
         {
-            if (await semaphore.WaitAsync(timeoutMs))
+            if (await semaphore.WaitAsync(timeoutMs, cancellationToken))
                 return;
 
             throw new TimeoutException($"Timed out after {timeoutMs}ms waiting for UniBridge {policy} execution slot before running '{toolName}'.");
@@ -825,9 +837,10 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         static OperationRecord BeginOperation(string toolName, ToolExecutionPolicy policy, int timeoutMs, JObject parameters)
         {
             var mode = ResolveMode(toolName, parameters, policy);
-            return new OperationRecord
+            var record = new OperationRecord
             {
                 OperationId = Interlocked.Increment(ref NextOperationId),
+                RequestId = AmbientRequestId.Value,
                 Tool = toolName ?? string.Empty,
                 Policy = policy,
                 Mode = mode,
@@ -836,6 +849,9 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 QueuedUtc = DateTime.UtcNow,
                 Outcome = "queued"
             };
+            lock (StatusLock)
+                ActiveOperations[record.OperationId] = record;
+            return record;
         }
 
         static string ResolveMode(string toolName, JObject parameters, ToolExecutionPolicy policy)
@@ -870,6 +886,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         {
             lock (StatusLock)
             {
+                record.CancellationSource.Token.ThrowIfCancellationRequested();
                 if (record.StartedUtc.HasValue)
                     return;
 
@@ -887,13 +904,16 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 if (record.FinishedUtc.HasValue)
                     return;
 
-                var cancellationRequested = record.CancellationSource?.IsCancellationRequested == true;
+                var cancellationRequested = record.CancellationSource?.IsCancellationRequested == true || record.CallerCancellation.IsCancellationRequested;
                 record.FinishedUtc = DateTime.UtcNow;
                 record.Outcome = outcomeOverride ?? (error == null ? "success" :
                     error is OperationCanceledException ? "canceled" :
                     error is TimeoutException ? "timedOut" :
                     "failed");
-                if (error == null && cancellationRequested && record.Outcome == "success")
+                if (!record.StartedUtc.HasValue)
+                    record.ChangedProject = false;
+                if (error == null && cancellationRequested && record.Outcome == "success" &&
+                    (record.Policy == ToolExecutionPolicy.ReadOnly || record.Policy == ToolExecutionPolicy.Observer))
                     record.Outcome = "canceled";
                 if (error != null)
                 {
@@ -919,7 +939,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     if (error is OperationCanceledException)
                         TotalCanceled++;
                 }
-                else if (record.CancellationRequested)
+                else if (record.Outcome == "canceled")
                 {
                     TotalCanceled++;
                 }
@@ -934,6 +954,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             return new
             {
                 operationId = record.OperationId,
+                requestId = record.RequestId,
                 tool = record.Tool,
                 policy = record.Policy.ToString(),
                 mode = record.Mode,
@@ -946,6 +967,9 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 timeoutMs = record.TimeoutMs,
                 outcome = record.Outcome,
                 cancellationRequested = IsCancellationRequested(record),
+                cancellationDeferred = started.HasValue && record.Policy != ToolExecutionPolicy.ReadOnly &&
+                    record.Policy != ToolExecutionPolicy.Observer && (finished.HasValue
+                        ? record.CancellationRequested : record.CallerCancellation.IsCancellationRequested),
                 forcedRelease = record.ForceReleasedUtc.HasValue ? new
                 {
                     releasedUtc = record.ForceReleasedUtc?.ToString("o"),
@@ -966,11 +990,13 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
         static bool IsCancellationRequested(OperationRecord record)
         {
+            if (record.FinishedUtc.HasValue)
+                return record.CancellationRequested;
             if (record.CancellationRequested)
                 return true;
             try
             {
-                return record.CancellationSource?.IsCancellationRequested == true;
+                return record.CancellationSource?.IsCancellationRequested == true || record.CallerCancellation.IsCancellationRequested;
             }
             catch
             {
@@ -1007,6 +1033,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         sealed class OperationRecord
         {
             public long OperationId;
+            public string RequestId;
             public string Tool;
             public ToolExecutionPolicy Policy;
             public string Mode;
@@ -1019,6 +1046,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             public string ErrorType;
             public string ErrorMessage;
             public CancellationTokenSource CancellationSource;
+            public CancellationToken CallerCancellation;
             public bool CancellationRequested;
             public Lease Lease;
             public DateTime? ForceReleasedUtc;

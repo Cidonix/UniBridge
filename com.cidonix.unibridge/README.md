@@ -72,7 +72,7 @@ A completed result that contradicts the requested action contract produces
 errors remain available with `handlerCompleted=true` and `retryOriginal=false`.
 The check does not execute the handler or serialize its getters again.
 
-Relay `1.1.0-build.22` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
+Relay `1.1.0-build.23` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
 and `2025-11-25`: a supported requested version is used, otherwise the latest
 supported version is returned. Outer `structuredContent` and advertised
 `outputSchema` are enabled for June 2025 and newer supported versions; older
@@ -318,6 +318,12 @@ writes a JSON report to the target project's `Library/UniBridge` folder. Use
 `-IncludePlayMode`, `-IncludeUiRecipe`, or `-IncludeAssetRecipe` for broader
 coverage. Python must be available on `PATH`; the PowerShell script is the
 Windows entrypoint and launches the Python helper that manages JSON-RPC.
+
+The default suite also checks malformed MCP requests, explicit cancellation,
+admitted client timeout/disconnect, event waits, and queued mutations. These
+checks match the exact admitted operation before asserting cancellation and
+resource release. For deterministic source-linked queue/start-boundary tests,
+see `Tools~/McpCancellationRegression/README.md`.
 
 ## Command Delivery Regression
 

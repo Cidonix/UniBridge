@@ -15,7 +15,7 @@ static class Program
 {
     const string ProductName = "UniBridge Relay";
     const string ServerName = "unibridge-relay";
-    public const string Version = "1.1.0-build.22";
+    public const string Version = "1.1.0-build.23";
     public const string ProtocolVersion = "1.0";
 
     static async Task<int> Main(string[] args)
@@ -267,6 +267,8 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     readonly SemaphoreSlim stdoutLock = new(1, 1);
     readonly SemaphoreSlim toolsChangedNotificationLock = new(1, 1);
     readonly SemaphoreSlim reconnectLock = new(1, 1);
+    readonly ConcurrentDictionary<string, McpRequest> requests = new();
+    Task? connectionTask;
     string? clientName;
     string? clientVersion;
     volatile bool clientInitialized;
@@ -292,35 +294,120 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
     public async Task RunAsync(CancellationToken ct)
     {
         logger.Info("MCP stdio server started.");
-
-        while (!ct.IsCancellationRequested)
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
         {
-            var line = await Console.In.ReadLineAsync(ct).ConfigureAwait(false);
-            if (line == null)
-                break;
-
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            JsonObject? message;
-            try
+            while (!lifetime.IsCancellationRequested)
             {
-                message = JsonNode.Parse(line)?.AsObject();
-            }
-            catch (JsonException ex)
-            {
-                await WriteErrorAsync(null, -32700, $"Parse error: {ex.Message}", ct).ConfigureAwait(false);
-                continue;
-            }
+                var line = await Console.In.ReadLineAsync(lifetime.Token).ConfigureAwait(false);
+                if (line == null)
+                    break;
 
-            if (message == null)
-            {
-                await WriteErrorAsync(null, -32600, "Invalid JSON-RPC message.", ct).ConfigureAwait(false);
-                continue;
-            }
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
 
-            _ = Task.Run(() => HandleMessageAsync(message, ct), ct);
+                JsonObject? message;
+                try
+                {
+                    message = JsonNode.Parse(line) as JsonObject;
+                }
+                catch (JsonException ex)
+                {
+                    await WriteErrorAsync(null, -32700, $"Parse error: {ex.Message}", ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (message == null)
+                {
+                    await WriteErrorAsync(null, -32600, "Invalid JSON-RPC message.", ct).ConfigureAwait(false);
+                    continue;
+                }
+                var id = message["id"];
+                var hasId = message.ContainsKey("id");
+                if (ReadString(message, "jsonrpc") != "2.0" ||
+                    message["method"] is not JsonValue methodValue ||
+                    !methodValue.TryGetValue<string>(out var method) || string.IsNullOrWhiteSpace(method) ||
+                    (hasId && !IsRequestId(id)))
+                {
+                    await WriteErrorAsync(IsRequestId(id) ? id : null, -32600, "Invalid JSON-RPC request.", ct).ConfigureAwait(false);
+                    continue;
+                }
+                if (message.ContainsKey("params") && message["params"] is not JsonObject)
+                {
+                    if (hasId)
+                        await WriteErrorAsync(id, -32602, "MCP params must be an object.", ct).ConfigureAwait(false);
+                    continue;
+                }
+                if (!hasId)
+                {
+                    if (method == "notifications/cancelled")
+                        CancelRequest(message["params"] as JsonObject);
+                    else if (method == "notifications/initialized")
+                    {
+                        clientInitialized = true;
+                        connectionTask ??= TryConnectUnityAsync(lifetime.Token);
+                    }
+                    continue;
+                }
+                if (method.StartsWith("notifications/", StringComparison.Ordinal))
+                {
+                    await WriteErrorAsync(id, -32600, "Notifications must not have a request ID.", ct).ConfigureAwait(false);
+                    continue;
+                }
+                var key = id!.ToJsonString();
+                var request = new McpRequest(method, lifetime.Token);
+                if (!requests.TryAdd(key, request))
+                {
+                    request.Dispose();
+                    await WriteErrorAsync(id, -32600, "Request ID is already in use.", ct).ConfigureAwait(false);
+                    continue;
+                }
+                // Register before dispatch so an immediately following cancellation cannot be lost.
+                request.Task = Task.Run(async () =>
+                {
+                    try { await HandleMessageAsync(message, request.Token).ConfigureAwait(false); }
+                    finally
+                    {
+                        requests.TryRemove(key, out _);
+                        request.Dispose();
+                    }
+                }, CancellationToken.None);
+            }
         }
+        finally
+        {
+            // EOF is a client disconnect: release admitted reads/queued work before closing Unity.
+            lifetime.Cancel();
+            var active = requests.Values.Select(request => request.Task).OfType<Task>().ToArray();
+            await Task.WhenAll(active).ConfigureAwait(false);
+            if (connectionTask != null)
+                await connectionTask.ConfigureAwait(false);
+        }
+    }
+
+    static bool IsRequestId(JsonNode? id) => id is JsonValue value &&
+        (value.TryGetValue<string>(out _) || value.TryGetValue<long>(out _));
+
+    void CancelRequest(JsonObject? parameters)
+    {
+        var id = parameters?["requestId"];
+        if (!IsRequestId(id) || (parameters!.ContainsKey("reason") &&
+            (parameters["reason"] is not JsonValue reason || !reason.TryGetValue<string>(out _))))
+            return;
+        if (requests.TryGetValue(id!.ToJsonString(), out var request) && request.Method != "initialize")
+            request.Cancel();
+    }
+
+    sealed class McpRequest(string method, CancellationToken lifetime) : IDisposable
+    {
+        readonly object gate = new();
+        readonly CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+        bool disposed;
+        public string Method { get; } = method;
+        public CancellationToken Token => cancellation.Token;
+        public Task? Task { get; set; }
+        public void Cancel() { lock (gate) { if (!disposed) cancellation.Cancel(); } }
+        public void Dispose() { lock (gate) { disposed = true; cancellation.Dispose(); } }
     }
 
     async Task HandleMessageAsync(JsonObject message, CancellationToken ct)
@@ -371,7 +458,11 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
                     break;
             }
         }
-        catch (Exception ex)
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // MCP cancellation is a notification, not a failed tool response.
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             if (id != null)
             {
@@ -387,6 +478,18 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
 
     async Task HandleInitializeAsync(JsonNode? id, JsonObject? parameters, CancellationToken ct)
     {
+        static bool OptionalString(JsonObject? obj, string name) => obj == null || !obj.ContainsKey(name) ||
+            (obj[name] is JsonValue value && value.TryGetValue<string>(out _));
+        if (parameters != null &&
+            ((parameters.ContainsKey("clientInfo") && parameters["clientInfo"] is not JsonObject) ||
+             (parameters.ContainsKey("capabilities") && parameters["capabilities"] is not JsonObject) ||
+             !OptionalString(parameters, "protocolVersion") ||
+             !OptionalString(parameters["clientInfo"] as JsonObject, "name") ||
+             !OptionalString(parameters["clientInfo"] as JsonObject, "version")))
+        {
+            await WriteErrorAsync(id, -32602, "Invalid initialize parameters.", ct).ConfigureAwait(false);
+            return;
+        }
         var clientInfo = parameters?["clientInfo"] as JsonObject;
         clientName = clientInfo?["name"]?.GetValue<string>() ?? options.ClientName;
         clientVersion = clientInfo?["version"]?.GetValue<string>() ?? "unknown";
@@ -1375,6 +1478,8 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
         ["projectPath"] = unity.ProjectPath,
         ["projectRoot"] = unity.ProjectRoot,
         ["editorPid"] = unity.EditorPid,
+        ["commandRecoverySessionId"] = unity.CommandRecoverySessionId,
+        ["supportsRequestCancellation"] = unity.SupportsRequestCancellation,
         ["expectedProjectRoot"] = NormalizeProjectRoot(options.ExpectedProjectRoot),
         ["workspaceRoot"] = NormalizeProjectRoot(options.WorkspaceRoot),
         ["toolCount"] = unity.Tools.Count
@@ -1619,8 +1724,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
             ["jsonrpc"] = "2.0"
         };
 
-        if (id != null)
-            response["id"] = id.DeepClone();
+        response["id"] = id?.DeepClone();
 
         await WriteMessageAsync(response, ct).ConfigureAwait(false);
     }
@@ -1637,8 +1741,7 @@ sealed class McpServer(RelayOptions options, Logger logger) : IAsyncDisposable
             ["jsonrpc"] = "2.0"
         };
 
-        if (id != null)
-            response["id"] = id.DeepClone();
+        response["id"] = id?.DeepClone();
 
         await WriteMessageAsync(response, ct).ConfigureAwait(false);
     }
@@ -1687,6 +1790,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
     StreamReader? reader;
     StreamWriter? writer;
     Task? readerTask;
+    CancellationTokenSource? readerCancellation;
     volatile bool handshakeComplete;
     readonly string requestPrefix = $"{Environment.ProcessId}-{Guid.NewGuid():N}";
     int nextRequestId;
@@ -1702,6 +1806,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
     public int? EditorPid { get; private set; }
     public int ConnectionGeneration { get; private set; }
     public string? CommandRecoverySessionId { get; private set; }
+    public bool SupportsRequestCancellation { get; private set; }
 
     public async Task ConnectAsync(CancellationToken ct)
     {
@@ -1746,6 +1851,11 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
             CommandRecoverySessionId = recovery?["version"]?.GetValue<int>() == 1 &&
                 string.Equals(recovery["mode"]?.GetValue<string>(), "query-only", StringComparison.Ordinal)
                 ? recovery["sessionId"]?.GetValue<string>() : null;
+            var cancellation = handshake["requestCancellation"] as JsonObject;
+            SupportsRequestCancellation = cancellation?["version"] is JsonValue cancellationVersion &&
+                cancellationVersion.TryGetValue<int>(out var cancellationVersionNumber) && cancellationVersionNumber == 1 &&
+                cancellation["mode"] is JsonValue cancellationMode &&
+                cancellationMode.TryGetValue<string>(out var cancellationModeName) && cancellationModeName == "transport-scoped";
             Tools.Clear();
             if (handshake["tools"] is JsonArray tools)
             {
@@ -1758,7 +1868,11 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
 
             logger.Info($"Unity MCP handshake received: protocol={protocol} version={version} tools={Tools.Count}");
             var generation = ++ConnectionGeneration;
-            readerTask = Task.Run(() => ReadLoopAsync(ct, generation), ct);
+            // Connect can be requested by any MCP call. Its cancellation must not
+            // stop the shared reader used by other calls on this transport.
+            readerCancellation = new CancellationTokenSource();
+            var readerToken = readerCancellation.Token;
+            readerTask = Task.Run(() => ReadLoopAsync(readerToken, generation), CancellationToken.None);
             handshakeComplete = true;
         }
         catch
@@ -1847,6 +1961,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         var oldPipe = namedPipe;
         var oldSocket = unixSocket;
         var oldReaderTask = readerTask;
+        var oldReaderCancellation = readerCancellation;
 
         writer = null;
         reader = null;
@@ -1854,8 +1969,10 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         namedPipe = null;
         unixSocket = null;
         readerTask = null;
+        readerCancellation = null;
         toolsHash = null;
         CommandRecoverySessionId = null;
+        SupportsRequestCancellation = false;
 
         ConnectionPath = null;
         ProjectId = null;
@@ -1872,6 +1989,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
                 tcs.TrySetException(exception);
         }
 
+        oldReaderCancellation?.Cancel();
         DisposeQuietly(oldWriter);
         DisposeQuietly(oldReader);
         DisposeQuietly(oldStream);
@@ -1885,6 +2003,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
         {
             await Task.WhenAny(oldReaderTask, Task.Delay(250)).ConfigureAwait(false);
         }
+        DisposeQuietly(oldReaderCancellation);
     }
 
     static void DisposeQuietly(IDisposable? disposable)
@@ -2060,6 +2179,7 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
     public async Task<JsonObject> SendCommandAsync(string type, JsonObject parameters, CancellationToken ct, string? operationId = null, int responseTimeoutMs = 120000)
     {
         var generation = ConnectionGeneration;
+        var supportsCancellation = SupportsRequestCancellation;
         if (!IsConnected)
             throw new InvalidOperationException("Unity connection is not established.");
 
@@ -2087,6 +2207,32 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
             });
 
             return await tcs.Task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            pending.TryRemove(requestId, out _);
+            if (!supportsCancellation)
+                throw;
+            // This control message never repeats the original operation. The Editor shields
+            // an already-started mutation and records its actual completion for recovery.
+            using var cancellationBudget = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
+            {
+                await WriteRawAsync(new JsonObject
+                {
+                    ["type"] = "cancel_command",
+                    ["params"] = new JsonObject
+                    {
+                        ["originalRequestId"] = requestId,
+                        ["reason"] = ct.IsCancellationRequested ? "mcp_request_cancelled" : "response_timeout"
+                    }
+                }, cancellationBudget.Token, generation).ConfigureAwait(false);
+            }
+            catch (Exception cancellationFailure)
+            {
+                logger.Warn($"Unable to deliver cancellation for {requestId}: {cancellationFailure.Message}");
+            }
+            throw;
         }
         catch (Exception ex) when (IsConnectionFailure(ex))
         {
@@ -2165,6 +2311,10 @@ sealed class UnityConnection(RelayOptions options, Logger logger) : IAsyncDispos
 
                 logger.Info($"Unity event: {Truncate(line, 200)}");
             }
+        }
+        catch (Exception ex) when (ct.IsCancellationRequested && ex is OperationCanceledException or ObjectDisposedException or IOException)
+        {
+            // The transport owner is closing this generation.
         }
         finally
         {

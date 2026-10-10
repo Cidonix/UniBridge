@@ -7,6 +7,18 @@ UniBridge is local-first. The Unity package runs a bridge inside the Editor, ins
 For version-specific packaging, verification, and known limitation details, see
 `../RELEASE_NOTES.md`.
 
+## MCP request cancellation
+
+Each MCP request has its own cancellation token. `notifications/cancelled` targets that request's string or integer ID; unknown or completed IDs are ignored, and `initialize` is protected. The relay also signals cancellation when its response wait times out or the client closes stdin. A disconnect releases the originating transport's read and queued operations.
+
+Editor-side request cancellation requires the handshake capability `requestCancellation` version 1, mode `transport-scoped`. The relay never sends this control message to an older or legacy bridge without that capability. Cancellation is cooperative; a single synchronous Unity API call must return before its handler can observe cancellation.
+
+The Editor checks cancellation before a queued handler starts. Read-only tools and observers cooperate with cancellation while running. Once an exclusive mutation starts, caller cancellation is deferred: the operation keeps its actual result in the command recovery journal. Losing or cancelling a response never authorizes replay and never proves that a project change did not occur. Use `UniBridge_CommandStatus` with the original operation identity when recovery is needed.
+
+For an explicitly cancelled mutation, obtain its bridge `requestId` from `ExecutionStatus` and the `commandRecoverySessionId` from `_server_info` status. Query `CommandStatus` with those original IDs, the tool name and its original arguments. Preserve the session identity across reloads; a new session does not prove an old operation's result.
+
+The bundled smoke runner proves Editor admission before cancellation checks, matches the exact operation's history, checks resource release and subsequent reads, and waits for readiness after domain reload. Expected negative tool responses are permitted only by the assertions explicitly testing those failures.
+
 ## JSON scene-object references
 
 UnityEngineObjectConverter writes scene references with a numeric `instanceID` and resolves them to the requested Unity type. Unity 6 preserves all 64 identity bits through signed JSON integers. Legacy resolution accepts nonzero signed Int32 IDs, including negative values, and rejects larger values before lookup. Unresolved IDs and incompatible types retain their existing JSON deserialization errors; JSON null remains a null reference.
@@ -56,7 +68,7 @@ A completed result that contradicts the requested action contract produces
 errors remain available with `handlerCompleted=true` and `retryOriginal=false`.
 The check does not execute the handler or serialize its getters again.
 
-Relay `1.1.0-build.22` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
+Relay `1.1.0-build.23` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
 and `2025-11-25`: a supported requested version is used, otherwise the latest
 supported version is returned. Outer `structuredContent` and advertised
 `outputSchema` are enabled for June 2025 and newer supported versions; older

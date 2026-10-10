@@ -73,6 +73,7 @@ namespace Cidonix.UniBridge.MCP.Editor
         int processingCommands;
         readonly ConcurrentDictionary<string, (Command command, TaskCompletionSource<string> tcs, IConnectionTransport client, CancellationToken cancellationToken)> commandQueue = new();
         readonly ConcurrentDictionary<string, TaskCompletionSource<string>> commandWaiters = new();
+        readonly ConcurrentDictionary<string, (IConnectionTransport client, string requestId, CancellationTokenSource source)> requestCancellations = new();
         const string StoppedResponse = "{\"status\":\"error\",\"error\":\"Bridge stopped\"}";
 
         // Lifecycle
@@ -409,9 +410,12 @@ namespace Cidonix.UniBridge.MCP.Editor
                 }
                 // Queue admission uses this same lock. A stopped generation cannot
                 // add a waiter after this drain, even if a read completed during Stop.
-                foreach (var queued in commandQueue.Values)
-                    queued.tcs.TrySetResult(StoppedResponse);
-                commandQueue.Clear();
+                foreach (var id in commandQueue.Keys)
+                {
+                    if (commandQueue.TryRemove(id, out var queued))
+                        queued.tcs.TrySetResult(StoppedResponse);
+                    ReleaseRequestCancellation(id);
+                }
                 foreach (var waiter in commandWaiters.Values)
                     waiter.TrySetResult(StoppedResponse);
                 commandWaiters.Clear();
@@ -431,6 +435,23 @@ namespace Cidonix.UniBridge.MCP.Editor
             }
             try { toDispose?.Dispose(); } catch { }
             try { McpLog.Log("UniBridge MCP bridge stopped."); } catch { }
+        }
+
+        void CancelRequest(IConnectionTransport transport, string requestId)
+        {
+            if (string.IsNullOrEmpty(requestId)) return;
+            foreach (var request in requestCancellations.Values)
+            {
+                if (!ReferenceEquals(request.client, transport) || request.requestId != requestId) continue;
+                // Completion can dispose the source concurrently with this control message.
+                try { request.source.Cancel(); } catch (ObjectDisposedException) { }
+            }
+        }
+
+        void ReleaseRequestCancellation(string commandId)
+        {
+            if (requestCancellations.TryRemove(commandId, out var request))
+                request.source.Dispose();
         }
 
         public void Dispose()
@@ -732,6 +753,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                     var transportToken = transportCts.Token;
                     transport.OnDisconnected += () =>
                     {
+                        try { transportCts.Cancel(); } catch (ObjectDisposedException) { }
                         var state = TransportStore.GetState(transport);
                         if (state != null)
                         {
@@ -757,6 +779,11 @@ namespace Cidonix.UniBridge.MCP.Editor
                         // Include pre-warmed tools in handshake to eliminate discovery round trips
                         var handshake = JObject.Parse(MessageProtocol.CreateHandshakeMessage(generation.Tools, generation.ToolsHash));
                         handshake["commandRecovery"] = generation.RecoveryHandshake?.DeepClone();
+                        handshake["requestCancellation"] = new JObject
+                        {
+                            ["version"] = 1,
+                            ["mode"] = "transport-scoped"
+                        };
                         await WriteWithLockAsync(transport, handshake.ToString(Formatting.None), transportToken);
                         McpLog.LogDelayed($"Sent handshake (unity-mcp protocol v2.0, tools={generation.Tools?.Length ?? 0})");
                     }
@@ -863,11 +890,24 @@ namespace Cidonix.UniBridge.MCP.Editor
                                 continue;
                             }
 
+                            // A control notification must reach queued/running reads even when
+                            // the main thread or the exclusive execution gate is occupied.
+                            if (command.type.Equals("cancel_command", StringComparison.OrdinalIgnoreCase))
+                            {
+                                CancelRequest(transport, command.@params?.Value<string>("originalRequestId"));
+                                continue;
+                            }
+
                             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                             string commandId = Guid.NewGuid().ToString();
+                            var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(transportToken);
+                            requestCancellations[commandId] = (transport, command.requestId, requestCancellation);
 
-                            if (!TryQueueCommand(generation, commandId, command, tcs, transport, transportToken))
+                            if (!TryQueueCommand(generation, commandId, command, tcs, transport, requestCancellation.Token))
+                            {
+                                ReleaseRequestCancellation(commandId);
                                 break;
+                            }
 
                             // Fire-and-forget: write response when ready (non-blocking).
                             // The reader loop continues immediately so multiple commands
@@ -883,6 +923,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                                 || msg.Contains("errno=32", StringComparison.Ordinal) // EPIPE — broken pipe
                                 || msg.Contains("errno=38", StringComparison.Ordinal) // ENOTSOCK — fd closed while writing
                                 || ex is TimeoutException
+                                || ex is OperationCanceledException
                                 || ex is ObjectDisposedException;
 
                             if (isBenign)
@@ -1389,10 +1430,20 @@ namespace Cidonix.UniBridge.MCP.Editor
                         Task<string> resultTask;
                         lock (startStopLock)
                         {
-                            if (!isRunning || cancellationToken.IsCancellationRequested || !commandQueue.TryRemove(id, out _))
+                            if (!commandQueue.TryRemove(id, out _))
+                                continue;
+                            if (!isRunning || cancellationToken.IsCancellationRequested)
                             {
-                                tcs.TrySetResult(StoppedResponse);
+                                tcs.TrySetResult(!isRunning ? StoppedResponse : InjectRequestId(McpJson.SerializeObject(new
+                                {
+                                    status = "error",
+                                    error = "Request canceled before command execution.",
+                                    canceled = true,
+                                    noChangesApplied = true,
+                                    executionState = "canceled_before_execution"
+                                }), command.requestId));
                                 commandWaiters.TryRemove(id, out _);
+                                ReleaseRequestCancellation(id);
                                 continue;
                             }
                             // Capture admission's journal before Stop may publish another
@@ -1411,6 +1462,7 @@ namespace Cidonix.UniBridge.MCP.Editor
                             commandType = command.type ?? "Unknown"
                         }), command.requestId));
                         commandWaiters.TryRemove(id, out _);
+                        ReleaseRequestCancellation(id);
                     }
                 }
             }
@@ -1791,7 +1843,11 @@ namespace Cidonix.UniBridge.MCP.Editor
                 JObject paramsObject = command.@params ?? new JObject();
 
                 transportSessionTrackers.TryGetValue(client, out sessionTracker);
-                var result = await McpToolRegistry.ExecuteToolAsync(command.type, paramsObject, cancellationToken);
+                var previousRequestId = ToolExecutionScheduler.CurrentRequestId;
+                object result;
+                ToolExecutionScheduler.CurrentRequestId = command.requestId;
+                try { result = await McpToolRegistry.ExecuteToolAsync(command.type, paramsObject, cancellationToken); }
+                finally { ToolExecutionScheduler.CurrentRequestId = previousRequestId; }
 
                 if (result == null)
                     result = Response.Success("Operation completed.");
@@ -1927,7 +1983,11 @@ namespace Cidonix.UniBridge.MCP.Editor
         async Task CompleteQueuedCommandAsync(Task<string> task, TaskCompletionSource<string> completion, string requestId, string commandId)
         {
             try { await WaitForExistingAndComplete(task, completion, requestId); }
-            finally { commandWaiters.TryRemove(commandId, out _); }
+            finally
+            {
+                commandWaiters.TryRemove(commandId, out _);
+                ReleaseRequestCancellation(commandId);
+            }
         }
 
         void ComputeToolsSnapshotAndHash()

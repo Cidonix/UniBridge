@@ -43,6 +43,9 @@ def main():
             dependency = args.newtonsoft_dll.resolve(strict=True)
             journal = repo / "com.cidonix.unibridge/Modules/Cidonix.UniBridge.MCP.Editor/Helpers/CommandRecoveryJournal.cs"
             shutil.copyfile(journal, work / "CommandRecoveryJournal.cs")
+            # The journal's invalid-response path uses the production serializer,
+            # whose independent settings must remain part of this qualification.
+            shutil.copyfile(journal.with_name("McpJson.cs"), work / "McpJson.cs")
             shutil.copyfile(suite / "JournalRegression.cs", work / "JournalRegression.cs")
             journal_settings = '<DefineConstants>JOURNAL_TESTS</DefineConstants>'
             journal_reference = ('<ItemGroup><Reference Include="Newtonsoft.Json"><HintPath>' + escape(str(dependency)) +

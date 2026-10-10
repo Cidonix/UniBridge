@@ -823,6 +823,7 @@ Returns:
                 }
                 catch (OperationCanceledException ex)
                 {
+                    ToolExecutionScheduler.ThrowIfCancellationRequested();
                     return Response.Error(
                         targetPlaying
                             ? "Play mode wait was interrupted by Unity reload before confirming the target. Reconnect, then call WaitForPlayMode again."
@@ -2113,8 +2114,11 @@ Returns:
 
         static async Task WaitForEditorUpdateAsync(int minimumDelayMs)
         {
+            var cancellationToken = ToolExecutionScheduler.CurrentCancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
             minimumDelayMs = Clamp(minimumDelayMs, 0, 5000);
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var cancellationRegistration = cancellationToken.Register(() => tcs.TrySetCanceled());
             var dueTime = EditorApplication.timeSinceStartup + minimumDelayMs / 1000.0;
 
             void Tick()
@@ -2130,7 +2134,8 @@ Returns:
             SceneView.RepaintAll();
             InternalEditorUtility.RepaintAllViews();
             EditorApplication.QueuePlayerLoopUpdate();
-            await tcs.Task;
+            try { await tcs.Task; }
+            finally { EditorApplication.update -= Tick; }
         }
 
         static int Clamp(int value, int min, int max)

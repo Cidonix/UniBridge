@@ -11253,3 +11253,34 @@ UnityObjectId визнає null лише для ID=0. Legacy допускає в
 Пакет оновлено до 0.2.69 у Test, Domovyk і Corgi; у downstream також перенесено попередній SelectGameObject/PingSelection long-ID fix. Domovyk і Corgi були закриті; exact Unity6000.6.5f1 batchmode compile обох завершилась exit0 без compiler/build-system errors, актуальні Runtime DLL. Hash guards підтверджують 5795/8953/9027 saved Assets+ProjectSettings files відповідно без змін. Package extras/BOM/EOL поза точним update set і всі .meta не перезаписані. Докази: Temp/UnityObjectConverter-20261011/ (legacy/verification-complete.json, live-plan/checked-modern-result-decoded.json, author-preservation.json, hosts-compile.json, immutable mcp-smoke.json); native live-result у Test Library/AgentValidation/UnityObjectConverter-20261011. Source commit/push і Domovyk check-in є окремими авторизованими кроками; фактичні publication receipts записуються після виконання.
 
 Domovyk publication підтверджена: cs291, точні9 server file revisions відповідають physical working bytes, включно зі збереженим авторським TMP pending asset; cm status порожній. Source Git publication виконується після final diff review; HEAD/origin SHA і чистота worktree будуть зафіксовані у Temp/UnityObjectConverter-20261011/git-publication.json.
+
+
+## 2026-10-11 — MCP cancellation and smoke runner, implementation
+
+User authorized completing latest audit item 2, including smoke runner correction, version propagation to Test/Domovyk/Corgi, UniBridge Git commit/push and full Domovyk Plastic check-in after successful tests. Baseline: source main 946dd80 clean; packages 0.2.69; relay build22; Domovyk cs291 clean. Fresh saved inputs, package/meta bytes and context prefixes captured under Temp/McpCancellation-20261011/hosts-preflight. Per-request cancellation is scoped to the originating transport and request ID; queued/read/observer operations can stop, while an already-started mutation retains the actual journal result. Point12/CoreCLR and cancelled native crash investigation remain out of scope. Implementation and qualification in progress; completion claims follow actual receipts.
+
+
+## 2026-10-11 — MCP cancellation: integration findings
+
+Native smoke01 retained FAIL19/26 (cleanup reload race and missing ExecutionStatus fields); smoke02 retained FAIL25/26 (pure script read crossed reload). Confirmed cleanup removed only suite-owned scripts. All five native cancellation/EOF/queued-write checks passed in smoke02, with fresh healthy compilation and Console. Runner now waits after every confirmed script write and retries only explicitly qualified reads. Relay reader has its own transport lifetime, independent of the MCP request that connected/reconnected; targeted initial/reconnect regression proves another admitted request still receives its result. Final transport/journal suite44/44 PASS; runner contracts32/32 PASS. Final all-green native suite and publication still pending. Point12 untouched.
+
+
+## 2026-10-11 — UniBridge 0.2.70: успішна кваліфікація MCP cancellation
+
+Повний default MCP smoke05: 26/26 PASS у x64 Mono Unity 6000.6.5f1, без skip/max-steps. Окремий native batch підтвердив скасування вже розпочатої зміни, cancellationDeferred=true, фактичний кінцевий стан за 64-bit objectId, exact completed journal response з усіма трьома steps та cleanup за тим самим ID. Relay/journal44/44, scheduler/registry/schema22/22, lifecycle49/49, portable runner38/38 PASS. Скасування читання, native event wait, queued write та EOF перевірені через реальні короткочасні stdio MCP-клієнти. Спільний reader живе до закриття transport, незалежно від request, який підключився/reconnect. Старим bridge без capability не надсилаємо cancel_command. Smoke01–04 збережені FAIL: race reload/схема, pure read під час reload, queued compile gap, помилкова вимога DLL після refresh=none відповідно. Записи не повторюються, невідомий original outcome не маскується станом готового Editor. Семантика none перевіряє file/SHA, requested import — fresh health. Point12/CoreCLR і crash investigation не зачеплені. Host delivery/publication — наступний авторизований крок; receipts у Temp/McpCancellation-20261011.
+
+
+### Фінальна перевірка delivery 0.2.70
+
+Domovyk і Corgi Engine v10 пройшли hidden batch import/compile у своєму точному Unity 6000.6.5f1 від адміністратора: exit0, compiler errors0, обидві Editor assemblies фактично оновлені. Test Editor після native cleanup готовий, збірки актуальні, Console errors/exceptions/asserts0. Player build і gameplay зміни не виконувалися. Повне звіряння незмінених author inputs / .meta та publication receipts зберігаються в Temp/McpCancellation-20261011 у source workspace; повний Domovyk check-in і Git commit/push явно авторизовані власником.
+Окремий native gate01 збережено як FAIL через invalid scratch Action NextEditorUpdate та cleanup без IncludeInactive; його власний fixture прибрано за ID. Два спричинені цим Console errors збережені з diagnostics перед guarded clear; final health перевірено після нього. У successful gate02 bounded probe повернув partial sampling (32/120, editor_tick_timeout); цей крок утримував started mutation для перевірки cancellation shield, повне sampling тут не заявлено.
+
+
+### Preservation gate 0.2.70 — PASS
+
+Звірено 23775 оригінальних Assets/ProjectSettings файлів Test/Domovyk/Corgi (9027/5795/8953): жодної зміни авторських байтів. Усі оригінальні package .meta, host package extras, незмінений package content і префікси context залишились точними. У всіх трьох hosts 29 release files побайтово відповідають source 0.2.70; shared Windows relay відповідає фінальному source SHA. Лише Git-ignored локальні source __pycache__ виключено як згенерований тестами кеш, без видалення/відкату. Delivery-final.json — PASS; Domovyk pending reviewed: рівно 30 owned файлів і один новий каталог.
+
+
+### Domovyk publication 0.2.70
+
+Повний check-in cs292 виконано: 30 файлів плюс структурні parent entries, увесь pending set. Кожний серверний файл експортовано через cm cat --file та побайтово звірено з working tree; Domovyk status порожній. Початковий scratch verifier через stdout спотворював binary bytes у UTF-8 replacement characters; його діагностику збережено, exact file export підтвердив relay SHA без зміни production або check-in. Source Git commit/push виконується в цьому ж авторизованому проході; фактичний HEAD/remote/clean-status receipt у Temp/McpCancellation-20261011/git-publication.json.
