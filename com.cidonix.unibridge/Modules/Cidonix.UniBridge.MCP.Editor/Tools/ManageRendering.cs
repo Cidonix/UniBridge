@@ -617,6 +617,18 @@ Returns:
                 "UnityEngine.WindZone, UnityEngine.WindModule",
                 "WindZone");
             if (component == null)
+            {
+                // The loaded-assembly resolver deliberately does not load a module.
+                // This one trusted built-in identity can resolve a cold WindModule.
+                var windType = ResolveBuiltInWindZoneType();
+                if (windType != null)
+                {
+                    component = target.GetComponent(windType);
+                    if (component == null)
+                        component = Undo.AddComponent(target, windType);
+                }
+            }
+            if (component == null)
                 return Response.Error("WindZone component type is unavailable after resolver lookup. Enable the Unity wind module in this project.");
 
             Undo.RecordObject(component, "Configure WindZone");
@@ -624,6 +636,20 @@ Returns:
             EditorUtility.SetDirty(component);
             EditorSceneManager.MarkSceneDirty(target.scene);
             return Response.Success("WindZone added or updated.", BuildRenderingSummary(target));
+        }
+
+        static Type ResolveBuiltInWindZoneType()
+        {
+            try
+            {
+                var type = Type.GetType("UnityEngine.WindZone, UnityEngine.WindModule", false);
+                return type != null && typeof(Component).IsAssignableFrom(type) ? type : null;
+            }
+            catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException ||
+                exception is FileLoadException || exception is BadImageFormatException)
+            {
+                return null;
+            }
         }
 
         static object AddProjector(JObject parameters)
@@ -1374,7 +1400,7 @@ Returns:
             }
 
             var component = target.GetComponent(type);
-            return component ?? Undo.AddComponent(target, type);
+            return component != null ? component : Undo.AddComponent(target, type);
         }
 
         static Component EnsureRenderingExtraComponent(GameObject target, string displayName, params string[] typeNames)
@@ -1390,21 +1416,21 @@ Returns:
                 if (gameObjectResolvedType != null && typeof(Component).IsAssignableFrom(gameObjectResolvedType))
                 {
                     var existing = target.GetComponent(gameObjectResolvedType);
-                    return existing ?? Undo.AddComponent(target, gameObjectResolvedType);
+                    return existing != null ? existing : Undo.AddComponent(target, gameObjectResolvedType);
                 }
 
                 var typeCacheType = ResolveComponentFromTypeCache(componentName);
                 if (typeCacheType != null)
                 {
                     var existing = target.GetComponent(typeCacheType);
-                    return existing ?? Undo.AddComponent(target, typeCacheType);
+                    return existing != null ? existing : Undo.AddComponent(target, typeCacheType);
                 }
 
                 if (ComponentResolver.TryResolve(componentName, out var resolvedType, out _) &&
                     typeof(Component).IsAssignableFrom(resolvedType))
                 {
                     var existing = target.GetComponent(resolvedType);
-                    return existing ?? Undo.AddComponent(target, resolvedType);
+                    return existing != null ? existing : Undo.AddComponent(target, resolvedType);
                 }
             }
 

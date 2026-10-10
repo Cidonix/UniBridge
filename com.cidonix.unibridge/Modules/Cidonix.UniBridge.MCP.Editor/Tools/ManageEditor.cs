@@ -1989,11 +1989,9 @@ Returns:
 
         static GameObject ResolveGameObject(ManageEditorParams parameters)
         {
-            if (parameters.InstanceID.HasValue &&
-                parameters.InstanceID.Value >= int.MinValue &&
-                parameters.InstanceID.Value <= int.MaxValue)
+            if (parameters.InstanceID.HasValue)
             {
-                var obj = ResolveObjectByInstanceId((int)parameters.InstanceID.Value);
+                var obj = UnityApiAdapter.GetObjectFromId(parameters.InstanceID.Value);
                 if (obj is GameObject go)
                     return go;
                 if (obj is Component component)
@@ -2024,29 +2022,6 @@ Returns:
             if (gameObject == null || EditorUtility.IsPersistent(gameObject))
                 return false;
             return gameObject.scene.IsValid();
-        }
-
-        static UnityEngine.Object ResolveObjectByInstanceId(int instanceId)
-        {
-            var editorUtilityType = typeof(EditorUtility);
-            var entityMethod = editorUtilityType
-                .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
-                .FirstOrDefault(method =>
-                    method.Name == "EntityIdToObject" &&
-                    method.GetParameters().Length == 1 &&
-                    method.GetParameters()[0].ParameterType == typeof(int));
-
-            if (entityMethod != null)
-                return entityMethod.Invoke(null, new object[] { instanceId }) as UnityEngine.Object;
-
-            var legacyMethod = editorUtilityType
-                .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
-                .FirstOrDefault(method =>
-                    method.Name == "InstanceIDToObject" &&
-                    method.GetParameters().Length == 1 &&
-                    method.GetParameters()[0].ParameterType == typeof(int));
-
-            return legacyMethod?.Invoke(null, new object[] { instanceId }) as UnityEngine.Object;
         }
 
         static string BuildGameObjectPath(GameObject gameObject)

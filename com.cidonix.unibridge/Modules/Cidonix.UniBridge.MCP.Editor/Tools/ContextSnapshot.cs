@@ -937,7 +937,7 @@ Returns:
 
         static object BuildToolsSnapshot(SnapshotOptions options)
         {
-            var entries = McpToolRegistry.GetAllToolsForSettings();
+            var entries = McpToolRegistry.GetToolMetadataForSettings();
             var groupCounts = new SortedDictionary<string, ToolGroupCount>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var entry in entries)

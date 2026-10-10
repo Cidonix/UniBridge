@@ -1,4 +1,22 @@
-# UniBridge 0.2.67 Release Notes
+# UniBridge 0.2.68 Release Notes
+
+Release date: 2026-10-10
+
+Points 8–11 are complete within their agreed scope. Editor responsiveness has repeatable warm/fresh-client measurements and a metadata-only settings summary that avoids copying full output schemas. RecordedFrames reads existing CPU history without enabling recording or loading a .data capture. Capture2DRegion preserves explicit pixel density and reports verified PNG output and cleanup outcomes.
+
+All 66 built-in Unity tools have closed, requested-action business contracts. Qualification accounts for 504 declared selectors as 432 canonical identities with source-specific aliases, rather than claiming 504 separate native mutations. Source-linked finite witnesses and counterexamples, current production validation of retained responses, ordinary MCP replies and actual owned native producer cases retain distinct evidence. Typed timeouts and genuine optional-package absence keep their actual failure outcomes.
+
+The registry validates the caller's requested action after one serialization. A contradiction returns RESULT_CONTRACT_MISMATCH with retained original evidence, handlerCompleted=true and retryOriginal=false; neither the handler nor its result getters execute again. Validation preserves unsigned masks, large integers, decimal precision, intrinsic wire strings and nonfinite values. Built-in qualification metadata does not qualify arbitrary extensions or claim every possible runtime branch was exercised.
+
+Rendering component adders now use Unity-aware null checks; optional Navigation types report truthful absence. Numeric Audio inputs use invariant conversion, including comma-decimal locales. Closed contracts retain actual nullable fields and nonempty typed producer collections.
+
+ManageEditor SelectGameObject and PingSelection now pass long IDs directly to UnityApiAdapter.GetObjectFromId. GameObject IDs and Component IDs resolve without truncation; a Component targets its owning GameObject. The legacy branch accepts signed Int32 IDs and rejects larger values before lookup. Actual Unity 6000.6.5f1 Mono qualification covers both actions with real GameObject/Transform IDs above Int32, empty-selection ping and zero/unresolved-ID errors. The exact legacy method compiles against five installed Unity 5.3–2018.4 SDKs; 18 separate C#4 stub checks verify lookup identity, boundaries and rejection of high-bit aliases. These legacy checks do not claim native legacy Editor execution.
+
+Qualification and exact cleanup are bound to the final source, catalog and project receipts in the context. Conditional compilation checks cover four profiles and do not establish physical Linux/macOS execution. Domovyk/Corgi upgrades, Domovyk full check-in and source Git publication are verified separately.
+
+Point 12 native Unity CoreCLR qualification is deferred until released Unity 7. Resource budgets, Unity value converters, recorded profiler counters and Player assembly constraints remain deferred. The cancelled ProcessInfoCollector crash investigation has not resumed; no crash-causality fix is claimed.
+
+## Previous 0.2.67 Notes
 
 Release date: 2026-10-10
 

@@ -277,6 +277,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 // Delivery failure after completion retains execution evidence and must never cause a replay.
                 result = StructuredOutputProjection.Completed(result, toolName,
                     (handler as IOutputContractHandler)?.OutputContract.HasSchema == true);
+                result = ActionOutputValidation.Completed((JObject)result, toolName, parameters,
+                    (handler as IOutputContractHandler)?.OutputContract);
 
                 McpLog.Log($"[McpToolRegistry] Tool '{toolName}' completed successfully", new() { Data = new { tool = toolName, result } });
 
@@ -372,6 +374,32 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             entries.Sort((a, b) => string.Compare(a.Info.name, b.Info.name, StringComparison.Ordinal));
             return entries.ToArray();
         }
+
+        /// <summary>
+        /// Current names, titles and settings for summary consumers. Does not
+        /// materialize input/output schemas or transport annotations.
+        /// </summary>
+        internal static ToolSettingsEntry[] GetToolMetadataForSettings()
+        {
+            var settings = MCPSettingsManager.Settings;
+            var entries = new List<ToolSettingsEntry>();
+            foreach (var (name, handler) in k_Tools)
+                entries.Add(GetToolMetadataEntryForSettings(handler, settings.IsToolEnabled(name)));
+            entries.Sort((a, b) => string.Compare(a.Info.name, b.Info.name, StringComparison.Ordinal));
+            return entries.ToArray();
+        }
+
+        internal static ToolSettingsEntry GetToolMetadataEntryForSettings(IToolHandler handler, bool isEnabled) => new()
+        {
+            Info = new McpToolInfo
+            {
+                name = handler.Attribute?.Name,
+                title = handler.Attribute?.Title
+            },
+            IsEnabled = isEnabled,
+            IsDefault = handler.Attribute?.EnabledByDefault ?? false,
+            Groups = handler.Attribute?.Groups ?? Array.Empty<string>()
+        };
 
         /// <summary>
         /// Checks whether a tool with the specified name exists in the registry.

@@ -2,6 +2,22 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.68
+
+### Improved
+
+- All 66 built-in Unity tools expose closed action business contracts with source-specific aliases. Qualification distinguishes source witnesses, ordinary MCP and native producer evidence; extension contracts retain conservative metadata.
+- Completed results are checked against the requested action after one serialization. RESULT_CONTRACT_MISMATCH retains the actual outcome with handlerCompleted=true/retryOriginal=false and never re-executes the handler or its getters.
+- Settings summaries avoid full schema copies. Recorded CPU history and explicit-density Capture2DRegion retain their qualified behavior and truthful partial/error outcomes.
+
+### Fixed
+
+- ManageEditor SelectGameObject/PingSelection resolve full long object IDs through UnityApiAdapter, including Component IDs mapped to their owning GameObject. Legacy lookup rejects values outside signed Int32 before invoking its API, preventing truncated aliases.
+- Output validation preserves intrinsic wire types, exact unsigned/large integers and decimal comparisons; producer-derived nullable fields and typed collections match actual replies.
+- Rendering component adders respect Unity fake-null objects. Navigation presets report unavailable optional types. Numeric Audio parameters use invariant conversion.
+
+Native Unity CoreCLR qualification awaits released Unity 7. Resource budgets, Unity value converters, recorded counters and Player assembly constraints remain deferred; the cancelled native crash investigation is not part of this release.
+
 ## 0.2.67
 
 ### Improved

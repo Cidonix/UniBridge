@@ -21,6 +21,12 @@ JObject, primitive and generic extension handlers. It also awaits `Task<T>` and
 failures occur before handler invocation and remain tool errors.
 
 Inspect `annotations.uniBridgeOutput` for contract provenance and fidelity.
+`source_action_contract` identifies a core contract selected for the requested
+business action, including its closed nested producer data. The advertised
+catalog schema composes all declared action branches, while runtime validation
+uses the requested branch and the producer's own alias/default rules. Inspect
+`wholeActionDataQualified` for the contract's qualification state; native runtime
+coverage remains documented separately.
 `source_family_partial` means a core provider's declared response families have
 been reviewed against source and controlled serialized branches; it does not
 claim native execution of every action. `envelope_only` is an open object fallback
@@ -40,6 +46,11 @@ When a completed handler cannot be serialized/projected, the error carries
 `retryOriginal=false`. Its outcome may be unavailable; retained serialized
 evidence is included when present. Do not repeat the original mutating command
 to repair an output error. Command recovery remains query-only.
+
+A completed result that contradicts the requested action contract produces
+`RESULT_CONTRACT_MISMATCH`. Its serialized original response and validation
+errors remain available with `handlerCompleted=true` and `retryOriginal=false`.
+The check does not execute the handler or serialize its getters again.
 
 Relay `1.1.0-build.22` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
 and `2025-11-25`: a supported requested version is used, otherwise the latest
@@ -944,7 +955,7 @@ Use `UniBridge_ManageEditor` for editor-level operations that should not require
 
 - `GetState` returns play mode, compile/import/update state, readiness, windows, selection, tags/layers, and prefab-stage context depending on the action;
 - `SelectAsset` selects and optionally pings a Project asset by `AssetPath`;
-- `SelectGameObject` selects and optionally pings/frames a scene object by `GameObjectPath`, `Target`, or `InstanceID`;
+- `SelectGameObject` selects and optionally pings/frames a scene object by `GameObjectPath`, `Target`, or full `long` `InstanceID`; both it and `PingSelection` resolve IDs through `UnityApiAdapter.GetObjectFromId`, mapping Component IDs to their owning GameObject. Legacy lookup rejects IDs outside signed Int32 before calling the old API;
 - `ClearSelection`, `PingSelection`, and `FrameSelection` help an agent verify exactly what it is looking at before capture or edits;
 - `RefreshAssets` wraps `AssetDatabase.Refresh` and can `WaitForCompletion`.
   If import/refresh triggers a Unity domain reload that closes the bridge,

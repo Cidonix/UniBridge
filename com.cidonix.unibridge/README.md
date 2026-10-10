@@ -29,6 +29,24 @@ JObject, primitive and generic extension handlers. It also awaits `Task<T>` and
 failures occur before handler invocation and remain tool errors.
 
 Inspect `annotations.uniBridgeOutput` for contract provenance and fidelity.
+`source_action_contract` identifies a built-in contract selected for the requested
+business action, including closed nested producer data. The catalog composes
+declared branches; runtime validation uses the requested branch and the
+producer's own alias/default rules. The 66 reviewed built-ins have 504 declared
+selectors mapped to 432 canonical identities.
+
+`wholeActionDataQualified=true` is limited to qualified built-in contracts from
+this package. It combines source-contract controls and actual action evidence;
+it does not mean every runtime branch or all selectors were separately executed
+as native mutations. Ordinary MCP, direct native producers, typed timeout and
+optional-package absence receipts remain explicit. Extensions keep their own
+conservative qualification metadata.
+
+Validation preserves unsigned scene masks, arbitrary integers and decimal values
+without narrowing them to `Int64` or rounding through `double`. Numeric bounds
+compare invariant wire digits; CLR intrinsic and nonfinite values retain their
+serialized JSON meaning without reading result getters again.
+
 `source_family_partial` means a core provider's declared response families have
 been reviewed against source and controlled serialized branches; it does not
 claim native execution of every action. `envelope_only` is an open object fallback
@@ -48,6 +66,11 @@ When a completed handler cannot be serialized/projected, the error carries
 `retryOriginal=false`. Its outcome may be unavailable; retained serialized
 evidence is included when present. Do not repeat the original mutating command
 to repair an output error. Command recovery remains query-only.
+
+A completed result that contradicts the requested action contract produces
+`RESULT_CONTRACT_MISMATCH`. Its serialized original response and validation
+errors remain available with `handlerCompleted=true` and `retryOriginal=false`.
+The check does not execute the handler or serialize its getters again.
 
 Relay `1.1.0-build.22` supports MCP `2024-11-05`, `2025-03-26`, `2025-06-18`
 and `2025-11-25`: a supported requested version is used, otherwise the latest

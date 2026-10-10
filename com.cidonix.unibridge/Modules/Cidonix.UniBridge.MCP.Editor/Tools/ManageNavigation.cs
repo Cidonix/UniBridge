@@ -153,7 +153,11 @@ Returns:
                     applied.Add(EnsureObstacle(target, parameters));
                     break;
                 case "walkablesurface":
-                    applied.Add(EnsureOptionalComponent(target, parameters, "Unity.AI.Navigation.NavMeshSurface", "UnityEngine.AI.NavMeshSurface", "NavMeshSurface"));
+                    var surfaceTypes = new[] { "Unity.AI.Navigation.NavMeshSurface", "UnityEngine.AI.NavMeshSurface", "NavMeshSurface" };
+                    var surface = EnsureOptionalComponent(target, parameters, surfaceTypes);
+                    if (surface == null)
+                        return OptionalComponentUnavailable(surfaceTypes);
+                    applied.Add(BuildComponentSummary(surface));
                     break;
                 case "notwalkablemodifier":
                     if (parameters["Properties"] == null)
@@ -164,7 +168,11 @@ Returns:
                             ["area"] = 1
                         };
                     }
-                    applied.Add(EnsureOptionalComponent(target, parameters, "Unity.AI.Navigation.NavMeshModifier", "UnityEngine.AI.NavMeshModifier", "NavMeshModifier"));
+                    var modifierTypes = new[] { "Unity.AI.Navigation.NavMeshModifier", "UnityEngine.AI.NavMeshModifier", "NavMeshModifier" };
+                    var modifier = EnsureOptionalComponent(target, parameters, modifierTypes);
+                    if (modifier == null)
+                        return OptionalComponentUnavailable(modifierTypes);
+                    applied.Add(BuildComponentSummary(modifier));
                     break;
                 default:
                     return Response.Error($"Unknown Navigation preset '{GetString(parameters, "Preset", "preset")}'.");
@@ -218,14 +226,19 @@ Returns:
             var component = EnsureOptionalComponent(target, parameters, typeNames);
             if (component == null)
             {
-                return Response.Error($"{typeNames.Last()} is unavailable. Install the AI Navigation package or use built-in NavMeshAgent/NavMeshObstacle/OffMeshLink.", new
-                {
-                    requestedTypes = typeNames
-                });
+                return OptionalComponentUnavailable(typeNames);
             }
 
             EditorSceneManager.MarkSceneDirty(target.scene);
             return Response.Success($"{component.GetType().Name} added or updated.", new { target = BuildNavigationSummary(target), component = BuildComponentSummary(component) });
+        }
+
+        static object OptionalComponentUnavailable(string[] typeNames)
+        {
+            return Response.Error($"{typeNames.Last()} is unavailable. Install the AI Navigation package or use built-in NavMeshAgent/NavMeshObstacle/OffMeshLink.", new
+            {
+                requestedTypes = typeNames
+            });
         }
 
         static object InvokeOptionalSurface(JObject parameters, string methodName, string verb)

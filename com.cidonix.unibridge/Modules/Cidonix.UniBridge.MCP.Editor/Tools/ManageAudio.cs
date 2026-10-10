@@ -357,7 +357,9 @@ Returns:
         {
             foreach (var key in keys)
                 if (obj.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) && token.Type != JTokenType.Null)
-                    return token.ToString();
+                    return token is JValue value && (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+                        ? Convert.ToString(value.Value, System.Globalization.CultureInfo.InvariantCulture)
+                        : token.ToString();
             return null;
         }
 

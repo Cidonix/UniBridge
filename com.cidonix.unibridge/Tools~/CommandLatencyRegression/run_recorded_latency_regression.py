@@ -443,6 +443,12 @@ def main():
                 if attempt.get("category") == "measured_tool" and attempt.get("state") == "background" and attempt.get("clientKind") == "warm" and attempt["request"]["params"]["name"] == "UniBridge_ContextSnapshot":
                     attempt["latencyMs"] = 1250
             module.summarize(delayed, 1000)
+            if delayed["phase"] != "baseline":
+                check("altered shipping delay is not a pre-mutation baseline defect", lambda: None if delayed["wakeEvidence"]["defectObservedBeforeProductionMutation"] is False else (_ for _ in ()).throw(AssertionError("Shipping evidence treated as pre-mutation baseline")), "altered_classification_control")
+            # This is a synthetic classification control, never a relabelled
+            # native measurement. Actual shipping reports remain immutable.
+            delayed["phase"] = "baseline"
+            module.summarize(delayed, 1000)
             check("deliberately altered delay classification with explicit full preservation", lambda: None if delayed["wakeEvidence"]["defectObservedBeforeProductionMutation"] is True else (_ for _ in ()).throw(AssertionError("Altered delay control not recognized")), "altered_classification_control")
             for key in ("completedMatrix", "errors", "authorFileComparison", "authorStateBefore", "authorStateAfter", "fullSelectionBefore", "fullSelectionAfter", "pumpSourcesUnchanged", "windowAudit"):
                 altered = copy.deepcopy(delayed)

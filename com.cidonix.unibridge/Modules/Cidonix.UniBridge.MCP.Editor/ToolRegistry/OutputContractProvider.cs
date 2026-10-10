@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -11,8 +12,23 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         public JObject Schema;
         public string Fidelity;
         public string Reason;
+        internal Dictionary<string, JObject> ActionSchemas;
+        internal string DefaultAction;
+        internal string ActionSelector;
+        internal bool NormalizeAction;
+        internal string ActionNormalization;
+        internal string[] ActionParameterNames;
+        internal bool ActionParameterCaseInsensitive;
+        internal string ActionLookupPolicy;
+        internal Type ActionEnumType;
+        internal Dictionary<string, string> ActionAliases;
+        internal Dictionary<string, string> NumericActions;
+        internal bool UnknownActionUsesDefault;
+        internal string UnknownActionDefault;
+        internal JObject UnknownActionSchema;
+        internal bool BuiltInActionDataQualified;
         public bool HasSchema => Schema != null;
-        public bool WholeActionDataQualified => false;
+        public bool WholeActionDataQualified => BuiltInActionDataQualified;
     }
 
     interface IOutputContractHandler
@@ -37,8 +53,16 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             if (explicitMethod != null && (!explicitMethod.IsStatic || explicitMethod.GetParameters().Length != 0))
                 return Missing("Explicit output provider must be static and parameterless.");
             Func<object> provider = explicitMethod != null ? () => explicitMethod.Invoke(null, null) : instanceProvider;
-            var core = executeMethod.DeclaringType?.Assembly == typeof(OutputContractProvider).Assembly &&
+            var core = executeMethod.DeclaringType?.Assembly == typeof(Tools.ManageEditor).Assembly &&
                 executeMethod.DeclaringType?.Namespace == "Cidonix.UniBridge.MCP.Editor.Tools";
+            if (core && CoreActionOutputContracts.TryBuild(owner, executeMethod, out var actionContract))
+            {
+                // This marker covers the reviewed built-in action contracts, not
+                // every possible runtime branch or a caller-supplied owner name.
+                actionContract.BuiltInActionDataQualified = string.Equals(
+                    executeMethod.GetCustomAttribute<McpToolAttribute>()?.Name, owner, StringComparison.Ordinal);
+                return actionContract;
+            }
             if (provider != null)
             {
                 try
@@ -171,7 +195,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         {
             var contract = (handler as IOutputContractHandler)?.OutputContract;
             return new { fidelity = contract?.Fidelity ?? "unavailable", reason = contract?.Reason,
-                schemaAvailable = contract?.HasSchema == true, wholeActionDataQualified = false };
+                schemaAvailable = contract?.HasSchema == true, wholeActionDataQualified = contract?.WholeActionDataQualified == true,
+                actionContractCount = contract?.ActionSchemas?.Count ?? 0 };
         }
     }
 }

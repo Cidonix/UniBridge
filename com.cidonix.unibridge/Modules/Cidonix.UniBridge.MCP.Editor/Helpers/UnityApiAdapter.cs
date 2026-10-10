@@ -53,8 +53,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
 #if UNITY_6000_0_OR_NEWER
             return EditorUtility.EntityIdToObject(EntityId.FromULong(unchecked((ulong)id)));
 #else
+            if (id < int.MinValue || id > int.MaxValue)
+            {
+                return null;
+            }
+
 #pragma warning disable 0618
-            return EditorUtility.InstanceIDToObject(unchecked((int)id));
+            return EditorUtility.InstanceIDToObject((int)id);
 #pragma warning restore 0618
 #endif
         }

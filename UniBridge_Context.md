@@ -1,5 +1,144 @@
 # UniBridge Context
 
+- 2026-10-10 actual Capture2DRegion Preview retained a successful producer reply
+  but the new validator threw InvalidCastException for sceneCullingMask
+  16140901064495857664. Fixed only the confirmed numeric validation cause:
+  canonical integer/finite-number leaves retain exact decimal precision, wire
+  intrinsic leaves normalize without invoking original getters, and numeric
+  bounds compare exact decimal text. Ninety independent production controls,
+  the retained actual Preview, UInt64/BigInteger and >2^53 boundary negatives
+  pass offline; new native requalification is pending. Failed capture was never
+  replayed; exact six owned files were quarantined after author/runtime recovery,
+  followed by actual ready/110 assemblies/zero compiler errors. The owned URP
+  sandbox was closed cleanly for its guarded .68 upgrade; no other Editor closed.
+
+- 2026-10-10 continuing qualification: exact native profiler Sample contract and
+  runtime once-only projection now pass under freeze07. Retained a capture reader
+  sharing failure and a zero-business six-family already-active-scene setup
+  failure; both actual clean-scene/author-byte recovery checks passed. Quarantined
+  only their exact imported owned fixtures, without marking failed runs passed.
+  New immutable reader and typed active-scene test successors are being exercised
+  serially. Native capture and remaining action qualification, final source
+  admission and downstream delivery remain pending.
+
+## 2026-10-10 - Completion of original points 8 through 11 authorized
+
+- Owner requested completion of points 8-11 after the read-only audit corrected
+  the earlier broad completion statement. Points 8-10 retain their original
+  agreed scope; point 11 still requires concrete contracts and qualification
+  of every shipped action, beyond the currently partial/envelope coverage.
+- Point 12 native Unity/CoreCLR qualification is explicitly deferred until
+  the Unity 7 release. The four additional improvements (resource budgets,
+  Unity value converters, recorded counters, Player assembly constraints)
+  are deferred until this completion is reported; do not start them now.
+- Baseline is published 0.2.67 at 4fc207a. Preserve authored and concurrent
+  work, use Administrator launches, and serialize native Editor qualification.
+  The cancelled ProcessInfoCollector crash investigation remains cancelled.
+- Test Editor is Unity 6000.6.5f1, PID 93152, project identity
+  ae4e323353aa487f9ea74d566b38eaac, initially in clean Edit Mode. Existing
+  qualified fixtures and reports are retained; fresh evidence belongs under
+  Temp/Completion8to11-20261010. Tests and downstream delivery are pending.
+
+- Fresh candidate freeze05/Test readiness passed with 110 current assemblies,
+  zero compiler/stale/missing/critical issues and all 23 changed C# scripts
+  validated with diagnostics. The complete original 9,029 dependency/author
+  files remain byte-exact. Matched historical snapshot/GetState requests now
+  pass 24 fresh actual measurements (medians 110/94 ms, maximum 125 ms).
+  Default Snapshot additionally exposed unnecessary full-schema copies in its
+  settings summary; the narrow metadata-only optimization is being qualified.
+  Root retained the exact qualified old Snapshot and a truthful source-admission
+  derivative. Native profiler/capture/action suites and host delivery remain
+  required; root-only import helper records a sole Refresh intent and keeps an
+  unknown Refresh outcome distinct from fresh actual readiness.
+
+- Freeze06 actual recorded-CPU qualification passed 83 runner / 2,249 independent
+  physical oracle checks over 365 raw samples and 16 ordinary wire replies;
+  exact four owned fixture files were quarantined, then fresh readiness passed.
+  Default Snapshot median improved from 641 to 328 ms in the current window
+  state; matched historical requests passed another 24 measurements (109/102 ms).
+  Fresh additional profiler actions exposed a real Sample contract omission:
+  each nonempty spike includes elapsedMs from BuildSpikes. The failed completed
+  response retained its original success with replay prohibited. Added only
+  that exact required numeric schema field; native requalification is pending.
+
+- Freeze07 actual remaining profiler gate now passes all six requests: four
+  successful Snapshot/Metrics/Sample/Hierarchy replies and two real Play Mode
+  refusals. Actual emitted RecordedFrames and other 65 owners are exact to the
+  prior physical qualification; only Sample's required spike field changed.
+  Mono native registry once-test passed physical mutation-once, wrong requested
+  action refusal with retained alternate response, faulting getter-once and nine
+  intrinsic wire values/getter-once. Owned files and routes were removed, then
+  actual clean readiness passed. Point10 Main helper first failed before native
+  dispatch due to a missing sibling Python import path. Original helper/failure
+  retained; derivative v2 fixes only that path. First actual Main dispatch is
+  running with the already imported exact owned token and a fresh report.
+
+- Point11 completion in progress: named per-action contracts for ManageEditor,
+  RuntimeProfiler, CaptureView and Editor observations are being linked to the
+  existing independent serializer. The standalone ManageEditor materializer
+  admitted all 38 selectors and five real DTO serialization fixtures; 29 actual
+  build22/June2025 MCP responses from the unchanged .67 Mono producers passed
+  strict business-schema and wrong-type rejection checks. This is partial native
+  evidence, not qualification of every action or of a final .68 package.
+
+- Additional current Mono business-response gates passed for all five observation
+  owners (36 actual replies) and ToolGuide/VersionControl/DomainCatalog/Additive
+  registration (36 actual replies). The first latter attempt exposed missing
+  Success wrapping in the source graph, nullable Groups/scenesManagerPath and
+  wrongly empty helper-written diagnostic lists. Its failed report and prior
+  owned schema bytes were retained; specific source-derived typed fixes passed
+  the complete repeated gate. No authored project file was saved or checked out.
+  The Test-only EditorEvents Clear case changed diagnostic history only.
+
+- Point11 intelligence contracts now cover 29 canonical actions. Eight dynamic
+  list/delegate seams were traced to concrete producers. Actual Mono replies
+  exposed nullable input/metadata fields and a falsely empty recursive structure
+  children array; exact fixes passed all 38 repeated live cases. The compiled
+  rules passed 82 branch witnesses and 1,842 nested wrong-type counterproofs.
+  Canonical business action discriminators reject mismatched action names.
+  WaitForEvent additionally constrains its actual normalized waitFor condition;
+  all 36 observation cases passed again. Final-package integration and downstream
+  delivery remain pending, and prior failed attempts are retained as evidence.
+
+- Candidate 0.2.68 now declares closed action contracts for all 66 core Unity
+  tools. Actual emitted production builders materialized 66 contracts without
+  unresolved providers. Final intelligence rules passed 82 branch witnesses and
+  1,842 nested wrong-type rejections; five additional native cases include a
+  nonempty semantic diff with created/deleted/modified documents and chunk reads.
+  Version/docs are prepared for qualification; this is not a completed release,
+  downstream update, check-in or source publication claim.
+
+- The point8 replay initially passed 237/238 checks. Its synthetic delayed
+  baseline control inherited phase=shipping from the immutable recorded inputs,
+  so the production classifier correctly refused a pre-mutation defect claim.
+  The fixture now explicitly declares the copied synthetic baseline phase and
+  separately proves that altered shipping evidence cannot become such a claim.
+  Original recordings and the production classifier are unchanged; the failed
+  replay remains retained. Fresh replay and native qualification are pending.
+
+- Fresh point8 replay passed 239/239 with the unchanged recorded 36 native calls.
+  First Test import exposed a 33-character GUID in our newly authored observation
+  rule metadata; Unity excluded that source, causing five missing-type errors.
+  The invalid owned metadata is retained, a valid 32-character GUID replaces it,
+  and a new guarded candidate overlay/import is required. No author asset GUID
+  or scene was changed. Four source-only compile profiles had passed because
+  those compilers do not import Unity metadata; native results remain mandatory.
+
+- A production-linked counterproof confirmed JSON.NET intrinsic tokens (Date,
+  Bytes, Guid, Uri, TimeSpan and nonfinite numbers) differed from their actual
+  wire JSON string types. Runtime validation now reads the already serialized
+  token tree with DateParseHandling.None before checking it. The original
+  evidence and CLR getter count remain unchanged; this is requested-action
+  validation correctness, not the deferred Unity DTO converter feature.
+
+- Actual current registry validation correctly retained a completed ValidateScript
+  response after detecting a missing optional diagnostics field in our source
+  contract. The contract now admits only the actual ScriptDiagnostic array with
+  line/col/severity/message fields; producer behavior is unchanged. The initial
+  failure remains retained. Pre-import structural validation omits that optional
+  output on the old loaded contract; full diagnostic validation must pass after
+  the corrected rules import, before native suites or downstream delivery.
+
 ## 2026-10-09 - Guarded restore safety (point 5, qualified 0.2.60)
 
 - Owner authorized the four selected restore-safety findings: dirty-scene
@@ -10925,3 +11064,179 @@ User explicitly stopped this investigation because the chat was blocking diagnos
 ## 2026-10-10 - Source Git publication prepared: UniBridge 0.2.67
 
 User explicitly requested committing and pushing the accumulated completed source work. main/origin/main matched at 338ba54 after fetch. The publication includes completed changes from 0.2.59 through 0.2.67, relay 1.1.0-build.22, production helpers, regression suites, metadata and documentation. The exact 708-file package freeze still matches the native-qualified downstream delivery; no package code, version or binary is changed for publication. Root README now describes the source and bundled relays already tracked in this repository while retaining the proprietary license and Patreon distribution information. Existing author changes and history remain included. Native Mono crash investigation remains stopped at the user's request; no crash fix is claimed. All publication commands run elevated. Final staged/commit/remote/clean-state verification is retained separately in Temp/GitPublication-20261010.
+
+## 2026-10-10 - Points 8 through 11 completion in progress, candidate 0.2.68
+
+The owner requested complete qualification of points 8 through 11 only. Point 12 native CoreCLR qualification is deferred until released Unity 7; the four extra improvements have not started. The earlier 0.2.67 points8-11 completion wording is superseded by this actual coverage audit and must not be treated as current complete evidence. Current candidate includes all66 concrete output-contract owners. WholeActionDataQualified remains false until actual business-action qualification, cleanup, package delivery, and Domovyk full check-in succeed.
+
+Actual tests found and independently reproduced UInt64/BigInteger numeric projection loss and Importer/Navigation output schema null/array mismatches. The numeric validator now preserves wire leaf values and compares numeric bounds without double precision loss. Current fixes admit the actual nullable Importer ChangeRecord fields and unavailable Navigation requestedTypes arrays. Native capture Main Stage now passes including UInt64 scene culling masks. Profiler recorded-frame native/pixel checks and RuntimeOnce physical single execution pass; other families remain under actual tests, not claimed complete.
+
+A failed Six-family fixture executed58 cases but its synchronous menu acknowledgement exceeded the60-second wait and global editor operations dirtied the previously clean author scene. The failed run is retained and excluded. Root reviewed one ReloadCheckpoint with SaveUnmodifiedScenes=false and explicit AllowDirtySceneReload=true, reloaded the exact saved typed scene without writing it, preserved all9029 author/dependency bytes and pre-existing snapshots, and quarantined exactly14 known fixture files. Successor fixtures isolate original scenes and defer expensive work until after the menu acknowledgement. All launches inherit the Administrator token. Native crash investigation remains canceled.
+
+## 2026-10-10 - Confirmed WindZone resolution correction during point11 tests
+
+The isolated Six-v7 test completed58 actual cases and restored typed saved scene setup, scene/meta bytes and all9029 protected files, but qualification correctly rejected AddWindZone reporting unavailable. The actual project enables com.unity.modules.wind and the installed WindModule DLL contains WindZone. Existing Rendering lookup only searches loaded assemblies; its assembly-qualified string did not load an available cold built-in module. AddWindZone now has an exact constant WindModule Type.GetType fallback guarded by Component identity; absent/load-failed module keeps the original truthful error. Generic type catalog behavior is unchanged. The failed report is retained; exactly14 known fixture files were quarantined after fresh healthy read-only readiness. Candidate freeze11 and actual tests of the correction are pending qualification; points8-11 remain in progress.
+
+### 2026-10-10 — Continued points 8–11 qualification, source freeze 11
+
+- Candidate remains 0.2.68 and in progress. Whole action-data qualification remains false; no downstream .68 delivery/check-in yet.
+- Current production C# validator revalidated 196 retained actual responses/checks with zero failures, without replaying handlers/getters. Evidence: Temp/Completion8to11-20261010/root/retained-runtime-validator-v1/runtime-validation-01.json.
+- Authoring-v5 admission rejected before any business producer: imported Shader/Font/Texture transient dirty flags were incorrectly included in the test's saveable-author guard. Its six initial files were archived; all original author/dependency bytes remain preserved. Guard successor uses actual NativeFormat/Prefab importer and editable package identity.
+- Workflow-v1 stopped at owned setup: project import defaults made its valid PNG a Cubemap. Original typed scene/GUID/clean seven roots and all nine pre-existing snapshots were genuinely restored by the first Finish; twelve known owned files archived. A typed own-only Texture2D importer preparation successor is being validated.
+- Six-v9 retained its single Begin receipt but its delayCall did not execute within the fixed 120-second result deadline. Read-only context shows the original clean scene and no created producer assets; actual next EditorUpdate and foreground activation did not run the deferred callback. This attempt remains failed. Safe pending callback cancellation and an update-based one-shot test successor are pending; no Begin replay.
+- Native Unity/CoreCLR point 12, crash/ProcessInfoCollector research, and the four additional improvements remain outside this active work.
+
+### 2026-10-10 — Late Six-v9 result and actual Mono loader investigation
+
+- Six-v9 eventually completed all58 cases after its original120-second deadline. The timeout remains failed. Its late actual result still rejects AddWindZone after the Type.GetType fallback; the earlier correction is therefore insufficient and not qualified.
+- Reviewed actual semantic scene restoration, current selected schemas and unchanged9029 protected bytes. Exactly14 known fixture files were quarantined without business replay; the nine original snapshots remain byte identical. No pending Six-v9 callback remains.
+- Root is preparing a separate dynamic-only plugin with no emitted WindModule reference to record actual Mono Type.GetType and Assembly.Load phases before choosing a confirmed production correction. Source/package freeze11 remains held; no downstream .68 delivery.
+### 2026-10-10 — Current schema and WindZone causal qualification
+
+- Six-v10 completed all58 actual cases within its original deadline, but built-in AddWindZone still returned unavailable. This disproves the sufficiency of the earlier cold-module fallback correction; that earlier causal wording is superseded.
+- Separate dynamic-only diagnostics v1/v2 use no emitted WindModule reference. Actual Mono Type.GetType and the exact production private resolver both return the correct Component type; direct Undo.AddComponent creates a physical WindZone on an owned object. The actual production handler fails on another owned object. Root is measuring target identity and CLR versus Unity null semantics before choosing the correction. Native crash/ProcessInfoCollector research remains canceled.
+- Authoring-v7 completed82 actual cases with all six physical effect checks and original scene/files restored. Its selected output schemas rejected13 successful UI/UI Toolkit responses. Narrow source-backed contract corrections are prepared and pass82 retained responses plus51 negative/legitimate controls; fresh native qualification remains required.
+- Inspector-v6 created its first GameObject, then correctly stopped at an undeclared componentPropertyApplication output. Original clean typed scene and saved bytes were restored. Its eight exact initial fixture files are quarantined; all9029 original protected bytes and nine snapshot files remain preserved. This failed qualification is retained.
+- Candidate0.2.68 and Source freeze11 remain held while these confirmed output/producer defects are resolved. No downstream0.2.68 update or Domovyk check-in has occurred. Points12 and the four extras remain deferred.
+### 2026-10-10 — Confirmed Unity missing-component null semantics
+
+Dynamic-only Wind diagnostic v3 completed once in actual Unity6000.6.5f1 Mono. On two distinct owned GameObjects, missing GetComponent(Type) returned a managed non-null UnityEngine.WindZone sentinel: ReferenceEquals(null)=false, boxed null=false, Unity overloaded null=true. The CLR coalescing operator would skip AddComponent; the Unity null comparison would add it. Exact private target resolution returned the intended owned object and scene. Direct Undo.AddComponent created a real WindZone; the unmodified production handler still reported unavailable and produced no WindZone. Thus fake-null handling, not unavailable type or target identity, is the confirmed cause. The earlier cold-module causal wording is superseded.
+
+All original clean typed SceneSetup, saved scene/meta and protected files were restored; diagnostic v3's exact owned DLL and metadata were quarantined without replay. Source11 hold is released for five narrow rendering null-check repairs and the source-backed UI/UI Toolkit/Inspection contract corrections. Fresh actual native qualification and downstream delivery remain pending. Point12, extra improvements and canceled native-crash research remain excluded.
+Source promotion: five Rendering GetComponent(Type) decisions now compare Component using Unity's overloaded null operator and add exactly once only when absent; real existing components are returned unchanged. Temp compiled causal regression passed30/30 controls, including fake-null, CLR-null, existing identity, single addition and truthful unavailable type. The UI/UI Toolkit schema corrections were also promoted after82 retained actual payload and51 control checks. Source receipts and preimages are retained under Temp/Completion8to11-20261010/11/rendering-unity-null-v1. This is a confirmed implementation repair; fresh actual Editor qualification is still pending, and full action-data metadata remains false.
+Inspection contract promotion now covers the actual componentPropertyApplication report on create/modify/add_component, with separate typed applied/skipped property entries. set_component_property permits the source-backed nonempty applied reports rather than an empty-only list. Thirty-six controlled shape checks passed and the retained actual create response validates. Other GameObject, prefab and type-snapshot shapes stay closed. Root's next native Inspector successor will retain every actual selected-schema failure while collecting the complete safe owned-action suite; any mismatch still fails qualification.
+Corrective schema review before native qualification: the first Inspection draft is retained as superseded. The source-backed current successor00969b6 uses nullable string fileID and explicit nullable TypeIndex/RuntimeProbe fields rather than incorrectly guessing integer/object values. One retained actual payload and65 typed controls pass. Current Source748-file freeze12 records the three narrow repaired files; whole four-profile compilation, fresh compiled materialization and actual native tests remain independent required gates.
+### 2026-10-10 — Actual nonempty hierarchy export counterproof
+
+Two distinct ordinary read-only-in-behavior SceneHierarchyExport/Export requests were executed once on the current Test .68 assembly: Limit2/include options off, and Offset6/Limit4/include options on. WriteToFile=false, AutoFileThreshold=0 and OpenIfNotLoaded=false prevented file writes or scene opening. Both original responses succeeded with real nonempty pages (2 and4 records from363 scene objects), but the advertised selected schema incorrectly allowed maxItems0. The modern service correctly returned RESULT_CONTRACT_MISMATCH, retained the original serialized successful result, and reported handlerCompleted=true/retryOriginal=false. This original failed evidence remains failed; no original command was replayed. The exact SceneWorkflowActionOutputRules Export objects shape is being repaired from current producer source and both retained payloads before a fresh successful native request. Source12 remains an intermediate freeze, not final completion.
+
+### 2026-10-10 — Source13 strict output-contract corrections, native qualification pending
+- Actual read-only Editor observations retained successful original results but exposed false empty-array contracts for SceneHierarchyExport, SceneObjectView Hierarchy, and GameObject get_components. Original failures remain evidence; commands that performed mutations were not replayed.
+- Root guarded-promoted SceneWorkflowActionOutputRules from 0b70c5ef to bacec498: Export now accepts closed typed serialized objects; Hierarchy reuses the same SerializeGameObject typed nodes from View and accepts legitimate null flattened text. Draft controls: 76 Export and 26 Hierarchy; exact preimage and inverse retained under Temp/Completion8to11-20261010/root/scene-source13-promotion-01.
+- Authoring's first conditional draft used unsupported if/then/else keywords. Lead replaced five fragments with equivalent supported anyOf/allOf/not predicates; 157 actual unchanged C# validator decisions passed. This supersedes the failed Source12 keyword scan; fresh complete gates remain required.
+- Inspector get_components actual four-component output revealed nullable monoScriptPath and a nonempty typed component list. Correction and isolation from shared find definition are being qualified before final freeze.
+- These are implementation/control results, not completion of native points 8–11 or downstream delivery. Unity 7/CoreCLR point 12 and four extras remain deferred.
+
+### 2026-10-10 — Source13 installed, actual ordinary contract counterproofs pass
+- Source13 freeze ace090a83f8067c65cefd2dfbc92a413b6e9140312f233bcc28016beff41ba22: 748 source package files. Full four API profiles compile 264 C# files with zero errors. Test Source11→13 successor verified all748 prior actual files against immutable Source11 before four replacements, preserving9029 authored/dependency files and extras. Earlier generic overlay guard failure retained; overlay07 journal predates separately guarded task-owned WindModule promotion and was not used to overwrite unknown bytes.
+- Test sole Source13 Refresh + fresh readiness:110 assemblies,zero errors,idle,clean scenes. Closed owned URP package successor30ee449dfc844d1e849812b31c004a07 matches same freeze; Editor not launched yet.
+- Actual ordinary MCP proof root/scene-contract-fixed-native-01.json passed4: Export2, rich Export4, Hierarchy2/flattenednull, get_components4. Current selected-schema checks and counterexamples passed; original failed results remain retained unchanged.
+- Inspector corrected shared result definition with get_components-specific clones, so find's existing empty result shape remains unchanged. Source inspection c3f759; Source Auth5e02 supported predicates and SceneWorkflowbace are current. Source13 qualification underway; no downstream delivery or .68 Git publication yet.
+
+### 2026-10-10 — Six51 actual complete; documented Audio numeric culture bug repaired
+- Six11 actual single native invocation token d68e263cd7db4d61920c83a71baa3b26 completed58 cases/51 canonical actions,58 schema validations and truthful optional-package absence. WindZone positive succeeds after Unity fake-null fixes. All14 exact owned files quarantined; final110-assembly/zero-error/idle/clean readiness passed. Original install/import cycle failed because post-Refresh bridge was briefly unavailable; original failure is retained. Fresh read-only readiness proved import complete, then first-ever Begin ran once; Refresh and mutation were not replayed. Proof root/six-import-continuation-d68e263cd7db4d61920c83a71baa3b26/result.json.
+- General4 actual12-case failure confirmed genuine ManageAudio defect: documented numeric Volume0.25 ignored under comma decimal culture, returnedvolume1.0, independent typed effect false. General4 failed qualification retained;9 owned files quarantined, author and snapshot bytes preserved. Ordinary fresh readiness remained healthy.
+- Actual compiled parser proof en-US/uk-UA/de-DE confirms JValue.ToString current-culture vs invariant TryGetFloat mismatch. Narrow LF-preserving source change ManageAudio4d7b→ed985d uses invariant conversion only for numeric JValue; TryGetFloat, assignment/clamps and nonnumeric conversion remain unchanged. Controls52original/56candidate/40policy parity,4 API profiles0errors. Actual native Audio setter proof still pending; valid numeric fixture remains unchanged.
+- General62 source/recipe audit found no other concrete invalid mappings. Source14 qualification and delivery remain pending. Point12 and four extras deferred.
+
+### 2026-10-10 — completion8to11: Source14 actual authoring and Inspector follow-up
+- Current candidate remains0.2.68; points12/CoreCLR and four later additions explicitly deferred. No final release/delivery claim yet.
+- Source14 authoring token2b33a6eea72142219517d8036ed39f52: all82 actual producer/schema cases and six independent typed effects PASS; exact18 owned files quarantined, fresh Editor readiness110assemblies/0errors/clean scenes confirmed. Author bytes preserved.
+- Inspector token36ace80b59c84dbe9e2e407992a0f6ab completed all40 actual cases but11 producer/schema mismatches; qualification remains FAIL. GameObject create/property/get_components and all eight TypeSchema cases passed. Prefab/RuntimeProbe/asset-redirect variants are under narrow triage.
+- Exact14 Inspector-owned files quarantined with retained failed proof, clean Editor readiness, all protected author bytes and nine main snapshots preserved. No business replay; new General token813c1f83cd0944968983e0f3e4c8021a is first execution of fresh owned fixture on unchanged Source14.
+### 2026-10-10 — Source14 General physical effects and deferred Task fixture seam
+- General token813c1f83cd0944968983e0f3e4c8021a physically passed58 typed effect checks across nine families, including valid numeric AudioSource.volume=0.25 and all six available Timeline operations. This independently confirms the numeric-culture fix; full General qualification remains FAIL.
+- The59th case captured a completed Task<object> wrapper from UnitySearch instead of its successful business result. Independent source review confirmed the registered pipeline awaits it correctly; this is a native-fixture normalization defect. No production Search changes are authorized/needed from this evidence.
+- Exact17 General-owned files quarantined after fresh110-assembly/0-error/clean readiness. Original failed proof, existing ExternalModels root, all9029 author/dependency files, and nine main snapshots preserved. Successor will invoke each producer once and unwrap only already-completed Task<object>, never blocking or replaying a pending producer.
+- Workflow2 token56dfd865e4014eeea129dddeea8a4ccc running on unchanged Source14; owned texture preparation and fresh readiness passed. Source promotion held until this serial native cycle ends.
+### 2026-10-10 — Workflow14 hierarchy mismatch safely contained
+- Workflow2 token56dfd865e4014eeea129dddeea8a4ccc: real Reparent completed once but strict schema rejected nullable requested.Target/Parent and move.error. RESULT_CONTRACT_MISMATCH retains the successful original serialized result with handlerCompleted=true/retryOriginal=false; failed qualification remains preserved.
+- Root recovery saved only the exact dirty owned scene once, then invoked the first fixture Finish once. Original typed scenes/GUIDs/clean root counts and saved author bytes restored; twelve exact owned files quarantined, nine main snapshots preserved. The completed Reparent command was never replayed.
+- Recovery first preflight used a basic Editor-state response and failed its local shadow check before any mutating request. A separate successor used actual ContextSnapshot scene state and the supported nested text structuredContent shadow; only its own Save/Finish operations ran.
+- Narrow hierarchy contract draft covers source-produced nullable optional request strings and move.error across Reparent/CreateContainer; closed keys and typed collections remain. Source promotion and final release flags still held pending combined review and fresh native qualification.
+
+### 2026-10-10 — Source15 narrow Inspector/asset/hierarchy nullability promotion
+- Reviewed18 source-produced nullable leaves promoted:17 in InspectionActionOutputRules and previewBase64 in GeneralAuthoringActionOutputRules. Five optional hierarchy serializer fields also corrected across six closed Reparent/CreateContainer shapes (30 declarations). Existing closed object/typed collection/action contracts, find/GetComponents and global validation are preserved.
+- Retained actual40-case replay: original29 valid/11 invalid; candidate actual compiled Check148/148 and hierarchy212/212 controls passed. Both isolated candidates compiled in four current264-source API profiles with zero errors. This is retained-result qualification, not a fresh native Inspector/Workflow PASS.
+- Exact three preimages and immutable draft seals are retained in Temp/Completion8to11-20261010/root/inspection-nullability-promotion-15. Original failed native proofs remain failed; Workflow own Save/firstFinish/12-file quarantine restored authors without replay. Full release flags/delivery held pending fresh native Inspector/General/Workflow and remaining physical gates. Points12/CoreCLR and four later additions deferred.
+
+### Points8–11 continuation: General5 Source15 truthful schema failure and containment (2026-10-10)
+- Actual native General5 token 3fea178798a548e7a7721aa59dbbbc12 completed exactly once: 62 actions, 11 families, all62 independent typed effects, author scene restored. Reader qualification remains FAILED on the genuine successful Search response; no command replay and no original receipt upgrade.
+- Fresh readiness confirmed110 assemblies/0 errors/idle/clean. Root containment moved exact22 own files to Library/AgentValidation/UniBridgeCompletion11GeneralFailedSearchSchemaCleanup_token; existing ExternalModels root,9029 protectedauthor/dependency files and9 original snapshot-store files preserved. Local containment preflight initially rejected report.nativeProgress=null because reader stopped before publication; independently verified actual durable once chain, preserving originalfailedreport. No mutation before that preflight correction.
+- Source15 full offline qualification PASS:4 profiles×264 files/0 errors;66 tools/504 selectors/432 canonical actions;1855 witnesses/29945 rejected counterproofs. Fresh196 retained-response runtime checks PASS, without native handler/getter execution. These results do not yet close points8–11; native Inspection8/Workflow/CaptureView/ownedURP Editor gates remain required. Point12/CoreCLR and four extras remain explicitly deferred.
+
+### Points8–11: Inspector8 native Source15 verified (2026-10-10)
+- Token dca7f6d679024be0b6fc9973ea28d684 passed actual36 canonical actions/40 producer cases/40 schemas, three truthful expectednegative branches, prefab asset redirection and typed author restoration. All14 ownfiles quarantined; original9029 files and9 snapshotfiles preserved. Final fresh readiness110assemblies/0errors/idle/clean after single cleanupRefresh.
+- Complete Rootjob: Temp/Completion8to11-20261010/root/job-inspection-token/result.json; native report11/native-inspection-v8/native-live-token.json. This is actual producer qualification, not forty independent wire invocations or everybranch.
+- Fresh Workflow2 token d1bb3281d21d4a3991df7a277217fc4a started serially on exact Source15. UI Toolkitfocus and completeConsolearchive/clear announced; no completed mutation replay. Source remains unchanged while current nativejob runs.
+
+### Points8–11: Workflow Source15 Detailed Hierarchy mismatch retained (2026-10-10)
+- Fresh Workflow2 token d1bb3281d21d4a3991df7a277217fc4a recorded12 successful ordinary responses, including corrected Reparent/CreateContainer and independentlyconsistent object-count delta. Detailed SceneObjectView.Hierarchy then completed with5object data but was truthfully rejected by RESULT_CONTRACT_MISMATCH: schema permitted brief component strings but actual Detailed component objects. Originalfailure remains failed; no replay of either hierarchy mutator.
+- Root issued first Save only for exactdirty ownscene after fresh ContextSnapshot, then first own Finish. Typed original scene setup/GUIDs/savedscene+meta and9MainSnapshots restored;9029 original protectedfiles exact.12knownownfiles quarantined in UniBridgeCompletion11FailedWorkflowDetailedHierarchyCleanup_token. Successfulcontainment is not Workflowqualification. Source15unchanged; pending closed typed Detailed component schema fix and General10nullable correction are Tempdrafts only.
+- CaptureView3 token a43c6a49ea9340e0845339c4b50d0dc8 started serially aftercontainment, GameViewfocus announced. Point12/CoreCLR and fourextras staydeferred.
+
+### Points8–11: CaptureView3 truthful schemafailure / firstownedFinish (2026-10-10)
+- CaptureView3 token a43c6a49ea9340e0845339c4b50d0dc8 stopped atfirstactual CaptureSceneView. Productionrender completed and producedowned64×64PNG; currentclosedSceneInfo rejected temporary-camera scene.name/path=null. Originalwire hasRESULT_CONTRACT_MISMATCH/handlerCompleted=true/retryOriginal=false and remainsfailed. Two prior ordinarysetupcases are not13canonicalqualification.
+- RootfirstownFinish closedonlyownadditiveScene withoutauthorsave; originalactiveScene and9029author/dependency files/Main9snapshots retained. Exact10ownAssetsfiles quarantined; originalrenderLibraryevidence kept. Rootproof root/captureview-v3-owned-recovery-token/completed.json. NoCapture replay. Source15held whilethreecontrolledrules drafts arequalifiedoffline.
+- Actualread-only Script $default wirebranch PASS in root/script-default-native-01.json (manifest01/currentMap06/freeze15): explicitrequiredSuccess=false, authenticerror-onlysourceoutcome/currentwholeaction validation+counterproofs. Doesnotclaimapositiveauthoring action. Point12 andfourextrasdeferred.
+
+
+### 2026-10-10 - Source16 confirmed General, Capture and Detailed Scene schema corrections
+- Promoted three reviewed rules only: ten source-backed General nullable leaves; two temporary Capture camera scene nullable name/path leaves; closed typed SerializeComponent metadata/details across the eight root/recursive slots of SceneObjectView View, Hierarchy, Query and Selection. Authored JSON is confined to actual serialized property values. Required fields, closed object checks, typed collections, producers and global validator preserved.
+- Actual compiled C# retained-result/counterproof controls passed (General174, Capture32, Scene656), all four current API profiles compiled without errors. Three exact source preimages and sealed drafts retained; all other745 frozen package files unchanged. Prior native failures remain failed, own fixtures contained without business replay, author files and Main snapshot store preserved.
+- Fresh live General/Workflow/Capture and owned URP qualification still required before release flags, host delivery or completion. Point12/CoreCLR, four extras and canceled ProcessInfoCollector crash investigation remain deferred.
+
+
+### 2026-10-10 - Source16 General6 actual full cycle PASS
+- Fresh General6 token ed734478fdb2428d91304fbc352fdde1 passed62 actual native canonical producer outputs,62 current schema checks and62 independent owned effects across11 families; no optional errors. Owned22 files quarantined, all9029 author/dependency files and nine Main snapshot files retained, author Editor state restored. All six Root job stages passed; final fresh ready110 current assemblies, zero errors/dirty scenes. This is62 native handler outputs with11 composed wire schema identities, not62 separate ordinary calls or every possible branch.
+- Source16 three-rule import also passed110 assemblies/0errors/3standard C# validations. Original sole Refresh unknown outcome retained separately from fresh actual ready; no automatic mutation replay. Fresh current production19 pure C# runtime196 also passed without invoking handlers/getters/MCP. Workflow/Capture/URP and final publication/delivery remain pending.
+
+
+### 2026-10-10 - Source16 Workflow Detailed views passed; Query nullable filters failure retained
+- Actual Workflow2 bcb898d6ba43404ab800dca7cc902c4f completed14 valid ordinary cases including Detailed Hierarchy and View with typed components. Next Query completed successfully in Unity but current schema rejected four unprovided null filters: exactName/componentType/tag/layer. Original success and RESULT_CONTRACT_MISMATCH retained; no automatic replay and no qualification claim. Source-backed five optional string filters correction and diagnostic-only full workflow preparation remain Temp-only.
+- Reviewed first recovery ownSceneSave and firstFinish restored original authors/snapshots; exact12 own files quarantined,748 package/9029 author files/nine Main snapshots preserved. No Query replay or author-scene save. The next fresh Capture fixture import will refresh removed/added own scripts together and provide new readiness; failed Workflow remains failed. Source16 offline all66/504/432,1855witnesses/29945counterproofs and API4x264/0 passed. Publication/hostdelivery held.
+
+2026-10-10 Root continuation: Source16 CaptureView3 token15e22b553ac14d3399bb7aa2a02b7804 passed all six stages, 13 canonical actions/33 actual cases, 14 decoded PNG artifacts, one-pixel Diff, Series/ContactSheet and own Clear. Ten exact owned files quarantined; fresh110 assemblies/0errors/idle clean, protected9029/Main9 unchanged. Reviewed sealed Python-only Workflow diagnostic e8d454a58a19437e5b47158293cf0d4301806b7ca99caab415e2e325fd0b9a6b, exact closed actual MCP mismatch status:error with success absent, typed JSON mirrors/requests, original81 recipes/C# fixture/effects unchanged. Root orchestrator run_workflow_diagnostic16.ps1 retains always-failed raw diagnostic and requires separate containment/fresh normal qualification. No12/CoreCLR, four extras or canceled crash investigation.
+
+2026-10-10 Root diagnostic harness boundary correction: original Source16 Diagnostic1 token8aebe83c0dd340978dec78cc06b82ab9 remains FAIL (report692580348ec1746dc8a3fc367e73609f3549b83c75153a8f1c6f202d51777278), fourteen valid preceding cases, actual Query16 completed success retained with four nullable-filter contract errors. The Python helper compared full modern text envelope to mirror-free machine envelope; no producer replay occurred. Protected9029/Main9 exact, no pending owned WorkSession/Snapshot, native Finish not yet run. Reviewed Diagnostic2 seal f9877741a4ae8b1fb7ba464597b3e38bd73f2695e45007aae5affb5d2f2f3ada: typed exact one-mirror normalization/rawtext retention, original81 recipes/effects/fixture/alwaysfalse report unchanged;35 actual-parser controls. Root successor orchestrator changes only prep route, new namespace mandatory after first ownSave/Finish containment. Package Source16 unchanged; completion/delivery pending.
+
+2026-10-10 Root first-ownSave/Finish containment for failedDiagnostic1 token8aebe83c0dd340978dec78cc06b82ab9 PASS: reviewed recovery seal39f2aebb6dbda21fb839811a0491b46533e6a7f8a59b75a5c1f2ade1e4f08003/helper20db3d6313502fb775cbf73c98e9fb867a9d2825a3f0a5211d6edac7b0e5c7e2; first fresh soleOwnDirtyScene read, one OwnSave, first OwnFinish, exact12quarantine; protected9029/Main9/author scene restored. Original diagnostic passedfalse/cleanupSafefalse/report692580.../Queryraw8953... byte-exact, no Query or Begin replay. FreshDiag2 handles oldProbe removal/newProbe import together with soleRefresh and freshreadiness; Source16 remains unchanged.
+
+2026-10-10 Diagnostic2 readonly reload boundary and once-only continuation: token4b2ecd1949bb4ccf873077bfbefe9347 retained35 completed cases, three schema mismatches (Query filters and shared optional BatchImpact descriptions), and successful ScriptCreate36. Readonly Ready37 encountered unpublished project scope during domain reload; original report ef4127f9007779fe16e7cef3bfce490f89473c28b1b287f9b0f6db87b88f6388 remains failed. Root fresh readonly Ready d9bc83895d8923318e30f9ba713225a18c91b69a5eae6a549943810ccc7a9a21 proves idle health/110 fresh assemblies. Separate no-Refresh import05ebd10c7513cc528034caf334bc747bf3bf87341a93d6b94bca351bf4f1150d remains false because the sole owned scene is legitimately dirty. It is not a global-clean qualification. Reviewed continuation seal96a0db914fcbc0510fd392c4005919e999c6c1705eedc7839943f018596e47d4,32 actual controls, exact14 owned files/9029 protected/Main9; dispatch resumes unchanged suffix at ScriptRead, never Begin or ScriptCreate. Fresh retries apply only to exact pre-handler readonly scope absence. All diagnostic qualification flags remain false; Source16/package unchanged, fresh normal workflow and release/delivery still pending.
+
+2026-10-10 Diagnostic continuation1 genuine readonly fixture refusal: report5724285b6457f7cb422c40498bb875f0f460ce346b9db322f2589957afae8839 retained39 cases. ScriptRead/GetSha/Validate passed; readonly replace_method preview failed because the known fixture placed namespace/class/method on one line while the existing method-header scanner is anchored to a new line (ManageScript.cs1956-1965). Actual raw041 remains literalfalse/schema-valid, never a contract mismatch or unknown mutation outcome. Own script known bytes stayed unchanged; no session/snapshot/Finish started. Root fresh readonly Ready cc25da037d896f42a61fe8138a75e5af462a674051327471000bfd163706742a remains healthy110/zero errors. Test correction will use a separately recorded supported regex preview for this diagnostic and multiline source for the future fresh normal method preview; no unrelated production parser expansion. All previous diagnostic reports remain false, Source16 remains unchanged, release flags and host delivery held.
+
+2026-10-10 Diagnostic continuation4 terminal and sole containment: actual report3cdb2ea631fac7c9d7f3a45bf8b1b13651c9e3108cdc4c2308eda771d4a8e173 retained95 cases/eight exact contract mismatches and completed its diagnostic cycle. Distinct supported regex preview and update succeeded; original failed readonly041 and all earlier failed reports remain immutable and nonqualifying. Native Finishcb835bf7ad72656f9487de375e41e617f770c9daa4e301476b8324a316aa75fd restored author scene/active scene and preserved Main9. Root reviewed containmentv3 seal5021c85ea26340d18e32184a19bdfe5a1e17b7209b84e0306d8d5fc27413b12f and performed the sole exact12 quarantine; current Source/Test748, protected9029 and Main9 byte checks passed, no command/Finish replay. Refresh remains pending until the next package/fixture import. Source16 unchanged; Scene11/Recovery4/Inspection3 source-backed nullable-leaf candidates remain Temp-only until joint gates and Root promotion. A fresh ordinary Workflow run, owned URP gates, final metadata/admission and downstream delivery are still required; points12/four extras/canceled crash investigation remain deferred.
+
+
+### 2026-10-10 - Source17 confirmed ordinary Workflow contract corrections
+- Promoted only SceneWorkflow/Recovery/Inspection Rule files: eleven/four/three source-backed nullable leaves respectively. Existing concrete object shapes, required fields, closures, action mappings, producers and global validator remain unchanged. All other745 package files retained; exact three preimages and sealed candidates preserved.
+- Current C# contract Check passed271 actual-retained-result/negative controls, full264-source module passed all four conditional API profiles with zero errors. Completed95-case diagnostic and eight original mismatches remain nonqualifying; exact12 own files were quarantined after real author-scene/snapshot restoration, without repeating writes or Finish.
+- Fresh ordinary Workflow79+2, URP physical capture/Editor/SnapshotClear, final432 admission and host delivery/check-in remain pending. No native Unity CoreCLR, deferred extras or canceled crash investigation was performed.
+
+
+2026-10-10 Simplified remaining8–11 completion: actual Source17 ordinary Workflow95/79+one AssetPreview passed; Preview decoder casing failure retained separately, first exact12 quarantine and fresh110/0/clean passed. Owned URP capture completed all6 stages with physical pixel evidence and first exact12 cleanup, fresh52/0/clean. EditorSandbox paused before scene/play: owned guard Publish FileStream temporary path272 exceeded Mono path handling; exact single test-only basename shortened to252, production748 unchanged. Original18-call failure retained, no fixture install or mutating command replay. Only remaining Editor suffix/Clear, current final publication gates and Dom/Corgi delivery/check-in will be completed; no new generic test frameworks or deferred scope.
+
+2026-10-10 Simplified Editor qualification continuation: per-call full Main9029/package748 hashes removed from the owned test controller; full inventories remain checked at the beginning and after cleanup, with Sandbox47 and the last own TagManager hash checked per call. Correction to the preceding note: the actual shortened guard temporary path is256 characters. Original failures remain immutable. Genuine 64-bit InstanceID SelectGameObject failure is retained separately; supported selection/ping via the actual own GameObjectPath succeeded, without changing production resolution or qualifying CoreCLR. Both SyncSolution selectors returned actual successful generation-request receipts; this host has an empty solution/project-file inventory, so no physical IDE generation is claimed. First compilation request returned queued and subsequent fresh readiness remained healthy52/0; a particular DLL timestamp or physical forced rebuild is not guaranteed by that response and has not been observed. Production package748 unchanged; final Editor cleanup, admission, downstream delivery and Domovyk check-in still pending. Point12, four extras and canceled crash investigation remain deferred.
+
+
+## 2026-10-10 — points8–11 final package metadata
+
+Actual owned Editor suite completed:167 successful ordinary receipts,38 declared selectors,34 canonical actions,seven native guards,six exact quarantined files. Source17 ledger432/432 and29 existing evidence bindings passed. Three genuine ordinary report-fallback rows received only explicit executionKind metadata in a separate Root-reviewed ledger copy; original ledger and all outcomes preserved. The host-health report was copied byte-for-byte into task Temp for the existing promotion helper path restriction. Root applied built-in-only metadata marker plus three release documents; package remains748 files. Original failed/unknown receipts remain separate. Existing64-bit InstanceID selection limitation remains unfixed; supported generated own path passed. Source18 final compilation/catalog/latency and Domovyk/Corgi delivery remain pending. Point12/CoreCLR,four extras and canceled native crash work remain deferred.
+
+
+## 2026-10-10 — Пункти 8–11 завершені; UniBridge 0.2.68 доставлений
+
+- Фінальний пакет: 748 файлів, 264 C#; фактична компіляція у чотирьох умовних API-профілях без помилок. Покриття контрактів 66 built-in tools: 504 селектори, 432 канонічні дії, 231 native-producer і 201 ordinary-MCP свідчення. 17 умовних негативних результатів збережені негативними; це не твердження про позитивне виконання всіх параметрів/гілок.
+- Повторна перевірка 196 збережених runtime-відповідей — 196/196; фінальні 48 реальних вимірювань MCP (24 default + 24 matched) пройшли початкові пороги. Повторних виконань бізнес-команд для виправлення формату звіту не було.
+- Фінальна admission успішна: Temp/Completion8to11-20261010/root/final-source18-admission-complete.json. Початковий KeyError executionKind у трьох fallback-рядках залишається у вихідному негативному звіті; додано тільки фактичну ordinary_mcp provenance, результати не переписувалися.
+- Domovyk: 17/17 перевірок, 115 актуальних збірок, 748 файлів пакета звірені, 8190 авторських/dependency-файлів збережені, нуль compiler/Console errors, exceptions та asserts; сцена/selection/Prefab Stage/dirty flags збережені. Corgi Engine v10: 17/17, 140 збірок, 748 файлів, 8955 захищених файлів, нуль compiler/Console errors; авторський стан збережений. Контексти Domovyk/Corgi/Test доповнені без втрати історії. Corgi не має репозиторію, check-in у ньому не виконувався.
+- RefreshAssets у двох host Editors викликаний один раз; під час domain reload повернув outcome_unknown. Повторного Refresh не було. Подальші свіжі read-only перевірки фактично підтвердили готовність, .68 та здорову компіляцію.
+- Повний saved-pending check-in Domovyk: cs:290, /main, cloud. 144 нові file revisions і 3 директорії; усі 145 збережених файлів звірені з сервером і залишилися локально точними, pending порожній. Єдиний файл без нової revision — TMP fallback — фактично тотожний cs289, cs290, preflight і локальним байтам (726310 bytes / SHA256 23f94d9614697f553325a4f518bd015986b942ad6fb7063670e38717d21af527). Оригінальна exactPaths=false перевірка збережена; вузьке пояснення inherited unchanged file: Domovyk/Library/AgentValidation/UniBridge0268-points8to11-full-checkin-20261010/server-publication-verification-complete.json. Повний набір містить власні матеріали WellDwellerLevelDesign та п'ять перевірених Nightmare-сцен після автоматичного startup bake; авторські правки не відкатувалися.
+- Пункт 12/CoreCLR відкладено до релізу Unity 7; чотири додаткові поліпшення не починалися. Скасоване дослідження native crash ProcessInfoCollector не відновлювалося. Окреме відоме обмеження SelectGameObject/PingSelection з 64-бітними InstanceID залишається поза scope 8–11; перевірена гілка вибору власного об'єкта за шляхом працює. В окремому disposable URP Editor збережено чотири повідомлення від внутрішніх Unity UXML/shader assets; загальна чистота його Console не заявляється.
+- Git commit/push вихідного UniBridge 0.2.68 залишається невиконаним у збереженому scope; повний Plastic check-in Domovyk фактично завершено й перевірено.
+
+
+## 2026-10-10 — SelectGameObject/PingSelection: повні object IDs
+
+Після окремого запиту користувача спільний ResolveGameObject у ManageEditor.cs передає long InstanceID до UnityApiAdapter.GetObjectFromId без int32 range filter/cast; видалено дубльований int reflection resolver. Component ID надалі вирішується у його власний GameObject, як раніше. Legacy гілка адаптера відхиляє ID поза signed Int32 до виклику старого API, щоб не створити alias через обрізання. Збережено попередній pending-набір 0.2.68; пункт 12/CoreCLR і скасоване дослідження crash не починалися. Живі Mono 6.6 і focused legacy/API перевірки в роботі.
+
+
+Перевірку завершено: у фактичному x64 Mono Unity 6000.6.5f1 обидві дії успішні з GameObject ID 16492674455256 та Transform ID 16492674455299 (власний GameObject 16492674455298). Ping перевірено з порожнім Selection, тому fallback не маскує помилку lookup. Чотири негативні випадки (0 та long.MaxValue для обох дій) повертають помилки. Усього 8 actual native cases PASS; початкову порожню Selection відновлено, сцена/PrefabStage/dirty flags і байти авторської сцени/.meta та package .meta незмінні. Фактична компіляція Editor: 110 assemblies, 0 errors/stale/missing outputs. Чотири current compiler profiles по 264 sources без помилок; exact legacy adapter method compile з п’ятьма встановленими Unity 5.3–2018.4 SDK та 18 C#4 stub checks PASS. Legacy Editor не запускався. Усі запуски elevated; керування робочим столом не застосовувалося. Звіт: H:/Repos/Cidonix/UniBridge/Temp/ObjectIdSelection-20261010/verification-complete.json.
+
+Це окремо завершене виправлення раніше записаного обмеження SelectGameObject/PingSelection; попередні qualification receipts 0.2.68 залишаються історичними. Версію не підвищено, Domovyk/Corgi у цьому вузькому запиті не змінювалися, Source Git commit/push не виконувалися. Попередні pending правки збережені. Пункт 12 не чіпали.
+
+
+## 2026-10-10 — Git publication UniBridge 0.2.68 і 64-бітних object IDs
+
+Користувач прямо авторизував коміт і push вихідного UniBridge. До коміту включається повний збережений pending-набір 0.2.68 із завершеними пунктами 8–11 та окремим перевіреним виправленням SelectGameObject/PingSelection через UnityApiAdapter.GetObjectFromId(long), разом із парними .meta, документацією й історією контексту. Версія залишається 0.2.68. Перед публікацією main та origin/main збігаються, staging порожній; зміни інших авторів не відкатуються. Пункт 12/CoreCLR, чотири додаткові поліпшення і скасоване дослідження native crash не відновлюються. Результат коміту, push, звірки remote SHA та фінального Git status записується у Temp/ObjectIdSelection-20261010/git-publication.json після виконання команд. Усі запуски elevated; Unity повторно не запускається.
