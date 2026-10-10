@@ -18,7 +18,7 @@ namespace Cidonix.UniBridge.MCP.Runtime.Serialization
             }
 
 #if UNITY_6000_0_OR_NEWER
-            return (long)EntityId.ToULong(obj.GetEntityId());
+            return unchecked((long)EntityId.ToULong(obj.GetEntityId()));
 #else
 #pragma warning disable 0618
             return obj.GetInstanceID();
@@ -29,14 +29,19 @@ namespace Cidonix.UniBridge.MCP.Runtime.Serialization
 #if UNITY_EDITOR
         public static UnityEngine.Object GetObjectFromId(long id)
         {
-            if (id <= 0)
+            if (id == 0)
             {
                 return null;
             }
 
 #if UNITY_6000_0_OR_NEWER
-            return EditorUtility.EntityIdToObject(EntityId.FromULong((ulong)id));
+            return EditorUtility.EntityIdToObject(EntityId.FromULong(unchecked((ulong)id)));
 #else
+            if (id < int.MinValue || id > int.MaxValue)
+            {
+                return null;
+            }
+
 #pragma warning disable 0618
             return EditorUtility.InstanceIDToObject((int)id);
 #pragma warning restore 0618

@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.68",
+  "version": "0.2.69",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Improved\n\n- Core MCP tools expose closed business-response contracts for their individual actions, including nested producer data and actual selector aliases.\n- Completed results are checked against the requested action after one serialization. RESULT_CONTRACT_MISMATCH retains the serialized response and forbids command replay.\n- Recorded CPU history, explicit-density 2D region capture and Editor responsiveness retain their existing behavior. Native Unity CoreCLR qualification remains deferred.\n"
+    "changelog": "### Fixed\n\n- UnityEngineObjectConverter resolves signed object IDs without rejecting negative legacy IDs or truncating out-of-range values to Int32. Unity 6 preserves all 64 identity bits in both directions.\n"
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

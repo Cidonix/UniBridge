@@ -2,6 +2,13 @@
 
 All notable UniBridge package changes will be documented in this file.
 
+## 0.2.69
+
+### Fixed
+
+- UnityEngineObjectConverter accepts nonzero signed object IDs. Legacy resolution rejects values outside Int32 before calling Unity, preventing truncated aliases; Unity 6 conversions preserve all 64 identity bits even under checked arithmetic.
+- JSON object references retain their existing assignability checks and invalid-reference errors. No Runtime-to-Editor assembly dependency was added.
+
 ## 0.2.68
 
 ### Improved

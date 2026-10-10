@@ -7,6 +7,10 @@ UniBridge is local-first. The Unity package runs a bridge inside the Editor, ins
 For version-specific packaging, verification, and known limitation details, see
 `../RELEASE_NOTES.md`.
 
+## JSON scene-object references
+
+UnityEngineObjectConverter writes scene references with a numeric `instanceID` and resolves them to the requested Unity type. Unity 6 preserves all 64 identity bits through signed JSON integers. Legacy resolution accepts nonzero signed Int32 IDs, including negative values, and rejects larger values before lookup. Unresolved IDs and incompatible types retain their existing JSON deserialization errors; JSON null remains a null reference.
+
 ## Shared assembly and compilation catalogs
 
 Loaded type queries use assemblies already visible to the runtime. Full identity and runtime instance distinguish collisions; changing generations and partial reflection failures are reported. Queries do not explicitly load assemblies or construct user types. Runtime reflection may resolve dependency metadata.

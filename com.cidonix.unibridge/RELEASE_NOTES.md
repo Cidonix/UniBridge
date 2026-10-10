@@ -1,4 +1,16 @@
-# UniBridge 0.2.68 Release Notes
+# UniBridge 0.2.69 Release Notes
+
+Release date: 2026-10-11
+
+UnityEngineObjectConverter now resolves signed object IDs consistently with the Editor adapter. Zero is the null ID. The legacy branch accepts negative Int32 IDs and rejects values outside Int32 before lookup; Unity 6 uses unchecked signed/unsigned conversions to preserve all 64 identity bits when writing and resolving references. Existing JSON shape, assignability checks and invalid-reference errors are preserved.
+
+Focused qualification passed 23 native checks in x64 Mono Unity 6000.6.5f1, including the actual ManageGameObject nested-property consumer, and 33 native checks in x64 Mono Unity 5.6.7f1 with real negative GameObject/Transform IDs. The exact converter/helper classes compile with checked arithmetic against five installed Unity 5.3–2018.4 SDKs using Roslyn and .NET2 references. Thirteen separate checked-arithmetic stub cases cover the Unity 6 sign bit and all-bit identities; the preceding source fails seven of these cases. Legacy native qualification tests the exact extracted production classes, not a full legacy package or the old Editor's C# language compiler.
+
+The broader MCP smoke finished with 15 passing and 5 failing steps: two expected negative responses were rejected by the runner, two calls crossed a reload disconnect, and probe cancellation history was not established. Fresh snapshot/hierarchy reads recovered, final compilation/Console checks passed, and no all-green broad-smoke qualification is claimed.
+
+Native Unity CoreCLR qualification (point 12) remains deferred until released Unity 7.
+
+## Previous 0.2.68 Notes
 
 Release date: 2026-10-10
 
