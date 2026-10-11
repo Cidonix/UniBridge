@@ -188,6 +188,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Maximum scripts receiving semantic obsolete API analysis per request (1..25). Bulk results explicitly report skipped/partial coverage. Default 5; semantic work also has an 8 second request budget.", Required = false, Default = 5)]
         public int MaxSemanticScripts { get; set; } = 5;
 
+        [McpDescription("Include independent advisory Input API mismatch hints for Analyze, ReadTypes, Selection, ChangeImpact and Hotspots. Never changes source or obsolete API hint meaning.", Required = false, Default = true)]
+        public bool IncludeInputApiHints { get; set; } = true;
+
+        internal int InputSemanticScriptsAnalyzed;
         internal int SemanticScriptsAnalyzed;
         internal System.Diagnostics.Stopwatch SemanticWatch;
 

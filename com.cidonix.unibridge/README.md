@@ -222,6 +222,18 @@ AI agent/MCP client so it reloads the available Unity projects.
 
 ## Documentation
 
+### Semantic Input API Hints In 0.2.72
+
+Standard/deeper script validation, proposed script edits and ScriptIntelligence
+include an independent `inputApiHints` report. Actual bound Unity Input symbols
+are checked against the current project's Old/New/Both input backend. Aliases
+and static imports resolve through metadata; inactive code and source-owned
+names do not produce guesses. Both accepts both APIs. Unknown settings report
+unavailable analysis. These advisories never rewrite code or change validation
+success. Inspect status, limitations and truncation; basic validation skips this
+analysis. `IncludeInputApiHints=false` disables intelligence hints independently
+of obsolete API hints. Tests: `Tools~/InputApiRegression`.
+
 ### Semantic Obsolete API Hints In 0.2.59
 
 Standard/deeper script validation and script edit results include

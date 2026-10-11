@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
@@ -66,7 +66,8 @@ Returns:
                             no_op = new { type = "boolean", description = "Whether this was a no-op (no changes made)" },
                             normalizedEdits = new { type = "array", description = "Normalized edit operations that were applied" },
                             warnings = new { type = "array", description = "Any warnings generated during processing" },
-                            obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema()
+                            obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema(),
+                            inputApiHints = ManageScript.GetInputApiHintsOutputSchema()
                         }
                     }
                 },
@@ -226,6 +227,8 @@ Returns:
                     var hints = (McpJson.TokenFromObject(respDict["data"]) as JObject)?["obsoleteApiHints"];
                     if (hints != null)
                         details["obsoleteApiHints"] = hints;
+                    var inputHints = (McpJson.TokenFromObject(respDict["data"]) as JObject)?["inputApiHints"];
+                    if (inputHints != null) details["inputApiHints"] = inputHints;
                     data = details;
                 }
                 else

@@ -58,6 +58,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             }
             if (owner == "UniBridge_ValidateScript")
                 AddConditionalValidationDiagnostics(result["$call"]);
+            foreach (var schema in result.Values) InputApiOutputContract.AddTo(schema);
             return result;
         }
 

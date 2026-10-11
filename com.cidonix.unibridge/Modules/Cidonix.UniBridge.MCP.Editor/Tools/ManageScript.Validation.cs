@@ -21,6 +21,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             public bool Ok;
             public ScriptDiagnostic[] Diagnostics = Array.Empty<ScriptDiagnostic>();
             public ObsoleteApiReport ObsoleteApiHints;
+            public InputApiReport InputApiHints;
         }
 
         internal sealed class ScriptDiagnostic
@@ -39,7 +40,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             {
                 Ok = ok,
                 Diagnostics = ParseDiagnostics(diagsRaw),
-                ObsoleteApiHints = AnalyzeObsoleteApiHints(fileText, chosen, scriptPath)
+                ObsoleteApiHints = AnalyzeObsoleteApiHints(fileText, chosen, scriptPath),
+                InputApiHints = AnalyzeInputApiHints(fileText, chosen, scriptPath)
             };
         }
 
@@ -63,6 +65,23 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             }
 
             return Cidonix.UniBridge.MCP.Editor.Helpers.ObsoleteApiHints.AnalyzeSource(source ?? string.Empty, scriptPath);
+        }
+
+        internal static InputApiReport AnalyzeInputApiHints(string source, string level, string scriptPath = null)
+        {
+            return AnalyzeInputApiHints(source, ParseValidationLevel(level), scriptPath);
+        }
+
+        static InputApiReport AnalyzeInputApiHints(string source, ValidationLevel level, string scriptPath)
+        {
+            return level == ValidationLevel.Basic
+                ? InputApiHints.Skipped("Basic validation does not build a semantic context; use standard for Input API hints.")
+                : InputApiHints.AnalyzeSource(source ?? string.Empty, scriptPath);
+        }
+
+        internal static object GetInputApiHintsOutputSchema()
+        {
+            return Cidonix.UniBridge.MCP.Editor.ToolRegistry.ActionOutputSchema.DTO(typeof(InputApiReport));
         }
 
         internal static object GetObsoleteApiHintsOutputSchema()

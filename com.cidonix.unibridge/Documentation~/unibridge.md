@@ -1479,6 +1479,16 @@ failure policy. Inspect `status` (available/partial/unavailable/skipped),
 `limitations`, `bindingErrors` and `truncated` before treating empty hints as
 complete coverage.
 
+As of 0.2.72, the same script authoring and intelligence paths expose an
+independent `inputApiHints` report. It checks actual metadata-bound old/new
+Unity Input APIs against the project's configured input backend, including
+aliases and static imports. Both accepts both API families; unknown settings
+report unavailable analysis. Inactive branches and source-owned matching names
+are excluded. These hints do not change validation success or rewrite source.
+Basic validation skips analysis. Use `IncludeInputApiHints=false` to disable
+intelligence Input advisories independently, and inspect report status,
+limitations and truncation before assuming complete coverage.
+
 Hotspots replaces obsolete-name text guesses with semantic checks. Its
 `semanticCoverage` exposes examined/omitted scripts and per-script limitations.
 `MaxSemanticScripts` defaults to 5 (1..25) with an eight-second request budget;

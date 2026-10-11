@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.71",
+  "version": "0.2.72",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Improved\n\n- Resolve actual project input handling and preserve compatible EventSystem modules.\n"
+    "changelog": "### Improved\n\n- Add independent semantic Input API compatibility advisories for script authoring and intelligence.\n"
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

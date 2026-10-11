@@ -409,6 +409,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             {
                 action = "ChangeImpact",
                 obsoleteApiHints = AnalyzeObsoleteProposal(proposedSource, record.Path, p),
+                inputApiHints = AnalyzeInputProposal(proposedSource, record.Path, p),
                 target = BuildScriptSummary(record, p, false, false),
                 input = new
                 {
@@ -496,6 +497,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             var maxItems = Clamp(p.Limit <= 0 ? DefaultLimit : p.Limit, 1, MaxLimit);
             var issues = new List<object>();
             var semanticReports = new List<object>();
+            var inputCoverage = new InputApiCoverageReport();
             int scanned = 0, semanticSkipped = 0;
             bool semanticPartial = false;
 
@@ -504,6 +506,12 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 scanned++;
                 var analysis = AnalyzeSource(record);
                 var obsolete = GetObsoleteHints(record, p);
+                var input = GetInputHints(record, p);
+                if (input.status == "skipped") inputCoverage.skipped++;
+                else inputCoverage.analyzed++;
+                if (input.status != "available") inputCoverage.status = "partial";
+                if (inputCoverage.reports.Count < 25) inputCoverage.reports.Add(new InputApiFileReport { path = record.Path, inputApiHints = input });
+                else inputCoverage.truncated = true;
                 if (obsolete.status == "skipped") semanticSkipped++;
                 if (obsolete.status != "available") semanticPartial = true;
                 if (obsolete.status != "skipped")
@@ -519,11 +527,15 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                     break;
             }
 
+            inputCoverage.skipped += records.Count - scanned;
+            if (!p.IncludeInputApiHints) inputCoverage.status = "skipped";
+            else if (scanned < records.Count) inputCoverage.status = "partial";
             return Response.Success($"Found {issues.Count} script hotspot(s).", new
             {
                 action = "Hotspots",
                 scanned,
                 candidates = records.Count,
+                inputApiCoverage = inputCoverage,
                 semanticCoverage = new
                 {
                     status = !p.IncludeObsoleteApiHints ? "skipped" : semanticPartial || scanned < records.Count ? "partial" : "available",
@@ -830,6 +842,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 },
                 issues = BuildIssues(record, analysis, p),
                 obsoleteApiHints = GetObsoleteHints(record, p),
+                inputApiHints = GetInputHints(record, p),
                 usages = includeUsages ? FindScriptAssetUsages(record, p) : null,
                 source = includeSource ? TruncateText(record.GetSourceText(), sourceLimit) : null
             };
@@ -1235,6 +1248,9 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 issues.Add(BuildIssue(hint.severity, "obsoleteApi", record, hint.line,
                     hint.signature + ": " + hint.message + (hint.replacement.status == "resolved" ? " Replacement: " + hint.replacement.signature + ". " + hint.replacement.guidance : "")));
 
+            foreach (var hint in GetInputHints(record, p).hints)
+                issues.Add(BuildIssue(hint.severity, "inputApiMismatch", record, hint.line, hint.message + " " + hint.guidance));
+
             if (analysis.LineCount > 800)
                 issues.Add(BuildIssue("info", "largeFile", record, 1, $"Large script ({analysis.LineCount} lines). Consider focused reads before editing."));
 
@@ -1262,6 +1278,22 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
                 return new ObsoleteApiReport { status = "skipped", limitations = { "The request semantic script/time budget was reached. Analyze this script separately for hints." } };
             p.SemanticScriptsAnalyzed++;
             return ObsoleteApiHints.AnalyzeSource(source, path);
+        }
+
+        static InputApiReport GetInputHints(ScriptRecord record, ScriptIntelligenceParams p)
+        {
+            return record.InputReport ??= AnalyzeInputProposal(record.GetSourceText() ?? string.Empty, record.Path, p);
+        }
+
+        static InputApiReport AnalyzeInputProposal(string source, string path, ScriptIntelligenceParams p)
+        {
+            if (!p.IncludeInputApiHints)
+                return InputApiHints.Skipped("Semantic Input API hints were disabled for this request.");
+            p.SemanticWatch ??= System.Diagnostics.Stopwatch.StartNew();
+            if (p.InputSemanticScriptsAnalyzed >= Clamp(p.MaxSemanticScripts, 1, 25) || p.SemanticWatch.ElapsedMilliseconds >= 8000)
+                return InputApiHints.Skipped("The request semantic script/time budget was reached. Analyze this script separately for Input API hints.");
+            p.InputSemanticScriptsAnalyzed++;
+            return InputApiHints.AnalyzeSource(source, path);
         }
 
         static List<object> FindScriptAssetUsages(ScriptRecord target, ScriptIntelligenceParams p)
@@ -3357,6 +3389,7 @@ This tool does not modify files. Use UniBridge_ReadResource, UniBridge_ScriptApp
             public DateTime? ModifiedUtc;
             public SourceAnalysis Analysis;
             public ObsoleteApiReport ObsoleteReport;
+            public InputApiReport InputReport;
             string m_SourceText;
 
             public string GetSourceText()

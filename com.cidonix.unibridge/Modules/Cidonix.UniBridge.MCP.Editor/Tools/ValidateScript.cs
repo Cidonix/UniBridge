@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
@@ -64,6 +64,7 @@ Returns:
                             warnings = new { type = "integer", description = "Number of warnings found" },
                             errors = new { type = "integer", description = "Number of errors found" },
                             obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema(),
+                            inputApiHints = ManageScript.GetInputApiHintsOutputSchema(),
                             diagnostics = new
                             {
                                 type = "array",
@@ -153,6 +154,7 @@ Returns:
                     ["warnings"] = warnings,
                     ["errors"] = errors,
                     ["obsoleteApiHints"] = McpJson.ObjectFromObject(validation.ObsoleteApiHints),
+                    ["inputApiHints"] = McpJson.ObjectFromObject(validation.InputApiHints),
                     ["summary"] = McpJson.ObjectFromObject(new { warnings, errors }),
                     ["path"] = resolved.AssetPath ?? resolved.ProjectRelativePath,
                     ["absolutePath"] = resolved.AbsolutePath.Replace('\\', '/'),

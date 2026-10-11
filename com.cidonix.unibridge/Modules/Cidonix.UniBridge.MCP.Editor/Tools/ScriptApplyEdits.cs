@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -115,7 +115,8 @@ Examples:
                             normalizedEdits = new { type = "array", description = "Normalized edit operations that were applied" },
                             routing = new { type = "string", description = "Edit routing method used (structured/text/mixed)" },
                             warnings = new { type = "array", description = "Any warnings generated during processing" },
-                            obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema()
+                            obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema(),
+                            inputApiHints = ManageScript.GetInputApiHintsOutputSchema()
                         }
                     }
                 },
@@ -312,6 +313,7 @@ Examples:
                     string previewText = ApplyEditsLocally(contents, edits);
                     string diff = GenerateUnifiedDiff(contents, previewText);
                     var obsoleteApiHints = AnalyzeFinalSourceHints(previewText, name, path, options);
+                    var inputApiHints = AnalyzeFinalInputHints(previewText, name, path, options);
 
                     if (preview)
                     {
@@ -320,7 +322,8 @@ Examples:
                             diff = diff,
                             normalizedEdits = edits,
                             routing = "text",
-                            obsoleteApiHints
+                            obsoleteApiHints,
+                            inputApiHints
                         });
                     }
 
@@ -330,7 +333,8 @@ Examples:
                         diff = diff,
                         normalizedEdits = edits,
                         routing = "text",
-                        obsoleteApiHints
+                        obsoleteApiHints,
+                        inputApiHints
                     });
                 }
                 catch (Exception ex)
@@ -363,7 +367,8 @@ Examples:
                     evidence = new { reason = "identical_content" },
                     normalizedEdits = edits,
                     routing = "text",
-                    obsoleteApiHints = AnalyzeFinalSourceHints(newContents, name, path, options)
+                    obsoleteApiHints = AnalyzeFinalSourceHints(newContents, name, path, options),
+                    inputApiHints = AnalyzeFinalInputHints(newContents, name, path, options)
                 });
             }
 
@@ -378,7 +383,8 @@ Examples:
                         diff = diff,
                         normalizedEdits = edits,
                         routing = "text",
-                        obsoleteApiHints = AnalyzeFinalSourceHints(newContents, name, path, options)
+                        obsoleteApiHints = AnalyzeFinalSourceHints(newContents, name, path, options),
+                        inputApiHints = AnalyzeFinalInputHints(newContents, name, path, options)
                     });
                 }
                 catch (Exception ex)
@@ -616,6 +622,17 @@ Examples:
                 GetStringValue(options, "validate") ?? "standard", resolved.AbsolutePath ?? scriptPath);
         }
 
+        static InputApiReport AnalyzeFinalInputHints(string source, string name, string path,
+            Dictionary<string, object> options)
+        {
+            var scriptPath = string.IsNullOrWhiteSpace(path)
+                ? "Assets/" + name + ".cs"
+                : path.TrimEnd('/', '\\') + "/" + name + ".cs";
+            var resolved = ProjectPathResolver.Resolve(scriptPath, assumeAssetRelative: true);
+            return ManageScript.AnalyzeInputApiHints(source,
+                GetStringValue(options, "validate") ?? "standard", resolved.AbsolutePath ?? scriptPath);
+        }
+
         /// <summary>
         /// Convert structured operations to apply_text_edits format.
         /// </summary>
@@ -653,7 +670,8 @@ Examples:
                             normalizedEdits = edits,
                             computedTextEdits = atEdits,
                             routing = "text",
-                            obsoleteApiHints = AnalyzeFinalSourceHints(previewText, name, path, options)
+                            obsoleteApiHints = AnalyzeFinalSourceHints(previewText, name, path, options),
+                            inputApiHints = AnalyzeFinalInputHints(previewText, name, path, options)
                         };
 
                         return preview

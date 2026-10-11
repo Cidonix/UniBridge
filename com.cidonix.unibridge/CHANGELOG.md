@@ -1,3 +1,7 @@
+## [0.2.72] - 2026-10-11
+
+- Add independent semantic Input API compatibility advisories for script authoring and intelligence.
+
 ## [0.2.71] - 2026-10-11
 
 - Resolve actual project input handling and preserve compatible EventSystem modules.

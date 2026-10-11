@@ -31,10 +31,10 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             {
                 case "UniBridge_ApplyTextEdits":
                     return Required(Obj(("normalizedEdits", Edits()), ("preview", Type("boolean")),
-                        ("applyTextEditsDetailInfo", Type("object")), ("obsoleteApiHints", HintReport())), "normalizedEdits");
+                        ("applyTextEditsDetailInfo", Type("object")), ("obsoleteApiHints", HintReport()), ("inputApiHints", ActionOutputSchema.Nullable(ActionOutputSchema.DTO(typeof(Helpers.InputApiReport))))), "normalizedEdits");
                 case "UniBridge_CreateScript":
                     return Required(Obj(("uri", Type("string")), ("scheduledRefresh", Type("boolean")),
-                        ("obsoleteApiHints", HintReport()), ("workSessionOwnership", Ownership())), "uri", "scheduledRefresh");
+                        ("obsoleteApiHints", HintReport()), ("inputApiHints", ActionOutputSchema.Nullable(ActionOutputSchema.DTO(typeof(Helpers.InputApiReport)))), ("workSessionOwnership", Ownership())), "uri", "scheduledRefresh");
                 case "UniBridge_DeleteScript":
                     return Required(Obj(("deleted", Type("boolean")), ("workSessionOwnership", Ownership())), "deleted");
                 case "UniBridge_GetSha":
@@ -92,17 +92,17 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                         ("preview", Type("boolean")), ("no_op", Type("boolean")), ("noChangesApplied", Type("boolean")),
                         ("sha256", Type("string")), ("lengthBytes", Type("integer")), ("lastModifiedUtc", Type("string")),
                         ("diagnostics", Arr(Obj(("severity", Type("string", true)), ("message", Type("string", true)), ("line", Type("integer")), ("col", Type("integer"))))),
-                        ("obsoleteApiHints", HintReport()), ("workSessionOwnership", Ownership()));
+                        ("obsoleteApiHints", HintReport()), ("inputApiHints", ActionOutputSchema.Nullable(ActionOutputSchema.DTO(typeof(Helpers.InputApiReport)))), ("workSessionOwnership", Ownership()));
                 case "UniBridge_ScriptApplyEdits":
                     return Obj(("uri", Type("string")), ("path", Type("string")), ("editsApplied", Type("integer")),
                         ("sha256", Type("string")), ("scheduledRefresh", Type("boolean")), ("no_op", Type("boolean")),
                         ("normalizedEdits", Edits()), ("computedTextEdits", Edits()), ("routing", Type("string")),
-                        ("executionModel", Type("string")), ("diff", Type("string", true)), ("obsoleteApiHints", HintReport()), ("workSessionOwnership", Ownership()));
+                        ("executionModel", Type("string")), ("diff", Type("string", true)), ("obsoleteApiHints", HintReport()), ("inputApiHints", ActionOutputSchema.Nullable(ActionOutputSchema.DTO(typeof(Helpers.InputApiReport)))), ("workSessionOwnership", Ownership()));
                 case "UniBridge_ScriptCapabilities":
                     return Required(Obj(("ops", Arr(Type("string"))), ("text_ops", Arr(Type("string"))), ("max_edit_payload_bytes", Type("integer")),
                         ("guards", Required(Obj(("using_guard", Type("boolean"))), "using_guard")), ("extras", Required(Obj(("get_sha", Type("boolean"))), "get_sha"))), "ops", "text_ops", "max_edit_payload_bytes", "guards", "extras");
                 case "UniBridge_ValidateScript":
-                    return Required(Obj(("warnings", Type("integer")), ("errors", Type("integer")), ("obsoleteApiHints", HintReport()),
+                    return Required(Obj(("warnings", Type("integer")), ("errors", Type("integer")), ("obsoleteApiHints", HintReport()), ("inputApiHints", ActionOutputSchema.Nullable(ActionOutputSchema.DTO(typeof(Helpers.InputApiReport)))),
                         ("diagnostics", Arr(Obj(("severity", Type("string", true)), ("message", Type("string", true)), ("line", Type("integer")), ("col", Type("integer"))))),
                         ("summary", Required(Obj(("warnings", Type("integer")), ("errors", Type("integer"))), "warnings", "errors")),
                         ("path", Type("string", true)), ("absolutePath", Type("string")), ("pathResolution", Type("object"))), "warnings", "errors", "summary");

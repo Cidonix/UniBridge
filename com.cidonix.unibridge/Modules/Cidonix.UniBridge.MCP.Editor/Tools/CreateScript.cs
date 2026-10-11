@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using UnityEngine;
 using Cidonix.UniBridge.MCP.Editor.Helpers;
@@ -49,7 +49,8 @@ Returns:
                 {
                     uri = new { type = "string" }, path = new { type = "string" },
                     scheduledRefresh = new { type = "boolean" },
-                    obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema()
+                    obsoleteApiHints = ManageScript.GetObsoleteApiHintsOutputSchema(),
+                    inputApiHints = ManageScript.GetInputApiHintsOutputSchema()
                 } }
             }, required = new[] { "success" } };
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -96,7 +96,7 @@ Returns:
                     {
                         type = new[] { "object", "string" },
                         description = "Action-specific data; obsoleteApiHints is present when a final proposed source was available for validation or create/edit analysis.",
-                        properties = new { obsoleteApiHints = GetObsoleteApiHintsOutputSchema() }
+                        properties = new { obsoleteApiHints = GetObsoleteApiHintsOutputSchema(), inputApiHints = GetInputApiHintsOutputSchema() }
                     }
                 },
                 required = new[] { "success" }
@@ -398,7 +398,7 @@ Returns:
 
                     var validation = ValidateScriptSource(fileText, level, fullPath);
 
-                    var result = new { diagnostics = validation.Diagnostics, obsoleteApiHints = validation.ObsoleteApiHints };
+                    var result = new { diagnostics = validation.Diagnostics, obsoleteApiHints = validation.ObsoleteApiHints, inputApiHints = validation.InputApiHints };
                     return validation.Ok ? Response.Success("Validation completed.", result)
                                          : Response.Error("Validation failed.", result);
                 }
@@ -488,9 +488,10 @@ Returns:
             ValidationLevel validationLevel = GetValidationLevelFromGUI();
             bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors);
             var obsoleteApiHints = AnalyzeObsoleteApiHints(contents, validationLevel, fullPath);
+            var inputApiHints = AnalyzeInputApiHints(contents, validationLevel, fullPath);
             if (!isValid)
             {
-                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>(), obsoleteApiHints });
+                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>(), obsoleteApiHints, inputApiHints });
             }
             else if (validationErrors != null && validationErrors.Length > 0)
             {
@@ -523,7 +524,7 @@ Returns:
                 var uri = $"unity://path/{relativePath}";
                 var ok = Response.Success(
                     $"Script '{name}.cs' created successfully at '{relativePath}'.",
-                    new { uri, scheduledRefresh = false, obsoleteApiHints, workSessionOwnership }
+                    new { uri, scheduledRefresh = false, obsoleteApiHints, inputApiHints, workSessionOwnership }
                 );
 
                 ManageScriptRefreshHelpers.ImportAndRequestCompile(relativePath);
@@ -532,7 +533,7 @@ Returns:
             }
             catch (Exception e)
             {
-                return Response.Error($"Failed to create script '{relativePath}': {e.Message}", new { obsoleteApiHints });
+                return Response.Error($"Failed to create script '{relativePath}': {e.Message}", new { obsoleteApiHints, inputApiHints });
             }
         }
 
@@ -593,9 +594,10 @@ Returns:
             ValidationLevel validationLevel = GetValidationLevelFromGUI();
             bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors);
             var obsoleteApiHints = AnalyzeObsoleteApiHints(contents, validationLevel, fullPath);
+            var inputApiHints = AnalyzeInputApiHints(contents, validationLevel, fullPath);
             if (!isValid)
             {
-                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>(), obsoleteApiHints });
+                return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = validationErrors ?? Array.Empty<string>(), obsoleteApiHints, inputApiHints });
             }
             else if (validationErrors != null && validationErrors.Length > 0)
             {
@@ -639,7 +641,7 @@ Returns:
                 var uri = $"unity://path/{relativePath}";
                 var ok = Response.Success(
                     $"Script '{name}.cs' updated successfully at '{relativePath}'.",
-                    new { uri, path = relativePath, scheduledRefresh = true, obsoleteApiHints, workSessionOwnership }
+                    new { uri, path = relativePath, scheduledRefresh = true, obsoleteApiHints, inputApiHints, workSessionOwnership }
                 );
 
                 // Schedule a debounced import/compile on next editor tick to avoid stalling the reply
@@ -649,7 +651,7 @@ Returns:
             }
             catch (Exception e)
             {
-                return Response.Error($"Failed to update script '{relativePath}': {e.Message}", new { obsoleteApiHints });
+                return Response.Error($"Failed to update script '{relativePath}': {e.Message}", new { obsoleteApiHints, inputApiHints });
             }
         }
 
@@ -854,13 +856,15 @@ Returns:
                         {
                             status = "unbalanced_braces", line = 0, expected = "{}()[] (scoped)",
                             hint = "Use standard validation or shrink the edit range.",
-                            obsoleteApiHints = AnalyzeObsoleteApiHints(finalProposal, hintLevel, fullPath)
+                            obsoleteApiHints = AnalyzeObsoleteApiHints(finalProposal, hintLevel, fullPath),
+                            inputApiHints = AnalyzeInputApiHints(finalProposal, hintLevel, fullPath)
                         });
                     }
                 }
                 working = next;
             }
             var obsoleteApiHints = AnalyzeObsoleteApiHints(working, hintLevel, fullPath);
+            var inputApiHints = AnalyzeInputApiHints(working, hintLevel, fullPath);
 
             // No-op guard: if resulting text is identical, avoid writes and return explicit no-op
             if (string.Equals(working, original, StringComparison.Ordinal))
@@ -876,7 +880,8 @@ Returns:
                         no_op = true,
                         sha256 = noChangeSha,
                         evidence = new { reason = "identical_content" },
-                        obsoleteApiHints
+                        obsoleteApiHints,
+                        inputApiHints
                     }
                 );
             }
@@ -887,7 +892,7 @@ Returns:
                 int startLine = Math.Max(1, line - 5);
                 int endLine = line + 5;
                 string hint = $"unbalanced_braces at line {line}. Call UniBridge_ReadResource for lines {startLine}-{endLine} and resend a smaller apply_text_edits that restores balance.";
-                return Response.Error(hint, new { status = "unbalanced_braces", line, expected = expected.ToString(), evidenceWindow = new { startLine, endLine }, obsoleteApiHints });
+                return Response.Error(hint, new { status = "unbalanced_braces", line, expected = expected.ToString(), evidenceWindow = new { startLine, endLine }, obsoleteApiHints, inputApiHints });
             }
 
 #if USE_ROSLYN
@@ -906,7 +911,7 @@ Returns:
                     int firstLine = diagnostics[0].line;
                     int startLineRos = Math.Max(1, firstLine - 5);
                     int endLineRos = firstLine + 5;
-                    return Response.Error("syntax_error", new { status = "syntax_error", diagnostics, evidenceWindow = new { startLine = startLineRos, endLine = endLineRos }, obsoleteApiHints });
+                    return Response.Error("syntax_error", new { status = "syntax_error", diagnostics, evidenceWindow = new { startLine = startLineRos, endLine = endLineRos }, obsoleteApiHints, inputApiHints });
                 }
 
             }
@@ -975,13 +980,14 @@ Returns:
                         sha256 = newSha,
                         scheduledRefresh = !immediate,
                         obsoleteApiHints,
+                        inputApiHints,
                         workSessionOwnership
                     }
                 );
             }
             catch (Exception ex)
             {
-                return Response.Error($"Failed to write edits: {ex.Message}", new { obsoleteApiHints });
+                return Response.Error($"Failed to write edits: {ex.Message}", new { obsoleteApiHints, inputApiHints });
             }
         }
 
@@ -1216,6 +1222,7 @@ Returns:
 
             string working = original;
             ObsoleteApiReport obsoleteApiHints = null;
+            InputApiReport inputApiHints = null;
 
             try
             {
@@ -1665,6 +1672,7 @@ Returns:
                 }
                 catch { /* ignore option parsing issues */ }
                 obsoleteApiHints = AnalyzeObsoleteApiHints(working, level, fullPath);
+                inputApiHints = AnalyzeInputApiHints(working, level, fullPath);
 
                 // No-op guard for structured edits: if text unchanged, return explicit no-op
                 if (string.Equals(working, original, StringComparison.Ordinal))
@@ -1689,13 +1697,14 @@ Returns:
                             wouldChange = false,
                             diff = preview ? ScriptApplyEdits.GenerateUnifiedDiff(original, working) : null,
                             evidence = new { reason = "identical_content" },
-                            obsoleteApiHints
+                            obsoleteApiHints,
+                            inputApiHints
                         }
                     );
                 }
 
                 if (!ValidateScriptSyntax(working, level, out var errors))
-                    return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = errors ?? Array.Empty<string>(), obsoleteApiHints });
+                    return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = errors ?? Array.Empty<string>(), obsoleteApiHints, inputApiHints });
                 else if (errors != null && errors.Length > 0)
                     Debug.LogWarning($"Script validation warnings for {name}:\n" + string.Join("\n", errors));
 
@@ -1717,7 +1726,8 @@ Returns:
                             predictedSha256 = predictedSha,
                             wouldChange = !string.Equals(currentSha, predictedSha, StringComparison.OrdinalIgnoreCase),
                             diff = ScriptApplyEdits.GenerateUnifiedDiff(original, working),
-                            obsoleteApiHints
+                            obsoleteApiHints,
+                            inputApiHints
                         }
                     );
                 }
@@ -1768,6 +1778,7 @@ Returns:
                         scheduledRefresh = !immediate && !suppressRefresh,
                         sha256 = newSha,
                         obsoleteApiHints,
+                        inputApiHints,
                         workSessionOwnership
                     }
                 );
@@ -1787,7 +1798,7 @@ Returns:
             {
                 return obsoleteApiHints == null
                     ? Response.Error($"Edit failed: {ex.Message}")
-                    : Response.Error($"Edit failed: {ex.Message}", new { obsoleteApiHints });
+                    : Response.Error($"Edit failed: {ex.Message}", new { obsoleteApiHints, inputApiHints });
             }
         }
 

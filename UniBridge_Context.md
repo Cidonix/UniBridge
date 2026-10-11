@@ -11294,3 +11294,17 @@ Resolve actual project input handling and preserve compatible EventSystem module
 ### 2026-10-11 — UniBridge 0.2.71 / пункт 1 завершено
 
 Визначення Input backend читає фактичний activeInputHandler. Old/New виправляють несумісний EventSystem; Both зберігає сумісні модулі; Unknown і відсутній обов’язковий модуль блокують зміни. 124/124 source-linked та SDK checks, 13/13 native x64 Mono 6000.6.5f1, звичайний MCP DryRun і закрита схема відповіді PASS. Повний Editor module: 4 compile-symbol profiles, 265 sources, errors0; legacy resolver API компіляція підтверджена, native legacy Editor не запускався. Domovyk/Corgi exact Unity 6000.6.5f1 hidden elevated batch compile exit0, errors0, Editor DLL оновлені. 23775 авторських файлів захищено baseline SHA та metadata guards, власний fixture перенесено з meta у quarantine. Локальні IDE файли виключені: початкове зайве копіювання виправлено лише для власних копій під hash guard, початкові host extras збережено. Повний Domovyk check-in — наступний крок; receipts Temp/AssistantFinalPlan-20261011/step1. Пункт12/CoreCLR не змінювався.
+
+
+### 2026-10-11 — Assistant follow-up item 2 / 0.2.72
+
+Add independent semantic Input API compatibility advisories for script authoring and intelligence. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Пункт 2 завершено / UniBridge 0.2.72
+
+Додано незалежні семантичні inputApiHints для валідації, остаточного запропонованого коду всіх script-edit шляхів і ScriptIntelligence. Аналіз розпізнає фактичні metadata symbols, alias/static imports, поточний Old/New/Both backend; невідомий backend, неповне binding і бюджети відображаються явно. Власні однойменні типи й неактивні гілки не дають хибних рекомендацій. Підказки не змінюють validation success/counts і не переписують код. New-підказки описують приналежність API до Input System, включно з допоміжними типами, а не гарантують runtime-помилку кожного такого використання. Усі script/intelligence виходи зберігають закриті типізовані контракти.
+
+Перевірки: 307 source-linked semantic/schema/syntax checks; 11 native metadata checks у x64 Mono Unity 6000.6.5f1; actual MCP ValidateScript standard=available/bindingErrors0 та basic=skipped. Повний Editor module: 268 sources, Windows/Windows-Roslyn/Linux/OSX — 0 compile errors; foreign-symbol компіляція не є hardware/native доказом. Domovyk і Corgi мають точні байти .72 та успішну окрему admin Unity batch-компіляцію. Початкові 23775 авторських Assets/ProjectSettings файлів збережені, owned fixture перенесений у quarantine без збереження авторських сцен. Перші невдалі fixture спроби збережені як evidence, виправлено лише їхні Roslyn references та owning-assembly context.
+
+Пункт 1 раніше доставлено у Domovyk cs293, server bytes перевірено, pending empty. Поточний повний check-in пункту 2 виконується після цього запису; точний receipt зберігається у local Temp/AssistantFinalPlan-20261011/step2/dom-publication.json. Пункт 12/CoreCLR і скасоване дослідження native crash не змінювалися.
