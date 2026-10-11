@@ -32,8 +32,8 @@ Inspect `annotations.uniBridgeOutput` for contract provenance and fidelity.
 `source_action_contract` identifies a built-in contract selected for the requested
 business action, including closed nested producer data. The catalog composes
 declared branches; runtime validation uses the requested branch and the
-producer's own alias/default rules. The 66 reviewed built-ins have 504 declared
-selectors mapped to 432 canonical identities.
+producer's own alias/default rules. Use the current Discover and ToolGuide catalog for declared selectors,
+canonical actions and per-tool contract provenance.
 
 `wholeActionDataQualified=true` is limited to qualified built-in contracts from
 this package. It combines source-contract controls and actual action evidence;
@@ -782,3 +782,8 @@ harness without connecting to any Editor.
 ## Recorded allocation callstacks
 
 RuntimeProfiler RecordedFrames defaults to no callstack queries. Opt in with IncludeCallstacks, bounded CallstackMaxSamples/CallstackMaxDepth, and optional CallstackSampleIds taken from returned physical sample identities (frame:threadId:sampleIndex). Only recorded GC.Alloc stacks are decoded; missing stacks are explicitly unavailable. Selected identities are validated before native reads and foreign samples are never queried. This reads existing capture data and does not enable ongoing allocation recording.
+
+
+## Package management
+
+UniBridge_ManagePackages provides bounded List, Inspect, registry Search, exact registry package@semver Add, ListSamples and protected ImportSample. Native Add completion requires a separate Editor readiness observation after registration or reload; interrupted/time-limited mutations must never be replayed automatically. Inspect actual package state first. Sample import refuses existing destination/.meta, interactive samples, source GUID conflicts, path escapes and reparse ancestors, uses native Sample.Import without OverridePreviousImports, and verifies physical copied bytes plus AssetDatabase GUID resolution. No Remove/Embed/Unembed/Force operation is exposed. See Tools~/PackageManagementRegression/README.md for portable, SDK and ordinary MCP native qualification. Legacy standalone profiles do not expose UPM operations.

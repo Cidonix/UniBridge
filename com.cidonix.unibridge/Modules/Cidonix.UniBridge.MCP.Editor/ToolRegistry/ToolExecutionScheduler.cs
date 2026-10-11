@@ -381,6 +381,33 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             if (string.Equals(toolName, "UniBridge_ReadConsole", StringComparison.Ordinal))
                 return IsAction(parameters, "Clear", "MarkSession") ? ToolExecutionPolicy.Mutating : ToolExecutionPolicy.ReadOnly;
 
+            if (string.Equals(toolName, "UniBridge_ManagePackages", StringComparison.Ordinal))
+            {
+                // Match typed Json.NET assignment: case-insensitive Action properties are
+                // applied in document order; ignored nulls do not replace the last value.
+                var token = parameters?.Properties().LastOrDefault(property =>
+                    string.Equals(property.Name, "Action", StringComparison.OrdinalIgnoreCase) &&
+                    property.Value.Type != JTokenType.Null)?.Value;
+                if (token == null) return ToolExecutionPolicy.ReadOnly;
+                Tools.Parameters.ManagePackagesAction action;
+                if ((token.Type != JTokenType.String && token.Type != JTokenType.Integer) ||
+                    !Enum.TryParse(token.ToString(), true, out action))
+                    return ToolExecutionPolicy.CompileReload;
+                switch (action)
+                {
+                    case Tools.Parameters.ManagePackagesAction.List:
+                    case Tools.Parameters.ManagePackagesAction.Inspect:
+                    case Tools.Parameters.ManagePackagesAction.Search:
+                    case Tools.Parameters.ManagePackagesAction.ListSamples:
+                        return ToolExecutionPolicy.ReadOnly;
+                    case Tools.Parameters.ManagePackagesAction.ImportSample:
+                        return ToolExecutionPolicy.Mutating;
+                    default:
+                        // Add and unknown inputs are exclusive and never replay-certified.
+                        return ToolExecutionPolicy.CompileReload;
+                }
+            }
+
             if (string.Equals(toolName, "UniBridge_ManageEditor", StringComparison.Ordinal))
                 return ResolveManageEditorPolicy(parameters);
 
@@ -411,14 +438,17 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         public static object BuildAnnotation(string toolName, IToolHandler handler)
         {
             var policy = ResolvePolicy(toolName, null, handler);
+            var mixedPackages = string.Equals(toolName, "UniBridge_ManagePackages", StringComparison.Ordinal);
             return new
             {
                 policy = policy.ToString(),
                 replaySafe = HasWholeToolReadOnlyContract(toolName, handler),
-                readOnly = policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer,
+                readOnly = !mixedPackages && (policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer),
                 exclusive = policy != ToolExecutionPolicy.ReadOnly && policy != ToolExecutionPolicy.Observer,
                 timeoutParameters = new[] { "ExecutionTimeoutMs", "SchedulerTimeoutMs" },
-                note = policy == ToolExecutionPolicy.Observer
+                note = mixedPackages
+                    ? "List/Inspect/Search/ListSamples may run concurrently. Add and ImportSample use exclusive execution and must not be replayed."
+                    : policy == ToolExecutionPolicy.Observer
                     ? "Observes editor state/events without holding the UniBridge execution gate."
                     : policy == ToolExecutionPolicy.ReadOnly
                         ? "May run concurrently with other read-only UniBridge tools."

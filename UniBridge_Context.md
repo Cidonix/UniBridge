@@ -11353,3 +11353,28 @@ RecordedFrames підтримує opt-in GC.Alloc callstacks із bounded sample
 Перевірки: 80/80 source-linked regression checks; повний Editor module 271 source files у чотирьох platform-symbol profiles, 0 errors; native Unity6000.6.5f1 x64 Mono 8/8 capture assertions та три ordinary MCP запити (first pass без callstacks; один конкретний allocation з очікуваною method/depth; frame без записаного stack). Первісні Profiler buffer/flags відновлені, restorePending=false. Owned fixture перенесено у quarantine; opt-in native fixture збережено в Tools~. Test compile health/console clean, обидва downstream проєкти перевірено administrator Unity batch. Авторські Assets/ProjectSettings збережені.
 
 Full Domovyk check-in та byte verification server files: Temp/AssistantFinalPlan-20261011/step5/dom-publication.json. Пункт 12/CoreCLR та скасоване native crash дослідження не змінювалися.
+
+
+### 2026-10-11 — Assistant follow-up item 6 / 0.2.76
+
+Add guarded UPM inspection, exact-version installation and verified sample import Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Пункт 6 завершено / UniBridge 0.2.76
+
+Додано UniBridge_ManagePackages: bounded List/Inspect/Search/ListSamples, exact registry package@semver Add та protected ImportSample. Читання має ReadOnly policy, Add — CompileReload, імпорт — Mutating. Змішаному tool не приписано whole-tool read-only/replay-safe властивості; batchAllowed=false. Закриті source action contracts включають unknown/error результати. Перезапис destination/.meta, interactive unitypackage, source GUID conflicts, path escapes та reparse ancestors блокуються до імпорту; native Sample.Import не використовує OverridePreviousImports, успіх вимагає фізичних bytes і AssetDatabase GUID resolution.
+
+49/49 current-source portable, 85/85 independent contract checks, 28791 незмінених policy/annotation rows для 63 старих tools PASS. Це rows порівняння, а не 28791 окремих behavior tests. Native Client/Request/Sample SDK compile: 2020.3, 2022.3, 6.6 — 3/3 PASS. Full Editor module: 278 sources, 4 compile-symbol profiles, errors0; platform-symbol emission не є native Linux/macOS виконанням. Legacy standalone profiles UPM tool не експонують.
+
+Native05: 16/16 ordinary MCP checks у відкритому x64 Mono Unity 6000.6.5f1 PASS. Local registry Search, точна Registry version 1.2.3, ListSamples, sample_import_verified/2 physical files, SHA/GUID та повторний SAMPLE_ALREADY_IMPORTED/isError=true/mutationStarted=false підтверджені. AddIssued=1, positive ImportIssued=1; окремий negative import не перезаписав файли. Add delivery під час reload залишився outcome_unknown/nativeCompletionVerified=false; готовність і фактичне встановлення підтверджено окремими read-only Wait/Inspect, без replay і без вигаданого успішного native Add reply.
+
+Native01–03 FAIL через інформаційні Missing Signature/Importing a scoped registry modal та Native04 FAIL через runner KeyError збережені разом із preimages. Інформаційні вікна власного unsigned fixture переглянуто через Package Manager, без зміни trust/security settings. Runner тепер зберігає reload gaps і непідтверджений результат Add, потім перевіряє фактичний стан; readiness13/13 та Add-delivery13/13 PASS. Production C# helpers не змінювалися після кваліфікації.
+
+Власний sample і generated metadata переміщено до hash-guarded quarantine. Початкові manifest.json і packages-lock.json відновлено побайтно; fresh MCP Inspect підтвердив PACKAGE_NOT_INSTALLED після cleanup. Editor ready, compileHealth=true, errors/warnings/exceptions/asserts0; інформаційні console entries збережено. Авторську dirty сцену FeaturesPlatforms не зберігали. Unity також записав власний native05 registry/selection/transient draft IDs до PackageManagerSettings.asset; exact початкову копію SHA017fabe6 знайдено й відновлено під guard поточного SHA6d37f281, тестову версію збережено. Інших налаштувань у цьому файлі не змінено. Початковий FAIL preservation receipt залишено; повторна повна фінальна SHA256 звірка всіх 23775 початкових Assets/ProjectSettings файлів трьох проєктів: errors0.
+
+Domovyk та Corgi оновлено до 0.2.76 (30 changed package files у кожному), exact Unity 6000.6.5f1 hidden elevated batch compile exit0, errors0, fresh Editor DLL. Пункти1–5 доставлено послідовно версіями0.2.71–0.2.75 і повними Domovyk cs293–297; server bytes звірено, pending empty для кожного. Receipt поточного повного check-in після цього context запису: Temp/AssistantFinalPlan-20261011/step6/dom-publication.json. Пункт12/CoreCLR та скасоване дослідження native crash не змінювалися.
+
+
+### 2026-10-11 — Усі шість пунктів доставлено
+
+Пункти 1–6 завершено й кваліфіковано окремо; версії 0.2.71–0.2.76 послідовно доставлено до Domovyk та Corgi. Повні Domovyk check-in: cs293, cs294, cs295, cs296, cs297, cs298; кожен підтверджено server byte comparison і порожнім pending status. Фінальний cs298 містить 31 файл (30 package files та Domovyk_context.md). Фінальна full-SHA звірка 23775 початкових авторських Assets/ProjectSettings файлів: errors0; точний PackageManagerSettings.asset baseline збережено також після fresh MCP health. Final Editor health успішний після cleanup. Усі дочірні процеси запускались від адміністратора; пункт12/CoreCLR та скасоване native-crash дослідження лишилися поза цією роботою. Source Git publication виконується разом із цим completion record; receipt буде у Temp/AssistantFinalPlan-20261011/final-publication.json.

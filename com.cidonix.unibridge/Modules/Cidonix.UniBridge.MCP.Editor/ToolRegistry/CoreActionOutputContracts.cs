@@ -15,6 +15,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             string defaultAction;
             switch (owner)
             {
+                case "UniBridge_ManagePackages": actions = PackageActionOutputRules.Build(); defaultAction = "List"; break;
                 case "UniBridge_RuntimeProfiler": actions = RuntimeProfilerActionOutputRules.Build(); defaultAction = "Snapshot"; break;
                 case "UniBridge_CaptureView": actions = CaptureViewActionOutputRules.Build(); defaultAction = "CaptureSceneView"; break;
                 case "UniBridge_ManageEditor": actions = ManageEditorActionOutputRules.Build(); defaultAction = "GetState"; break;
@@ -96,6 +97,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 actionReferences[action.Key] = reference.DeepClone();
                 alternatives.Add(reference);
             }
+            if (owner == "UniBridge_ManagePackages")
+            {
+                definitions["UnknownPackageAction"] = WithContext(PackageActionOutputRules.UnknownAction(), true);
+                alternatives.Add(new JObject { ["$ref"] = "#/$defs/UnknownPackageAction" });
+            }
             definitions["KnownCompletionProjectionFailure"] = ProjectionFailure(owner);
             alternatives.Add(new JObject { ["$ref"] = "#/$defs/KnownCompletionProjectionFailure" });
             definitions["KnownCompletionContractFailure"] = ContractFailure(owner);
@@ -157,7 +163,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 // Workflow's unrecognised numeric enum follows its final Execute
                 // branch; missing Action still uses the declared List default.
                 UnknownActionDefault = owner == "UniBridge_WorkflowRecipes" ? "Execute" : null,
-                UnknownActionSchema = WithContext(ActionOutputSchema.Error(), true)
+                UnknownActionSchema = WithContext(owner == "UniBridge_ManagePackages"
+                    ? PackageActionOutputRules.UnknownAction() : ActionOutputSchema.Error(), true)
             };
             return true;
         }

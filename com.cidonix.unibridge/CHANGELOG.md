@@ -1,3 +1,7 @@
+## [0.2.76] - 2026-10-11
+
+- Add guarded UPM inspection, exact-version installation and verified sample import
+
 ## [0.2.75] - 2026-10-11
 
 - Add opt-in recorded GC allocation callstacks and exact sample drilldown
