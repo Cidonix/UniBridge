@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.70",
+  "version": "0.2.71",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- MCP cancellation reaches admitted reads, waits, and queued commands. Started mutations retain their actual completion and are never replayed.\n- Smoke regression checks expected negative replies, reload readiness, and proven request cancellation.\n"
+    "changelog": "### Improved\n\n- Resolve actual project input handling and preserve compatible EventSystem modules.\n"
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

@@ -1913,3 +1913,8 @@ macOS may require manual approval for unsigned or unnotarized executables. Allow
 ### Linux or macOS relay cannot start
 
 Check that the relay file exists under `~/.unibridge/relay` and has executable permissions. Reinstall or refresh the relay from Project Settings if needed.
+
+
+## EventSystem input compatibility
+
+EnsureEventSystem reads the serialized Active Input Handling setting (Old, New, Both). It repairs an incompatible existing module, preserves a compatible existing module in Both, and respects DryRun. Unknown settings or a missing required Input System module block before scene infrastructure is changed. A replacement module is added successfully before an incompatible module is removed. The optional Input System package is resolved from loaded types; it is not a required package dependency.

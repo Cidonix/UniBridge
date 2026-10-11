@@ -1,3 +1,7 @@
+## [0.2.71] - 2026-10-11
+
+- Resolve actual project input handling and preserve compatible EventSystem modules.
+
 # Changelog
 
 All notable UniBridge package changes will be documented in this file.

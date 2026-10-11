@@ -19,6 +19,25 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 schema["$defs"] = table["definitions"].DeepClone();
                 result.Add(action.Name, schema);
             }
+            if (owner == "UniBridge_ManageUI")
+            {
+                var eventSystem = (JObject)table["definitions"]["Authoring_UI_1562b4a49914748f"]["properties"]["eventSystem"].DeepClone();
+                var mode = ActionOutputSchema.Enum("Old", "New", "Both");
+                var actual = ActionOutputSchema.Success(ActionOutputSchema.Obj(
+                    ("created", ActionOutputSchema.Type("boolean")),
+                    ("repaired", ActionOutputSchema.Type("boolean")),
+                    ("eventSystem", eventSystem),
+                    ("inputBackend", mode),
+                    ("inputModule", ActionOutputSchema.Type("string"))));
+                var dryRun = ActionOutputSchema.Success(ActionOutputSchema.Obj(
+                    ("created", ActionOutputSchema.Type("boolean")),
+                    ("name", ActionOutputSchema.Type("string")),
+                    ("inputBackend", mode),
+                    ("inputModule", ActionOutputSchema.Type("string"))));
+                var schema = ActionOutputSchema.AnyOf(actual, dryRun, ActionOutputSchema.Error());
+                schema["$defs"] = table["definitions"].DeepClone();
+                result["EnsureEventSystem"] = schema;
+            }
             return result;
         }
 

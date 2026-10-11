@@ -212,31 +212,34 @@ Layout notes:
         static object EnsureEventSystem(ManageUIParams parameters)
         {
             var existing = FindEventSystem();
-            if (existing != null)
-            {
-                return Response.Success($"EventSystem already exists: '{existing.name}'.", new
-                {
-                    created = false,
-                    eventSystem = BuildGameObjectInfo(existing)
-                });
-            }
+            var inputBackend = InputBackendResolver.Resolve();
+            var moduleType = GetCompatibleInputModuleType(existing, inputBackend, out _);
 
             if (parameters.DryRun ?? false)
             {
-                return Response.Success("Dry run: EventSystem would be created.", new { created = true, name = "EventSystem" });
+                return Response.Success("Dry run: EventSystem input compatibility was checked.", new
+                {
+                    created = existing == null,
+                    name = existing != null ? existing.name : "EventSystem",
+                    inputBackend = inputBackend.Mode.ToString(),
+                    inputModule = moduleType.FullName
+                });
             }
 
-            var eventSystem = EnsureEventSystemObject();
+            var eventSystem = existing ?? EnsureEventSystemObject();
+            var repaired = existing != null && EnsureCompatibleInputModule(existing, inputBackend);
             if (parameters.Select ?? false)
             {
                 Selection.activeGameObject = eventSystem;
             }
 
-            MarkSceneDirty(eventSystem);
-            return Response.Success($"Created EventSystem '{eventSystem.name}'.", new
+            return Response.Success($"EventSystem '{eventSystem.name}' has a compatible input module.", new
             {
-                created = true,
-                eventSystem = BuildGameObjectInfo(eventSystem)
+                created = existing == null,
+                repaired,
+                eventSystem = BuildGameObjectInfo(eventSystem),
+                inputBackend = inputBackend.Mode.ToString(),
+                inputModule = moduleType.FullName
             });
         }
 
@@ -3688,81 +3691,97 @@ Layout notes:
                 return null;
             }
 
+            try
+            {
+                GetCompatibleInputModuleType(FindEventSystem(), InputBackendResolver.Resolve(), out _);
+            }
+            catch (InvalidOperationException exception)
+            {
+                skippedReason = exception.Message;
+                return null;
+            }
             return EnsureEventSystemObject();
         }
 
         static GameObject EnsureEventSystemObject()
         {
             var existing = FindEventSystem();
+            var inputBackend = InputBackendResolver.Resolve();
+            // Resolve before creating or removing scene infrastructure.
+            GetCompatibleInputModuleType(existing, inputBackend, out _);
             if (existing != null)
             {
-                EnsureCompatibleInputModule(existing);
+                EnsureCompatibleInputModule(existing, inputBackend);
                 return existing;
             }
 
             var eventSystem = new GameObject("EventSystem", typeof(EventSystem));
             GameObjectUtility.EnsureUniqueNameForSibling(eventSystem);
             Undo.RegisterCreatedObjectUndo(eventSystem, "Create UniBridge EventSystem");
-            EnsureCompatibleInputModule(eventSystem);
+            EnsureCompatibleInputModule(eventSystem, inputBackend);
             MarkSceneDirty(eventSystem);
             return eventSystem;
         }
 
-        static void EnsureCompatibleInputModule(GameObject eventSystem)
+        static bool EnsureCompatibleInputModule(GameObject eventSystem, InputBackendResolution inputBackend)
         {
             if (eventSystem == null)
             {
-                return;
+                return false;
             }
 
-            var inputSystemModuleType = FindLoadedType("UnityEngine.InputSystem.UI.InputSystemUIInputModule");
-            var desiredModuleType = ShouldUseInputSystemUiInputModule(inputSystemModuleType)
-                ? inputSystemModuleType
-                : typeof(StandaloneInputModule);
+            var desiredModuleType = GetCompatibleInputModuleType(eventSystem, inputBackend, out var inputSystemModuleType);
+            var changed = false;
+            if (eventSystem.GetComponent(desiredModuleType) == null)
+            {
+                // Add successfully before removing the old module, so a failed add preserves it.
+                if (Undo.AddComponent(eventSystem, desiredModuleType) == null)
+                {
+                    throw new InvalidOperationException($"Could not add input module '{desiredModuleType.FullName}'.");
+                }
+                changed = true;
+            }
 
-            if (desiredModuleType != typeof(StandaloneInputModule))
+            if (inputBackend.Mode == InputBackendMode.New)
             {
                 var standaloneModule = eventSystem.GetComponent<StandaloneInputModule>();
                 if (standaloneModule != null)
                 {
                     Undo.DestroyObjectImmediate(standaloneModule);
+                    changed = true;
                 }
             }
-            else if (inputSystemModuleType != null)
+            else if (inputBackend.Mode == InputBackendMode.Old && inputSystemModuleType != null)
             {
                 var inputSystemModule = eventSystem.GetComponent(inputSystemModuleType);
                 if (inputSystemModule != null)
                 {
                     Undo.DestroyObjectImmediate(inputSystemModule);
+                    changed = true;
                 }
             }
 
-            if (eventSystem.GetComponent(desiredModuleType) == null)
+            if (changed)
             {
-                Undo.AddComponent(eventSystem, desiredModuleType);
                 MarkSceneDirty(eventSystem);
             }
+            return changed;
         }
 
-        static bool ShouldUseInputSystemUiInputModule(Type inputSystemModuleType)
+        static Type GetCompatibleInputModuleType(GameObject eventSystem, InputBackendResolution inputBackend,
+            out Type inputSystemModuleType)
         {
-            if (inputSystemModuleType == null)
+            inputSystemModuleType = FindLoadedType("UnityEngine.InputSystem.UI.InputSystemUIInputModule");
+            var desired = InputBackendResolver.SelectUiModule(inputBackend.Mode, inputSystemModuleType != null,
+                eventSystem != null && eventSystem.GetComponent<StandaloneInputModule>() != null,
+                eventSystem != null && inputSystemModuleType != null && eventSystem.GetComponent(inputSystemModuleType) != null);
+            if (desired == InputBackendMode.Unknown)
             {
-                return false;
+                throw new InvalidOperationException(inputBackend.Mode == InputBackendMode.New
+                    ? "Active Input Handling is New, but InputSystemUIInputModule is unavailable. Install or enable the Input System package before repairing the EventSystem. Existing input modules were preserved."
+                    : "Active Input Handling could not be determined. Existing input modules were preserved. " + inputBackend.Detail);
             }
-
-            var activeInputHandlingProperty = typeof(PlayerSettings).GetProperty(
-                "activeInputHandling",
-                BindingFlags.Public | BindingFlags.Static);
-            var activeInputHandling = activeInputHandlingProperty?.GetValue(null)?.ToString();
-            if (activeInputHandling != null
-                && activeInputHandling.IndexOf("InputManager", StringComparison.OrdinalIgnoreCase) >= 0
-                && activeInputHandling.IndexOf("Both", StringComparison.OrdinalIgnoreCase) < 0)
-            {
-                return false;
-            }
-
-            return true;
+            return desired == InputBackendMode.New ? inputSystemModuleType : typeof(StandaloneInputModule);
         }
 
         static Type FindLoadedType(string fullName)

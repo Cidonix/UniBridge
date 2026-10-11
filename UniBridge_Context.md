@@ -11284,3 +11284,13 @@ Domovyk і Corgi Engine v10 пройшли hidden batch import/compile у сво
 ### Domovyk publication 0.2.70
 
 Повний check-in cs292 виконано: 30 файлів плюс структурні parent entries, увесь pending set. Кожний серверний файл експортовано через cm cat --file та побайтово звірено з working tree; Domovyk status порожній. Початковий scratch verifier через stdout спотворював binary bytes у UTF-8 replacement characters; його діагностику збережено, exact file export підтвердив relay SHA без зміни production або check-in. Source Git commit/push виконується в цьому ж авторизованому проході; фактичний HEAD/remote/clean-status receipt у Temp/McpCancellation-20261011/git-publication.json.
+
+
+### 2026-10-11 — Assistant follow-up item 1 / 0.2.71
+
+Resolve actual project input handling and preserve compatible EventSystem modules. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — UniBridge 0.2.71 / пункт 1 завершено
+
+Визначення Input backend читає фактичний activeInputHandler. Old/New виправляють несумісний EventSystem; Both зберігає сумісні модулі; Unknown і відсутній обов’язковий модуль блокують зміни. 124/124 source-linked та SDK checks, 13/13 native x64 Mono 6000.6.5f1, звичайний MCP DryRun і закрита схема відповіді PASS. Повний Editor module: 4 compile-symbol profiles, 265 sources, errors0; legacy resolver API компіляція підтверджена, native legacy Editor не запускався. Domovyk/Corgi exact Unity 6000.6.5f1 hidden elevated batch compile exit0, errors0, Editor DLL оновлені. 23775 авторських файлів захищено baseline SHA та metadata guards, власний fixture перенесено з meta у quarantine. Локальні IDE файли виключені: початкове зайве копіювання виправлено лише для власних копій під hash guard, початкові host extras збережено. Повний Domovyk check-in — наступний крок; receipts Temp/AssistantFinalPlan-20261011/step1. Пункт12/CoreCLR не змінювався.
