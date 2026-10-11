@@ -47,7 +47,7 @@ def method(source, name):
     return block(source, head + re.escape(name) + r'\s*\([^;{}]*\)\s*\{')
 
 
-def build(repo, work):
+def build(repo, work, candidate=None):
     package = repo / 'com.cidonix.unibridge'
     editor = package / 'Modules/Cidonix.UniBridge.MCP.Editor'
     provenance = {'wholeProductionFiles': [], 'sources': {}, 'extraction': {}, 'limitations': [
@@ -55,10 +55,13 @@ def build(repo, work):
         'Persisted models and producers: unchanged declarations and SaveState/SaveWriteToken/SaveSnapshot bodies, owned storage-path adapters only.',
         'Runtime converter: unchanged UnityObjectId and UnityEngineObjectConverter with deterministic typed ID lookup substrate.',
         'OutputContractProvider is an empty-schema fixture; output schema inference/validation is outside this lifecycle/JSON suite.',
+        'Unity math structs are identity-only fixtures for JSON/lifecycle linking; value contracts have a separate real-SDK and native qualification.',
     ]}
 
     def read(relative):
         path = package / relative
+        if candidate is not None and (candidate / 'com.cidonix.unibridge' / relative).is_file():
+            path = candidate / 'com.cidonix.unibridge' / relative
         raw = path.read_bytes()
         provenance['sources'][relative] = hashlib.sha256(raw).hexdigest()
         return raw.decode('utf-8-sig')
@@ -70,6 +73,7 @@ def build(repo, work):
 
     for relative in (
         'Modules/Cidonix.UniBridge.MCP.Editor/Helpers/McpJson.cs',
+        'Modules/Cidonix.UniBridge.MCP.Runtime/Serialization/UnityValueSerialization.cs',
         'Modules/Cidonix.UniBridge.MCP.Editor/Models/Command.cs',
         'Modules/Cidonix.UniBridge.MCP.Editor/ToolRegistry/McpToolInfo.cs',
         'Modules/Cidonix.UniBridge.MCP.Editor/Connection/MessageProtocol.cs',

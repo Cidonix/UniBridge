@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Cidonix.UniBridge.MCP.Runtime.Serialization;
 
 namespace Cidonix.UniBridge.MCP.Editor.Helpers
 {
@@ -15,7 +16,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
     {
         public static JsonSerializer CreateSerializer(JsonSerializerSettings settings = null)
         {
-            return JsonSerializer.Create(settings);
+            var serializer = JsonSerializer.Create(settings);
+            UnityValueSerialization.AddMathConverter(serializer.Converters);
+            return serializer;
         }
 
         public static string SerializeObject(object value)

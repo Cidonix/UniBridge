@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.72",
+  "version": "0.2.73",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Improved\n\n- Add independent semantic Input API compatibility advisories for script authoring and intelligence.\n"
+    "changelog": "### Improved\n\n- Canonical Unity mathematical values across JSON input, physical property readback and output, including Matrix4x4 and Vector4.\n"
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

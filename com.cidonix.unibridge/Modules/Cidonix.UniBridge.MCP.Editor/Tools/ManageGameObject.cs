@@ -55,16 +55,7 @@ Returns:
         // Shared JsonSerializer to avoid per-call allocation overhead
         static readonly JsonSerializer InputSerializer = JsonSerializer.Create(new JsonSerializerSettings
         {
-            Converters = new List<JsonConverter>
-            {
-                new Vector3Converter(),
-                new Vector2Converter(),
-                new QuaternionConverter(),
-                new ColorConverter(),
-                new RectConverter(),
-                new BoundsConverter(),
-                new UnityEngineObjectConverter()
-            }
+            Converters = UnityValueSerialization.CreateConverters(includeObjectReferences: true)
         });
 
         static JObject NormalizeInput(JObject raw)
@@ -2584,6 +2575,9 @@ Returns:
             {
                 return expected == null && actual == null;
             }
+
+            if (UnityValueSerialization.TryCompareMathValues(expected, actual, out var mathValuesEqual))
+                return mathValuesEqual;
 
             var expectedToken = expected as JToken ?? McpJson.TokenFromObject(expected);
             var actualToken = actual as JToken ?? McpJson.TokenFromObject(actual);

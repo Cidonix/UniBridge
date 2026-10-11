@@ -144,9 +144,10 @@ namespace Cidonix.UniBridge.BridgeIsolationRegression
             var serializerA = McpJson.CreateSerializer();
             var serializerB = McpJson.CreateSerializer();
             Check.Assert(!ReferenceEquals(serializerA, serializerB), "Serializer instance was reused.");
+            var serializerBConverterCount = serializerB.Converters.Count;
             serializerA.NullValueHandling = NullValueHandling.Ignore;
             serializerA.Converters.Add(new StringEnumConverter());
-            Check.Assert(serializerB.NullValueHandling == NullValueHandling.Include && serializerB.Converters.Count == 0 && McpJson.SerializeObject(probe) == text, "Mutation leaked between operation serializers.");
+            Check.Assert(serializerB.NullValueHandling == NullValueHandling.Include && serializerB.Converters.Count == serializerBConverterCount && !serializerB.Converters.Any(converter => converter is StringEnumConverter) && McpJson.SerializeObject(probe) == text, "Mutation leaked between operation serializers.");
         }
 
         static void ExplicitSettingsCases(List<CaseResult> cases, Func<JsonSerializerSettings> poison)

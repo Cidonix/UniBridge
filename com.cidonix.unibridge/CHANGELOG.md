@@ -1,3 +1,7 @@
+## [0.2.73] - 2026-10-11
+
+- Canonical Unity mathematical values across JSON input, physical property readback and output, including Matrix4x4 and Vector4.
+
 ## [0.2.72] - 2026-10-11
 
 - Add independent semantic Input API compatibility advisories for script authoring and intelligence.

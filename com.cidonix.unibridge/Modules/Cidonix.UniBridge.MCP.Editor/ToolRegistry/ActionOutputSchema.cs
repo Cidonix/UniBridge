@@ -160,7 +160,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 var type = underlying ?? declared;
                 nullable |= underlying != null;
                 var contract = serializer.ContractResolver.ResolveContract(type);
-                if (contract.Converter != null || serializer.Converters.Count != 0 || contract.IsReference == true)
+                if (contract.Converter != null || serializer.Converters.Any(converter => converter.CanConvert(type)) || contract.IsReference == true)
                     throw new NotSupportedException("Converted/reference-preserving serialized type needs a producer schema: " + type);
                 JObject schema;
                 if (type == typeof(bool)) schema = Type("boolean");

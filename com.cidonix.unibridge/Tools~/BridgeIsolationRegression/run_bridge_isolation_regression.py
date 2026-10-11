@@ -17,6 +17,7 @@ from ProductionSource import build
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[3])
+    parser.add_argument('--candidate', type=Path)
     parser.add_argument('--newtonsoft', type=Path, required=True)
     parser.add_argument('--goldens', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
@@ -31,7 +32,7 @@ def main():
     args.report.parent.mkdir(parents=True, exist_ok=True)
     work = args.report.parent / ('bridge-isolation-build-' + uuid.uuid4().hex)
     work.mkdir()
-    provenance = build(args.repo, work)
+    provenance = build(args.repo, work, args.candidate.resolve() if args.candidate else None)
     provenance.update({'administrator': True, 'newtonsoftSha256': hashlib.sha256(args.newtonsoft.read_bytes()).hexdigest(),
                        'goldenArtifacts': {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in sorted(args.goldens.glob('*.json'))},
                        'fixtureRoot': str(work / 'owned-storage'), 'nativeHandleQualification': False})

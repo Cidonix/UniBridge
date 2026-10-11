@@ -708,16 +708,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         // --- Define custom JsonSerializerSettings for OUTPUT ---
         static readonly JsonSerializerSettings _outputSerializerSettings = new()
         {
-            Converters = new List<JsonConverter>
-            {
-                new Vector3Converter(),
-                new Vector2Converter(),
-                new QuaternionConverter(),
-                new ColorConverter(),
-                new RectConverter(),
-                new BoundsConverter(),
-                new UnityEngineObjectConverter() // Handles serialization of references
-            },
+            Converters = UnityValueSerialization.CreateConverters(includeObjectReferences: true),
             ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
 
             // ContractResolver = new DefaultContractResolver { NamingStrategy = new CamelCaseNamingStrategy() } // Example if needed

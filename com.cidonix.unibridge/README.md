@@ -222,6 +222,18 @@ AI agent/MCP client so it reloads the available Unity projects.
 
 ## Documentation
 
+### Unity Mathematical Values In 0.2.73
+
+Math JSON input, reflected property readback and output use the same isolated
+finite-value converters. Vector2/3/4, Quaternion, Color and Rect accept complete
+named fields or exact-length arrays. Bounds uses complete center/size values.
+Matrix4x4 accepts sixteen row-major values, four rows, `{ "rows": [...] }`, or
+complete `m00` through `m33` fields; canonical output uses those sixteen fields.
+Malformed, incomplete and nonfinite input is rejected. Typed physical readback
+compares canonical values with float tolerance. Caller converters retain
+priority, and explicit snapshot DTOs retain their existing shapes.
+Tests: `Tools~/UnityValueRegression` and `Tools~/BridgeIsolationRegression`.
+
 ### Semantic Input API Hints In 0.2.72
 
 Standard/deeper script validation, proposed script edits and ScriptIntelligence

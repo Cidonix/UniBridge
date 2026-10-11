@@ -11308,3 +11308,20 @@ Add independent semantic Input API compatibility advisories for script authoring
 Перевірки: 307 source-linked semantic/schema/syntax checks; 11 native metadata checks у x64 Mono Unity 6000.6.5f1; actual MCP ValidateScript standard=available/bindingErrors0 та basic=skipped. Повний Editor module: 268 sources, Windows/Windows-Roslyn/Linux/OSX — 0 compile errors; foreign-symbol компіляція не є hardware/native доказом. Domovyk і Corgi мають точні байти .72 та успішну окрему admin Unity batch-компіляцію. Початкові 23775 авторських Assets/ProjectSettings файлів збережені, owned fixture перенесений у quarantine без збереження авторських сцен. Перші невдалі fixture спроби збережені як evidence, виправлено лише їхні Roslyn references та owning-assembly context.
 
 Пункт 1 раніше доставлено у Domovyk cs293, server bytes перевірено, pending empty. Поточний повний check-in пункту 2 виконується після цього запису; точний receipt зберігається у local Temp/AssistantFinalPlan-20261011/step2/dom-publication.json. Пункт 12/CoreCLR і скасоване дослідження native crash не змінювалися.
+
+
+### 2026-10-11 — Assistant follow-up item 3 / 0.2.73
+
+Canonical Unity mathematical values across JSON input, physical property readback and output, including Matrix4x4 and Vector4. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+Item3 schema integration correction: DTO schemas reject only converters that actually CanConvert the declared type. The always-present mathematical converter no longer rejects unrelated DTOs. Production-linked whole ActionOutputSchema + actual McpJson/value helper regression passes 49/49 (8 new schema controls), retaining applicable Unity/custom-converter refusal, closed explicit nested shapes and global-factory isolation. Evidence: Temp/AssistantFinalPlan-20261011/step3/math-schema-01.json. Native Editor gate remains owned by the main task.
+
+
+
+### 2026-10-11 — Пункт 3 завершено / UniBridge 0.2.73
+
+Додано спільні stateless конвертери скінченних Unity math values для незалежних serializers: Vector2/3/4, Quaternion, Color, Rect, Bounds, Matrix4x4. Матриця приймає exact16 row-major, four rows, rows DTO або повні m00..m33; вихід канонічний. Перевірка фізичного property readback спочатку приводить requested JSON до фактичного math type, порівнює з float tolerance і безпечно проєктує actualValue. Explicit snapshot DTOs і пріоритет caller converters збережені. Генератор закритих DTO schemas перевіряє застосовність converter до конкретного type, тому новий math converter не вимикає інші MCP tools; applicable custom/Unity converters далі вимагають explicit producer schema.
+
+Перевірки: 49 real-SDK source-linked math/schema checks; 146/146 BridgeIsolation (усі 13 pinned JSON goldens збережені); 5/5 exact legacy SDK compilations 5.3.2/5.6.5/5.6.7/2017.4/2018.4. Native x64 Mono Unity5.6.7f1: 52/52, administrator. Native Unity6000.6.5f1: 48/48, включно з 8 ordinary MCP записами/readback Camera.projectionMatrix та nonserialized Probe properties, exact installed package .73, negative inputs без mutation, long identities та збереження original loaded scene/dirty state. Усі чотири platform-symbol profiles повного Editor module мають 0 compile errors; це compile evidence, не foreign-hardware proof. Обидва downstream проєкти перевірено окремою admin Unity batch-компіляцією. Первинні авторські Assets/ProjectSettings файли збережені; owned scene закрита, imported fixture перенесений у quarantine.
+
+Первинний schema-guard збій та scene-activation FAIL тестового fixture збережені в evidence. Native fixture спрощено до власної additive DefaultGameObjects сцени з typed Camera і точним набором власних roots, без необхідності runtime SetActiveScene і без створення об'єктів у авторській сцені. Пункт 2 доставлено в Domovyk cs294: 27 server files звірено, pending empty. Receipt поточного повного check-in — Temp/AssistantFinalPlan-20261011/step3/dom-publication.json. Пункт 12/CoreCLR і скасоване native crash дослідження не змінювалися.
