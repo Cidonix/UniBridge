@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.74",
+  "version": "0.2.75",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Improved\n\n- Read recorded Profiler frame counters with explicit availability, bounded tables and historical summaries.\n"
+    "changelog": "### Improved\n\n- Add opt-in recorded GC allocation callstacks and exact sample drilldown\n"
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {

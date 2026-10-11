@@ -11339,3 +11339,17 @@ RuntimeProfiler RecordedCounters читає bounded table фактично за�
 Перевірки: 35/35 source-linked regression checks; 53/53 native Unity6000.6.5f1 x64 Mono та два ordinary MCP запити custom/default counters до known capture, зі звіркою фактичних raw Count/Bytes і недоступного counter. Profiler buffer/flags відновлені; owned fixture перенесено у quarantine, opt-in native fixture збережено в Tools~. Повний Editor module: 271 source files, чотири platform-symbol profiles, 0 compile errors; обидва downstream проєкти окремо перевірені administrator Unity batch. Test Editor healthy, console errors/exceptions 0. Первісні Assets/ProjectSettings файли збережені.
 
 Portable runner тепер використовує справжній SDK CoreModule і повні актуальні McpJson/math converters. Первинний compile FAIL через відсутню math integration та наступний GetInstanceID/Unity6.6 obsolete API mismatch збережені в evidence; виправлено лише runner integration/symbol detection. Full Domovyk check-in і byte verification server files зафіксовано у Temp/AssistantFinalPlan-20261011/step4/dom-publication.json. Пункт 12/CoreCLR та скасоване native crash дослідження не змінювалися.
+
+
+### 2026-10-11 — Assistant follow-up item 5 / 0.2.75
+
+Add opt-in recorded GC allocation callstacks and exact sample drilldown Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Пункт 5 завершено / UniBridge 0.2.75
+
+RecordedFrames підтримує opt-in GC.Alloc callstacks із bounded samples/depth та exact physical sampleID drilldown (frame:threadId:sampleIndex). Default не запитує callstack API; non-allocation/foreign sample не читається. Recorded stack зберігає адреси й доступні method/file/line; missing/unresolved/failed statuses явні, без вигаданих назв. IDs валідовані до native view; cancellation/depth/sample/text limits і disposal перевірені. API читає існуючий capture, не вмикає постійне allocation recording.
+
+Перевірки: 80/80 source-linked regression checks; повний Editor module 271 source files у чотирьох platform-symbol profiles, 0 errors; native Unity6000.6.5f1 x64 Mono 8/8 capture assertions та три ordinary MCP запити (first pass без callstacks; один конкретний allocation з очікуваною method/depth; frame без записаного stack). Первісні Profiler buffer/flags відновлені, restorePending=false. Owned fixture перенесено у quarantine; opt-in native fixture збережено в Tools~. Test compile health/console clean, обидва downstream проєкти перевірено administrator Unity batch. Авторські Assets/ProjectSettings збережені.
+
+Full Domovyk check-in та byte verification server files: Temp/AssistantFinalPlan-20261011/step5/dom-publication.json. Пункт 12/CoreCLR та скасоване native crash дослідження не змінювалися.

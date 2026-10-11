@@ -46,6 +46,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("For RecordedFrames, read GC.Alloc metadata. Default true; disabled, missing or unsupported metadata is unknown rather than zero.", Required = false, Default = true)]
         public bool? IncludeMetadata { get; set; }
 
+        [McpDescription("For RecordedFrames, read already recorded callstacks for physical GC.Alloc samples. Default false. This does not enable callstack capture or recording; absent stacks stay explicitly unavailable.", Required = false, Default = false)]
+        public bool? IncludeCallstacks { get; set; }
+
+        [McpDescription("For RecordedFrames with IncludeCallstacks=true, optionally query only these physical sampleId strings previously returned by RecordedFrames (frameIndex:threadId:sampleIndex). At most 64. This supports a second-pass drilldown without spending the query budget on earlier allocations; missing copied IDs are reported explicitly.", Required = false)]
+        public string[] CallstackSampleIds { get; set; }
+
+        [McpDescription("For RecordedFrames with IncludeCallstacks, maximum physical allocation samples whose stacks are queried across the whole request. Default 32, clamped to 1..64; additional allocation samples report SAMPLE_LIMIT.", Required = false, Default = 32)]
+        public int? MaxCallstackSamples { get; set; }
+
+        [McpDescription("For RecordedFrames with IncludeCallstacks, maximum stack entries resolved per physical allocation sample. Default 32, clamped to 1..64; output reports recorded depth and truncation.", Required = false, Default = 32)]
+        public int? MaxCallstackDepth { get; set; }
+
         [McpDescription("For RecordedFrames, sort physical top samples by SelfTime, TotalTime or GcBytes. Filters and Top-N are applied after full copied-tree accounting.", Required = false, Default = RuntimeProfilerRecordedSort.SelfTime)]
         public RuntimeProfilerRecordedSort RecordedSortBy { get; set; } = RuntimeProfilerRecordedSort.SelfTime;
 

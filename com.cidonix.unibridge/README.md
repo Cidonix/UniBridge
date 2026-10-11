@@ -777,3 +777,8 @@ harness without connecting to any Editor.
   steps. Use this for workflows such as validate several `.cs` files, refresh
   assets, request compilation, wait for the editor, and read console
   diagnostics.
+
+
+## Recorded allocation callstacks
+
+RuntimeProfiler RecordedFrames defaults to no callstack queries. Opt in with IncludeCallstacks, bounded CallstackMaxSamples/CallstackMaxDepth, and optional CallstackSampleIds taken from returned physical sample identities (frame:threadId:sampleIndex). Only recorded GC.Alloc stacks are decoded; missing stacks are explicitly unavailable. Selected identities are validated before native reads and foreign samples are never queried. This reads existing capture data and does not enable ongoing allocation recording.

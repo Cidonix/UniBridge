@@ -22,6 +22,11 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         RecordedProfilerSample CopySample(int index, bool includeMetadata);
     }
 
+    internal interface IRecordedProfilerCallstackView
+    {
+        RecordedProfilerCallstack CopyCallstack(int sampleIndex, int maxDepth, Action cancelled);
+    }
+
     internal sealed class RecordedProfilerReadOptions
     {
         public int? FrameIndex;
@@ -32,6 +37,10 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         public int MaxThreadViews = 256;
         public int MaxRawSamples = 20000;
         public bool IncludeMetadata = true;
+        public bool IncludeCallstacks;
+        public string[] CallstackSampleIds;
+        public int MaxCallstackSamples = 32;
+        public int MaxCallstackDepth = 32;
     }
 
     internal sealed class RecordedProfilerFrame
@@ -51,6 +60,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         public int RequestedFrameCount;
         public int[] SelectedFrameIndices = Array.Empty<int>();
         public int CopiedSamples;
+        public int RequestedCallstacks;
+        public string[] UnobservedCallstackSampleIds = Array.Empty<string>();
         public bool TimedOut;
         public bool Complete;
         public readonly List<RecordedProfilerFrame> Frames = new();
@@ -65,9 +76,22 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.FrameCount < 1 || options.FrameCount > 60 || options.MaxThreads < 1 || options.MaxThreads > 64 ||
-                options.MaxThreadViews < 1 || options.MaxThreadViews > 512 || options.MaxRawSamples < 1 || options.MaxRawSamples > 100000)
+                options.MaxThreadViews < 1 || options.MaxThreadViews > 512 || options.MaxRawSamples < 1 || options.MaxRawSamples > 100000 ||
+                options.MaxCallstackSamples < 1 || options.MaxCallstackSamples > 64 || options.MaxCallstackDepth < 1 || options.MaxCallstackDepth > 64)
                 throw new ArgumentOutOfRangeException(nameof(options), "Recorded extraction limits are outside the supported bounds.");
             var result = new RecordedProfilerReadResult { RequestedFrameCount = options.FrameCount };
+            var requestedStacks = new HashSet<string>(StringComparer.Ordinal);
+            var observedStacks = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var id in options.CallstackSampleIds ?? Array.Empty<string>())
+            {
+                var pieces = id?.Trim().Split(':');
+                if (options.CallstackSampleIds.Length > 64 || !options.IncludeCallstacks || pieces == null || pieces.Length != 3 ||
+                    !int.TryParse(pieces[0], NumberStyles.None, CultureInfo.InvariantCulture, out var frame) || frame < 0 ||
+                    !ulong.TryParse(pieces[1], NumberStyles.None, CultureInfo.InvariantCulture, out var thread) ||
+                    !int.TryParse(pieces[2], NumberStyles.None, CultureInfo.InvariantCulture, out var sample) || sample < 0)
+                { result.ErrorCode = "INVALID_RECORDED_CALLSTACK_SAMPLE_ID"; return result; }
+                requestedStacks.Add(frame.ToString(CultureInfo.InvariantCulture) + ":" + thread.ToString(CultureInfo.InvariantCulture) + ":" + sample.ToString(CultureInfo.InvariantCulture));
+            }
             var ids = new HashSet<ulong>();
             foreach (var id in options.ThreadIds ?? Array.Empty<string>())
             {
@@ -168,8 +192,29 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                             {
                                 if (Expired()) { copied.ReadIssue = "EXTRACTION_TIMEOUT"; break; }
                                 if ((sampleIndex & 63) == 0 && !view.Valid) { copied.ReadIssue = "THREAD_VIEW_EVICTED"; break; }
-                                samples.Add(view.CopySample(sampleIndex, options.IncludeMetadata));
+                                var sample = view.CopySample(sampleIndex, options.IncludeMetadata);
+                                samples.Add(sample);
                                 result.CopiedSamples++;
+                                string stackId = RecordedProfilerFrameAnalysis.SampleId(copied, sampleIndex);
+                                bool stackSelected = requestedStacks.Count == 0 || requestedStacks.Contains(stackId);
+                                if (requestedStacks.Contains(stackId))
+                                {
+                                    observedStacks.Add(stackId);
+                                    if (!sample.IsGcAllocation) sample.CallstackStatus = "NOT_ALLOCATION_SAMPLE";
+                                }
+                                if (sample.IsGcAllocation)
+                                {
+                                    if (!options.IncludeCallstacks) sample.CallstackStatus = "DISABLED";
+                                    else if (!stackSelected) sample.CallstackStatus = "NOT_REQUESTED";
+                                    else if (result.RequestedCallstacks >= options.MaxCallstackSamples) sample.CallstackStatus = "SAMPLE_LIMIT";
+                                    else if (!(view is IRecordedProfilerCallstackView stacks)) sample.CallstackStatus = "CALLSTACK_API_UNSUPPORTED";
+                                    else
+                                    {
+                                        result.RequestedCallstacks++;
+                                        sample.Callstack = stacks.CopyCallstack(sampleIndex, options.MaxCallstackDepth, checkCancellation);
+                                        sample.CallstackStatus = sample.Callstack?.status ?? "CALLSTACK_READ_FAILED";
+                                    }
+                                }
                             }
                             if (samples.Count < copied.DeclaredSampleCount && copied.ReadIssue == null)
                                 copied.ReadIssue = "RAW_SAMPLE_LIMIT";
@@ -195,6 +240,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 RecordRequestedCoverage();
             }
             if (result.Frames.Count < indices.Count) result.Issues.Add("FRAME_EXTRACTION_INCOMPLETE");
+            result.UnobservedCallstackSampleIds = requestedStacks.Where(id => !observedStacks.Contains(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray();
+            if (result.UnobservedCallstackSampleIds.Length > 0) result.Issues.Add("CALLSTACK_SAMPLE_COVERAGE_INCOMPLETE");
             Expired();
             if (!result.Frames.SelectMany(frame => frame.Threads).Any())
                 result.ErrorCode = result.Issues.Count == 0 && result.Frames.All(frame => frame.Issues.Count == 0)

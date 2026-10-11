@@ -48,7 +48,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         {
             var play = O(("isPlaying", B()), ("isPaused", B()), ("hint", S()));
             var recordedErrors = new List<JObject> { Error("PLAY_MODE_REQUIRED", O(("hint", S()))) };
-            foreach (var code in new[] { "INVALID_RECORDED_THREAD_ID", "NO_RECORDED_PROFILER_FRAMES", "RECORDED_FRAME_OUT_OF_RANGE", "NO_RECORDED_THREAD_MATCH", "RECORDED_PROFILER_DATA_UNAVAILABLE" })
+            foreach (var code in new[] { "INVALID_RECORDED_THREAD_ID", "INVALID_RECORDED_CALLSTACK_SAMPLE_ID", "NO_RECORDED_PROFILER_FRAMES", "RECORDED_FRAME_OUT_OF_RANGE", "NO_RECORDED_THREAD_MATCH", "RECORDED_PROFILER_DATA_UNAVAILABLE" })
                 recordedErrors.Add(Error(code, RecordedData("unavailable", false, code, true)));
             recordedErrors.Add(Error("RECORDED_PROFILER_DATA_PARTIAL", RecordedData("partial", false, null, false)));
             return new Dictionary<string, JObject>(StringComparer.Ordinal)
@@ -123,6 +123,9 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             ("depth", I()), ("name", S(true)), ("markerId", I()), ("category", S(true)), ("categoryId", I()), ("flags", S(true)),
             ("startTimeNs", S()), ("durationNs", S()), ("totalTimeMs", N()), ("selfTimeMs", N(true)), ("selfTimeComplete", B()),
             ("directChildren", Integers()), ("isGcAllocation", B()), ("gcAllocationBytes", I(true)), ("gcMetadataStatus", S(true)),
+            ("callstackStatus", S(true)), ("callstack", Nullable(O(("status", S()), ("recordedDepth", I()), ("depthTruncated", B()),
+                ("entries", A(O(("address", S()), ("method", S(true)), ("sourceFile", S(true)), ("sourceLine", I(true)),
+                    ("status", S()), ("issue", S(true)), ("textTruncated", B())))), ("issue", S(true))))),
             ("topologyComplete", B()), ("issues", Strings()));
         static JObject RecordedTree(int remaining)
         {
@@ -142,8 +145,9 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             ("outcome", C(outcome)), ("complete", C(complete)),
             ("available", O(("firstFrameIndex", I()), ("lastFrameIndex", I()))),
             ("request", O(("FrameIndex", I(true)), ("frameCount", I()), ("ThreadIds", Strings(true)), ("ThreadNameFilters", Strings(true)),
-                ("maxThreads", I()), ("maxRawSamples", I()), ("maxTopSamples", I()), ("maxHierarchyDepth", I()), ("includeMetadata", B()), ("sortBy", S()))),
-            ("selectedFrameIndices", Integers()), ("readFrameIndices", Integers()), ("copiedSamples", I()), ("timedOut", B()),
+                ("maxThreads", I()), ("maxRawSamples", I()), ("maxTopSamples", I()), ("maxHierarchyDepth", I()), ("includeMetadata", B()), ("sortBy", S()),
+                ("includeCallstacks", B()), ("callstackSampleIds", Strings(true)), ("maxCallstackSamples", I()), ("maxCallstackDepth", I()))),
+            ("selectedFrameIndices", Integers()), ("readFrameIndices", Integers()), ("copiedSamples", I()), ("timedOut", B()), ("requestedCallstacks", I()), ("unobservedCallstackSampleIds", Strings()),
             ("elapsedMs", N()), ("issues", Strings()), ("errorCode", C(errorCode)), ("selfTimeMethod", S()), ("gcScope", S()),
             ("savedPath", S(true)), ("hint", hint ? S() : C(null)), ("frames", A(RecordedFrame())));
 

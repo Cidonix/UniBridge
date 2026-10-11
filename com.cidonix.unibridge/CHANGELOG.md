@@ -1,3 +1,7 @@
+## [0.2.75] - 2026-10-11
+
+- Add opt-in recorded GC allocation callstacks and exact sample drilldown
+
 ## [0.2.74] - 2026-10-11
 
 - Read recorded Profiler frame counters with explicit availability, bounded tables and historical summaries.

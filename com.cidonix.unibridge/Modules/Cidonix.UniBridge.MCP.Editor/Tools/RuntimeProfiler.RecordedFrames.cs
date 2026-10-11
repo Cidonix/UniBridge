@@ -24,6 +24,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             int maxTop = Mathf.Clamp(parameters.MaxHierarchySamples ?? DefaultMaxHierarchySamples, 1, MaxHierarchySamples);
             int maxDepth = Mathf.Clamp(parameters.MaxHierarchyDepth ?? DefaultMaxHierarchyDepth, 1, MaxHierarchyDepth);
             int timeoutMs = Mathf.Clamp(parameters.TimeoutMs ?? DefaultTimeoutMs, 1000, 300000);
+            int maxCallstacks = Mathf.Clamp(parameters.MaxCallstackSamples ?? 32, 1, 64);
+            int maxCallstackDepth = Mathf.Clamp(parameters.MaxCallstackDepth ?? 32, 1, 64);
             var startedUtc = DateTime.UtcNow;
             // Yield before acquiring views; every view is synchronously closed by Read.
             await ToolExecutionScheduler.YieldIfNotCancelledAsync();
@@ -32,7 +34,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             {
                 FrameIndex = parameters.FrameIndex, FrameCount = frames,
                 ThreadIds = parameters.ThreadIds, ThreadNameFilters = parameters.ThreadNameFilters,
-                MaxThreads = maxThreads, MaxRawSamples = maxRaw, IncludeMetadata = parameters.IncludeMetadata ?? true
+                MaxThreads = maxThreads, MaxRawSamples = maxRaw, IncludeMetadata = parameters.IncludeMetadata ?? true,
+                IncludeCallstacks = parameters.IncludeCallstacks ?? false, CallstackSampleIds = parameters.CallstackSampleIds,
+                MaxCallstackSamples = maxCallstacks, MaxCallstackDepth = maxCallstackDepth
             }, () => elapsed.ElapsedMilliseconds >= timeoutMs, ToolExecutionScheduler.ThrowIfCancellationRequested);
             ToolExecutionScheduler.ThrowIfCancellationRequested();
             var frameData = read.Frames.Select(frame => BuildRecordedFrameDto(frame, parameters, maxTop, maxDepth, true)).ToArray();
@@ -46,9 +50,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
                 available = new { firstFrameIndex = read.FirstAvailableFrame, lastFrameIndex = read.LastAvailableFrame },
                 request = new { parameters.FrameIndex, frameCount = frames, parameters.ThreadIds, parameters.ThreadNameFilters,
                     maxThreads, maxRawSamples = maxRaw, maxTopSamples = maxTop, maxHierarchyDepth = maxDepth,
-                    includeMetadata = parameters.IncludeMetadata ?? true, sortBy = parameters.RecordedSortBy.ToString() },
+                    includeMetadata = parameters.IncludeMetadata ?? true, sortBy = parameters.RecordedSortBy.ToString(),
+                    includeCallstacks = parameters.IncludeCallstacks ?? false, callstackSampleIds = parameters.CallstackSampleIds,
+                    maxCallstackSamples = maxCallstacks, maxCallstackDepth },
                 selectedFrameIndices = read.SelectedFrameIndices, readFrameIndices = read.Frames.Select(frame => frame.Index).ToArray(),
                 copiedSamples = read.CopiedSamples, timedOut = read.TimedOut, issues = read.Issues.ToArray(),
+                requestedCallstacks = read.RequestedCallstacks,
+                unobservedCallstackSampleIds = read.UnobservedCallstackSampleIds,
                 errorCode = read.ErrorCode,
                 selfTimeMethod = "recorded duration minus clipped union of direct-child intervals; unknown for incomplete topology",
                 gcScope = "Recorded GC.Alloc events in the selected threads; unknown metadata and unrecorded markers are not zero. Thread work is not frame wall time.",
@@ -60,7 +68,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
             var responseData = new
             {
                 payload.schema, payload.dataSource, payload.outcome, payload.complete, payload.available, payload.request,
-                payload.selectedFrameIndices, payload.readFrameIndices, payload.copiedSamples, payload.timedOut,
+                payload.selectedFrameIndices, payload.readFrameIndices, payload.copiedSamples, payload.timedOut, payload.requestedCallstacks, payload.unobservedCallstackSampleIds,
                 payload.elapsedMs, payload.issues, payload.errorCode, payload.selfTimeMethod, payload.gcScope, savedPath,
                 hint = read.ErrorCode != null ? "Record CPU profiling data in Unity first, or select a frame/thread still available in the already loaded Profiler buffer. This action does not enable recording or load/clear captures." : null,
                 frames = parameters.ReturnSamples == true ? frameData :

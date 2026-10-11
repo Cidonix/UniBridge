@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Unity.Profiling;
 using Unity.Profiling.LowLevel;
 using UnityEditor.Profiling;
@@ -24,12 +25,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             return new View(ProfilerDriver.GetRawFrameDataView(frame, threadIndex));
         }
 
-        sealed class View : IRecordedProfilerView
+        sealed class View : IRecordedProfilerView, IRecordedProfilerCallstackView
         {
             RawFrameDataView raw;
             readonly Dictionary<ushort, string> categories = new();
             readonly Dictionary<int, FrameDataView.MarkerMetadataInfo[]> metadata = new();
             int gcMarker = FrameDataView.invalidMarkerId;
+            readonly List<ulong> callstackAddresses = new();
             public View(RawFrameDataView raw) { this.raw = raw; }
             public bool Valid => raw != null && raw.valid;
             public RecordedProfilerThread CopyHeader()
@@ -101,6 +103,52 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             {
                 if (raw == null) throw new ObjectDisposedException(nameof(View));
                 if (!raw.valid) throw new InvalidOperationException("Recorded thread view is no longer available.");
+            }
+            public RecordedProfilerCallstack CopyCallstack(int sampleIndex, int maxDepth, Action cancelled)
+            {
+                var result = new RecordedProfilerCallstack { status = "CALLSTACK_READ_FAILED" };
+                try
+                {
+                    RequireView();
+                    cancelled?.Invoke();
+                    callstackAddresses.Clear();
+                    raw.GetSampleCallstack(sampleIndex, callstackAddresses);
+                    result.recordedDepth = callstackAddresses.Count;
+                    if (callstackAddresses.Count == 0) { result.status = "CALLSTACK_NOT_RECORDED"; return result; }
+                    int count = Math.Min(maxDepth, callstackAddresses.Count);
+                    result.depthTruncated = count < callstackAddresses.Count;
+                    var entries = new RecordedProfilerCallstackEntry[count];
+                    for (int i = 0; i < count; i++)
+                    {
+                        cancelled?.Invoke();
+                        var entry = new RecordedProfilerCallstackEntry
+                        { address = "0x" + callstackAddresses[i].ToString("X16", CultureInfo.InvariantCulture), status = "SYMBOL_UNRESOLVED" };
+                        entries[i] = entry;
+                        try
+                        {
+                            var method = raw.ResolveMethodInfo(callstackAddresses[i]);
+                            entry.method = Bounded(method.methodName, 512, entry);
+                            entry.sourceFile = Bounded(method.sourceFileName, 1024, entry);
+                            entry.sourceLine = method.sourceFileLine > 0 ? method.sourceFileLine : (uint?)null;
+                            if (!string.IsNullOrEmpty(entry.method)) entry.status = "resolved";
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex) { entry.status = "SYMBOL_READ_FAILED"; entry.issue = Bounded(ex.Message, 512, entry); }
+                    }
+                    result.entries = entries;
+                    result.status = "recorded";
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (MissingMethodException ex) { result.status = "CALLSTACK_API_UNSUPPORTED"; result.issue = ex.Message; }
+                catch (NotSupportedException ex) { result.status = "CALLSTACK_API_UNSUPPORTED"; result.issue = ex.Message; }
+                catch (Exception ex) { result.issue = ex.Message?.Length > 512 ? ex.Message.Substring(0, 512) : ex.Message; }
+                return result;
+            }
+            static string Bounded(string value, int length, RecordedProfilerCallstackEntry entry)
+            {
+                if (value == null || value.Length <= length) return value;
+                entry.textTruncated = true;
+                return value.Substring(0, length);
             }
             public void Dispose()
             {

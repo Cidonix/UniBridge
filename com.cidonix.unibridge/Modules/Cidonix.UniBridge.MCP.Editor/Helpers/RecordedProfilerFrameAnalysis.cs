@@ -21,6 +21,28 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         public bool IsGcAllocation;
         public long? GcBytes;
         public string GcMetadataStatus;
+        public string CallstackStatus;
+        public RecordedProfilerCallstack Callstack;
+    }
+
+    internal sealed class RecordedProfilerCallstackEntry
+    {
+        public string address;
+        public string method;
+        public string sourceFile;
+        public uint? sourceLine;
+        public string status;
+        public string issue;
+        public bool textTruncated;
+    }
+
+    internal sealed class RecordedProfilerCallstack
+    {
+        public string status;
+        public int recordedDepth;
+        public bool depthTruncated;
+        public RecordedProfilerCallstackEntry[] entries = Array.Empty<RecordedProfilerCallstackEntry>();
+        public string issue;
     }
 
     internal sealed class RecordedProfilerThread
@@ -250,6 +272,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 selfTimeMs = node.SelfTimeMs, selfTimeComplete = node.SelfTimeMs.HasValue,
                 directChildren = node.Children.ToArray(), isGcAllocation = node.Raw.IsGcAllocation,
                 gcAllocationBytes = node.Raw.GcBytes, gcMetadataStatus = node.Raw.GcMetadataStatus,
+                callstackStatus = node.Raw.CallstackStatus, callstack = node.Raw.Callstack,
                 topologyComplete = node.TopologyComplete,
                 issues = node.Issues.OrderBy(item => item, StringComparer.Ordinal).ToArray()
             };
