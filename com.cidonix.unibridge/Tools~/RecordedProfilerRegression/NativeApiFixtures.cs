@@ -17,6 +17,9 @@ namespace UnityEditor.Profiling
     public class FrameDataView
     {
         public const int invalidMarkerId = -1;
+#if UNITY_6000_6_OR_NEWER
+        public struct UnityObjectInfo { public string name; public UnityEngine.EntityId relatedGameObjectEntityId; }
+#endif
         public struct MethodInfo { public string methodName; public string sourceFileName; public uint sourceFileLine; }
         public struct MarkerMetadataInfo
         {
@@ -35,6 +38,8 @@ namespace UnityEditor.Profiling
         public ulong[] Callstack = Array.Empty<ulong>();
         public bool ThrowCallstack, UnsupportedCallstack;
         public byte[] EncodedMetadata;
+        public ulong RecordedObjectId;
+        public bool ThrowObjectId, UnsupportedObjectId;
     }
     public sealed class NativeThread
     {
@@ -42,7 +47,11 @@ namespace UnityEditor.Profiling
         public NativeSample[] Samples;
         public bool Valid = true;
         public int Opened, Disposed, AccessAfterDispose;
-        public int CallstackQueries, SymbolQueries;
+        public int CallstackQueries, SymbolQueries, ObjectIdQueries, ObjectInfoQueries;
+#if UNITY_6000_6_OR_NEWER
+        public readonly Dictionary<ulong, FrameDataView.UnityObjectInfo> RecordedObjects = new();
+        public readonly HashSet<ulong> ThrowObjectInfo = new();
+#endif
         public readonly Dictionary<ulong,FrameDataView.MethodInfo> Symbols = new();
         public readonly HashSet<ulong> ThrowSymbols = new();
     }
@@ -76,6 +85,21 @@ namespace UnityEditor.Profiling
         public MarkerMetadataInfo[] GetMarkerMetadataInfo(int markerId) { Guard(); return thread.Samples.First(sample => sample.Value.MarkerId == markerId).Descriptors; }
         public long GetSampleMetadataAsLong(int i, int slot) { var sample = Sample(i); if (sample.ThrowMetadata) throw new InvalidOperationException("Owned metadata failure"); return sample.EncodedMetadata != null ? BitConverter.ToInt64(sample.EncodedMetadata,0) : sample.Value.GcBytes ?? -1; }
         public int GetSampleMetadataAsInt(int i, int slot) { var sample = Sample(i); if (sample.ThrowMetadata) throw new InvalidOperationException("Owned metadata failure"); return sample.EncodedMetadata != null ? BitConverter.ToInt32(sample.EncodedMetadata,0) : checked((int)(sample.Value.GcBytes ?? -1)); }
+#if UNITY_6000_6_OR_NEWER
+        public UnityEngine.EntityId GetSampleEntityId(int index)
+        {
+            var sample=Sample(index);thread.ObjectIdQueries++;
+            if(sample.UnsupportedObjectId)throw new NotSupportedException("owned unsupported recorded object API");
+            if(sample.ThrowObjectId)throw new Exception("owned object ID read failure");
+            return UnityEngine.EntityId.FromULong(sample.RecordedObjectId);
+        }
+        public bool GetUnityObjectInfo(UnityEngine.EntityId id,out UnityObjectInfo info)
+        {
+            Guard();thread.ObjectInfoQueries++;var key=UnityEngine.EntityId.ToULong(id);
+            if(thread.ThrowObjectInfo.Contains(key))throw new Exception("owned object info read failure");
+            return thread.RecordedObjects.TryGetValue(key,out info);
+        }
+#endif
         public void GetSampleCallstack(int index,List<ulong> addresses) { var sample=Sample(index); thread.CallstackQueries++; if(sample.UnsupportedCallstack)throw new NotSupportedException("owned unsupported API"); if(sample.ThrowCallstack)throw new Exception("owned stack read failure");addresses.AddRange(sample.Callstack); }
         public FrameDataView.MethodInfo ResolveMethodInfo(ulong address) { Guard();thread.SymbolQueries++;if(thread.ThrowSymbols.Contains(address))throw new Exception("owned symbol read failure");return thread.Symbols.TryGetValue(address,out var method)?method:default; }
         public void Dispose() { if (disposed) throw new InvalidOperationException("Duplicate native fixture disposal"); disposed = true; thread.Disposed++; }

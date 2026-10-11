@@ -2,7 +2,9 @@
     "name": "Cidonix.UniBridge.MCP.Runtime",
     "rootNamespace": "Cidonix.UniBridge.MCP.Runtime",
     "references": [],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

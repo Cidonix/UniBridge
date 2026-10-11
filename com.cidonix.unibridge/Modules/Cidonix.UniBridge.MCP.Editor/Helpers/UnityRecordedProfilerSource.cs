@@ -25,7 +25,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             return new View(ProfilerDriver.GetRawFrameDataView(frame, threadIndex));
         }
 
-        sealed class View : IRecordedProfilerView, IRecordedProfilerCallstackView
+        sealed class View : IRecordedProfilerView, IRecordedProfilerCallstackView, IRecordedProfilerObjectMetadataView
         {
             RawFrameDataView raw;
             readonly Dictionary<ushort, string> categories = new();
@@ -143,6 +143,51 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 catch (NotSupportedException ex) { result.status = "CALLSTACK_API_UNSUPPORTED"; result.issue = ex.Message; }
                 catch (Exception ex) { result.issue = ex.Message?.Length > 512 ? ex.Message.Substring(0, 512) : ex.Message; }
                 return result;
+            }
+            public RecordedProfilerObjectMetadata CopyObjectMetadata(int sampleIndex, Action cancelled)
+            {
+#if UNITY_6000_6_OR_NEWER
+                var result = new RecordedProfilerObjectMetadata { status = "OBJECT_METADATA_READ_FAILED", capability = "recorded_entity_id", identityKind = "EntityId.UInt64" };
+                try
+                {
+                    RequireView(); cancelled?.Invoke();
+                    var id = raw.GetSampleEntityId(sampleIndex);
+                    if (!id.IsValid()) { result.status = "OBJECT_ID_NOT_RECORDED"; return result; }
+                    result.objectId = UnityEngine.EntityId.ToULong(id).ToString(CultureInfo.InvariantCulture);
+                    cancelled?.Invoke();
+                    if (!raw.GetUnityObjectInfo(id, out var info)) { result.status = "OBJECT_INFO_NOT_RECORDED"; return result; }
+                    result.objectName = BoundedObjectText(info.name, result);
+                    result.status = "recorded";
+                    var related = info.relatedGameObjectEntityId;
+                    if (!related.IsValid()) { result.relatedGameObjectStatus = "NONE_RECORDED"; return result; }
+                    result.relatedGameObjectId = UnityEngine.EntityId.ToULong(related).ToString(CultureInfo.InvariantCulture);
+                    try
+                    {
+                        cancelled?.Invoke();
+                        if (raw.GetUnityObjectInfo(related, out var gameObjectInfo))
+                        { result.relatedGameObjectName = BoundedObjectText(gameObjectInfo.name, result); result.relatedGameObjectStatus = "recorded"; }
+                        else result.relatedGameObjectStatus = "OBJECT_INFO_NOT_RECORDED";
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { result.relatedGameObjectStatus = "OBJECT_METADATA_READ_FAILED"; result.issue = BoundedObjectText(ex.Message, result); }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (MissingMethodException ex) { result.status = "OBJECT_METADATA_API_UNSUPPORTED"; result.capability = "unsupported"; result.issue = BoundedObjectText(ex.Message, result); }
+                catch (NotSupportedException ex) { result.status = "OBJECT_METADATA_API_UNSUPPORTED"; result.capability = "unsupported"; result.issue = BoundedObjectText(ex.Message, result); }
+                catch (Exception ex) { result.issue = BoundedObjectText(ex.Message, result); }
+                return result;
+#else
+                // Older raw views have no physical sample-to-object identity API.
+                // Do not infer IDs from metadata or resolve them in the live Editor.
+                cancelled?.Invoke();
+                return new RecordedProfilerObjectMetadata { status = "OBJECT_METADATA_API_UNSUPPORTED", capability = "unsupported" };
+#endif
+            }
+            static string BoundedObjectText(string value, RecordedProfilerObjectMetadata result)
+            {
+                if (value == null || value.Length <= 512) return value;
+                result.textTruncated = true;
+                return value.Substring(0, 512);
             }
             static string Bounded(string value, int length, RecordedProfilerCallstackEntry entry)
             {

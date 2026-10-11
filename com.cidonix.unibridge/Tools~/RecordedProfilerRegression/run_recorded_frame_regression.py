@@ -32,12 +32,16 @@ def main():
     parser.add_argument('--overlay', type=Path)
     parser.add_argument('--newtonsoft', type=Path, required=True)
     parser.add_argument('--unity-core', type=Path, help='Real Unity CoreModule SDK reference; derives the newest installed Hub Editor if omitted')
+    parser.add_argument('--legacy-object-api', action='store_true', help='Qualify explicit unsupported object metadata branch using the same real SDK math types')
     parser.add_argument('--report', type=Path, required=True)
     args = parser.parse_args()
     if os.name != 'nt' or not ctypes.windll.shell32.IsUserAnAdmin():
         raise SystemExit('An Administrator Windows shell is required')
     unity_core = unity_core_reference(args.unity_core)
     unity_symbols = 'UNITY_6000_0_OR_NEWER' if b'GetEntityId' in unity_core.read_bytes() else ''
+    editor_core = unity_core.parent / 'UnityEditor.CoreModule.dll'
+    if not args.legacy_object_api and editor_core.is_file() and b'GetSampleEntityId' in editor_core.read_bytes():
+        unity_symbols += ';UNITY_6000_6_OR_NEWER'
     report = args.report.resolve()
     if report.exists():
         raise SystemExit('Report exists; choose a fresh report to preserve evidence')

@@ -1,3 +1,23 @@
+## [0.2.81] - 2026-10-11
+
+- Add bounded opt-in captured sample object and related GameObject metadata with exact UInt64 identities and an explicit unsupported fallback on older raw APIs
+
+## [0.2.80] - 2026-10-11
+
+- Add opt-in recorded job-wait and persistent native allocation callstacks with exact physical selectors and shared budgets
+
+## [0.2.79] - 2026-10-11
+
+- Exclude internal bridge Runtime and Tracing assemblies from Player compilation while retaining their Editor identities
+
+## [0.2.78] - 2026-10-11
+
+- Bound resource reads, searches and enumeration with cooperative cancellation and truthful partial outcomes
+
+## [0.2.77] - 2026-10-11
+
+- Verify actual nested reflection property writes with a shared resolver and current-route readback
+
 ## [0.2.76] - 2026-10-11
 
 - Add guarded UPM inspection, exact-version installation and verified sample import

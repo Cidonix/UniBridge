@@ -779,11 +779,31 @@ harness without connecting to any Editor.
   diagnostics.
 
 
-## Recorded allocation callstacks
+## Recorded sample callstacks
 
-RuntimeProfiler RecordedFrames defaults to no callstack queries. Opt in with IncludeCallstacks, bounded CallstackMaxSamples/CallstackMaxDepth, and optional CallstackSampleIds taken from returned physical sample identities (frame:threadId:sampleIndex). Only recorded GC.Alloc stacks are decoded; missing stacks are explicitly unavailable. Selected identities are validated before native reads and foreign samples are never queried. This reads existing capture data and does not enable ongoing allocation recording.
+RuntimeProfiler RecordedFrames defaults to no callstack queries. Opt in with IncludeCallstacks, bounded CallstackMaxSamples/CallstackMaxDepth, and optional CallstackSampleIds taken from returned physical sample identities (frame:threadId:sampleIndex). Enabled reads default to recorded GC.Alloc stacks. CallstackMarkers can explicitly select GC.Alloc, WaitForJobGroupID, UnsafeUtility.Malloc(Persistent), JobHandle.Complete, UnsafeUtility.Malloc and Native.Alloc, with at most six exact supported markers and one shared request budget; missing or unselected stacks are explicitly unavailable. Selected identities are validated before native reads and foreign samples are never queried. This reads existing capture data and does not enable ongoing allocation recording.
 
 
 ## Package management
 
 UniBridge_ManagePackages provides bounded List, Inspect, registry Search, exact registry package@semver Add, ListSamples and protected ImportSample. Native Add completion requires a separate Editor readiness observation after registration or reload; interrupted/time-limited mutations must never be replayed automatically. Inspect actual package state first. Sample import refuses existing destination/.meta, interactive samples, source GUID conflicts, path escapes and reparse ancestors, uses native Sample.Import without OverridePreviousImports, and verifies physical copied bytes plus AssetDatabase GUID resolution. No Remove/Embed/Unembed/Force operation is exposed. See Tools~/PackageManagementRegression/README.md for portable, SDK and ordinary MCP native qualification. Legacy standalone profiles do not expose UPM operations.
+
+
+## Nested reflection property verification
+
+ManageGameObject uses one resolver for public reflection property/field paths and array or IList indices. A successful write is re-read from the current root path and compared against the converted expected value; setter clamps, exceptions and unavailable readbacks remain explicit failures with the observed value when available. Nested boxed value-type mutation is rejected before the setter; replace the containing value instead. SerializedObject and dedicated component routes retain precedence.
+
+
+## Resource observation budgets
+
+ReadResource, FindInFile and ListResources accept bounded file, returned-byte, work, time and enumeration budgets. Regex calls have their own timeout and IO checks the request cancellation token between chunks or entries. Complete/partial/cancelled/error outcomes are explicit; only a fully scanned stable file has a whole-file SHA. A requested result cap stays successful with partial coverage. ListResources retains the generated script-edit specification outside its file limit. Individual operating-system IO calls remain cooperative. Tests: Tools~/ResourceBudgetRegression.
+
+
+## Editor assembly isolation
+
+All UniBridge assemblies are restricted to the Editor. MCP.Runtime and Tracing retain their internal assembly identities and Editor consumers, but do not participate in Player compilation or ship DLLs in the Player payload. The real Windows x64 Mono qualification builds an owned disposable project and checks both compilation graphs and physical build files. See Tools~/PlayerIsolationRegression.
+
+
+## Recorded sample object metadata
+
+RuntimeProfiler RecordedFrames leaves captured object queries disabled by default. IncludeObjectMetadata reads Unity6.6 raw captured sample identity and recorded UnityObjectInfo only; it never resolves a capture ID against the live scene. UInt64 captured IDs are invariant decimal strings tagged EntityId.UInt64, with captured names, related GameObject information and explicit missing/unavailable statuses. ObjectMetadataSampleIds selects at most64 physical identities; one request shares MaxObjectMetadataSamples (default128, hard512). Older raw SDKs report OBJECT_METADATA_API_UNSUPPORTED without a guessed hierarchy mapping or int32 conversion. Names describe Unity's capture object table, which may update when an object is renamed; they are not a per-frame rename history. A saved capture preserves its own recorded table.

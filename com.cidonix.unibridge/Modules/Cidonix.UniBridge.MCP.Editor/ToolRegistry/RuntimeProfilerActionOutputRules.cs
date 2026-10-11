@@ -32,6 +32,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         { ["type"] = nullable ? new JArray("array", "null") : (JToken)new JValue("array"), ["items"] = item };
         static JObject Nullable(JObject schema) { schema["type"] = new JArray("object", "null"); return schema; }
         static JObject Strings(bool nullable = false) => A(S(true), nullable);
+        static JObject SelectedCallstackMarkers() => new JObject
+        {
+            ["type"] = "array", ["maxItems"] = 6, ["uniqueItems"] = true,
+            ["items"] = new JObject { ["type"] = "string", ["enum"] = new JArray("GC.Alloc", "WaitForJobGroupID", "UnsafeUtility.Malloc(Persistent)", "JobHandle.Complete", "UnsafeUtility.Malloc", "Native.Alloc") }
+        };
         static JObject Integers() => A(I());
         static JObject Success(JObject data) => O(("success", C(true)), ("message", S()), ("data", data));
         static JObject Error(string code, JObject data) => O(("success", C(false)), ("code", C(code)), ("error", C(code)), ("data", data));
@@ -48,7 +53,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         {
             var play = O(("isPlaying", B()), ("isPaused", B()), ("hint", S()));
             var recordedErrors = new List<JObject> { Error("PLAY_MODE_REQUIRED", O(("hint", S()))) };
-            foreach (var code in new[] { "INVALID_RECORDED_THREAD_ID", "INVALID_RECORDED_CALLSTACK_SAMPLE_ID", "NO_RECORDED_PROFILER_FRAMES", "RECORDED_FRAME_OUT_OF_RANGE", "NO_RECORDED_THREAD_MATCH", "RECORDED_PROFILER_DATA_UNAVAILABLE" })
+            foreach (var code in new[] { "INVALID_RECORDED_THREAD_ID", "INVALID_RECORDED_CALLSTACK_SAMPLE_ID", "INVALID_RECORDED_CALLSTACK_MARKER", "INVALID_RECORDED_OBJECT_SAMPLE_ID", "NO_RECORDED_PROFILER_FRAMES", "RECORDED_FRAME_OUT_OF_RANGE", "NO_RECORDED_THREAD_MATCH", "RECORDED_PROFILER_DATA_UNAVAILABLE" })
                 recordedErrors.Add(Error(code, RecordedData("unavailable", false, code, true)));
             recordedErrors.Add(Error("RECORDED_PROFILER_DATA_PARTIAL", RecordedData("partial", false, null, false)));
             return new Dictionary<string, JObject>(StringComparer.Ordinal)
@@ -126,6 +131,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             ("callstackStatus", S(true)), ("callstack", Nullable(O(("status", S()), ("recordedDepth", I()), ("depthTruncated", B()),
                 ("entries", A(O(("address", S()), ("method", S(true)), ("sourceFile", S(true)), ("sourceLine", I(true)),
                     ("status", S()), ("issue", S(true)), ("textTruncated", B())))), ("issue", S(true))))),
+            ("objectMetadata", Nullable(O(("status", S()), ("capability", S()), ("identityKind", S(true)), ("objectId", S(true)), ("objectName", S(true)),
+                ("relatedGameObjectId", S(true)), ("relatedGameObjectName", S(true)), ("relatedGameObjectStatus", S(true)), ("textTruncated", B()), ("issue", S(true))))),
             ("topologyComplete", B()), ("issues", Strings()));
         static JObject RecordedTree(int remaining)
         {
@@ -146,8 +153,11 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             ("available", O(("firstFrameIndex", I()), ("lastFrameIndex", I()))),
             ("request", O(("FrameIndex", I(true)), ("frameCount", I()), ("ThreadIds", Strings(true)), ("ThreadNameFilters", Strings(true)),
                 ("maxThreads", I()), ("maxRawSamples", I()), ("maxTopSamples", I()), ("maxHierarchyDepth", I()), ("includeMetadata", B()), ("sortBy", S()),
-                ("includeCallstacks", B()), ("callstackSampleIds", Strings(true)), ("maxCallstackSamples", I()), ("maxCallstackDepth", I()))),
+                ("includeCallstacks", B()), ("callstackSampleIds", Strings(true)), ("callstackMarkers", Strings(true)), ("maxCallstackSamples", I()), ("maxCallstackDepth", I()),
+                ("includeObjectMetadata", B()), ("objectMetadataSampleIds", Strings(true)), ("maxObjectMetadataSamples", I()))),
             ("selectedFrameIndices", Integers()), ("readFrameIndices", Integers()), ("copiedSamples", I()), ("timedOut", B()), ("requestedCallstacks", I()), ("unobservedCallstackSampleIds", Strings()),
+            ("selectedCallstackMarkers", SelectedCallstackMarkers()), ("supportedCallstackMarkers", C(new[] { "GC.Alloc", "WaitForJobGroupID", "UnsafeUtility.Malloc(Persistent)", "JobHandle.Complete", "UnsafeUtility.Malloc", "Native.Alloc" })),
+            ("requestedObjectMetadata", I()), ("unobservedObjectMetadataSampleIds", Strings()), ("objectMetadataScope", S()),
             ("elapsedMs", N()), ("issues", Strings()), ("errorCode", C(errorCode)), ("selfTimeMethod", S()), ("gcScope", S()),
             ("savedPath", S(true)), ("hint", hint ? S() : C(null)), ("frames", A(RecordedFrame())));
 

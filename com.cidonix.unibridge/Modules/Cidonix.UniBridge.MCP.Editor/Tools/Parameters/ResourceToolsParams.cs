@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -37,6 +37,13 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         /// Gets or sets an override for the project root path.
         /// When null or empty, uses the current Unity project root.
         /// </summary>
+        [McpDescription("Maximum filesystem entries visited (default 20000, hard maximum 100000).", Required = false)]
+        public int MaxEntries { get; set; } = 20000;
+        [McpDescription("Maximum cooperative work units (default 1000000, hard maximum 8000000).", Required = false)]
+        public int MaxWorkUnits { get; set; } = 1000000;
+        [McpDescription("Cooperative observation timeout in milliseconds (default 3000, hard maximum 10000). Native filesystem calls themselves cannot be interrupted.", Required = false)]
+        public int TimeoutMs { get; set; } = 3000;
+
         [McpDescription("Override project root path", Required = false)]
         public string ProjectRoot { get; set; }
     }
@@ -60,6 +67,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         /// Default is 1 (start from the beginning of the file).
         /// </summary>
         [McpDescription("The starting line number (1-based, default: 1 = start from beginning)", Required = false)]
+        [JsonProperty("startLine")]
         public int StartLine { get; set; } = 1;  // Default: start from line 1 (beginning)
 
         /// <summary>
@@ -95,6 +103,17 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         /// Gets or sets an override for the project root path.
         /// When null or empty, uses the current Unity project root.
         /// </summary>
+        [McpDescription("Maximum file bytes scanned (default 16 MiB, hard maximum 64 MiB). A partial scan never returns a full-file SHA.", Required = false)]
+        public int MaxFileBytes { get; set; } = 16 * 1024 * 1024;
+        [McpDescription("Maximum UTF-8 bytes returned (default 256 KiB, hard maximum 2 MiB).", Required = false)]
+        public int MaxReturnBytes { get; set; } = 256 * 1024;
+        [McpDescription("Timeout per regex match in milliseconds (default 50, hard maximum 250).", Required = false)]
+        public int RegexTimeoutMs { get; set; } = 50;
+        [McpDescription("Maximum cooperative work units (default 1000000, hard maximum 8000000).", Required = false)]
+        public int MaxWorkUnits { get; set; } = 1000000;
+        [McpDescription("Cooperative observation timeout in milliseconds (default 3000, hard maximum 10000). Native filesystem calls themselves cannot be interrupted.", Required = false)]
+        public int TimeoutMs { get; set; } = 3000;
+
         [McpDescription("Override project root path", Required = false)]
         public string ProjectRoot { get; set; }
     }
@@ -137,6 +156,15 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         /// Gets or sets an override for the project root path.
         /// When null or empty, uses the current Unity project root.
         /// </summary>
+        [McpDescription("Maximum file bytes scanned (default 16 MiB, hard maximum 64 MiB). A partial scan never returns a full-file SHA.", Required = false)]
+        public int MaxFileBytes { get; set; } = 16 * 1024 * 1024;
+        [McpDescription("Timeout per regex match in milliseconds (default 50, hard maximum 250).", Required = false)]
+        public int RegexTimeoutMs { get; set; } = 50;
+        [McpDescription("Maximum cooperative work units (default 1000000, hard maximum 8000000).", Required = false)]
+        public int MaxWorkUnits { get; set; } = 1000000;
+        [McpDescription("Cooperative observation timeout in milliseconds (default 3000, hard maximum 10000). Native filesystem calls themselves cannot be interrupted.", Required = false)]
+        public int TimeoutMs { get; set; } = 3000;
+
         [McpDescription("Override project root path", Required = false)]
         public string ProjectRoot { get; set; }
     }
@@ -146,6 +174,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     /// </summary>
     public class ListResourcesResponse
     {
+        public ResourceOperationOutcome Outcome { get; set; } = new();
         /// <summary>
         /// Gets or sets the list of resource URIs found (e.g., "unity://path/Assets/Scripts/MyScript.cs").
         /// </summary>
@@ -162,6 +191,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     /// </summary>
     public class ReadResourceResponse
     {
+        public ResourceOperationOutcome Outcome { get; set; } = new();
         /// <summary>
         /// Gets or sets the text content of the resource (may be partial if slicing was applied).
         /// </summary>
@@ -178,6 +208,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     /// </summary>
     public class ResourceMetadata
     {
+        public bool Sha256Complete { get; set; }
         /// <summary>
         /// Gets or sets the SHA-256 hash of the complete file content (not just the slice).
         /// Useful for change detection and file integrity verification.
@@ -199,21 +230,25 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         /// <summary>
         /// Gets or sets the starting line number (1-based) where the match begins.
         /// </summary>
+        [JsonProperty("startLine")]
         public int StartLine { get; set; }
 
         /// <summary>
         /// Gets or sets the starting column number (1-based) where the match begins.
         /// </summary>
+        [JsonProperty("startCol")]
         public int StartCol { get; set; }
 
         /// <summary>
         /// Gets or sets the ending line number (1-based) where the match ends.
         /// </summary>
+        [JsonProperty("endLine")]
         public int EndLine { get; set; }
 
         /// <summary>
         /// Gets or sets the ending column number (1-based, exclusive) where the match ends.
         /// </summary>
+        [JsonProperty("endCol")]
         public int EndCol { get; set; }
     }
 
@@ -222,11 +257,15 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
     /// </summary>
     public class FindInFileResponse
     {
+        [JsonProperty("outcome")]
+        public ResourceOperationOutcome Outcome { get; set; } = new();
+        [JsonProperty("sha256Complete")]
+        public bool Sha256Complete { get; set; }
         /// <summary>
         /// Gets or sets the list of matches found, each containing startLine, startCol, endLine, and endCol properties.
         /// </summary>
         [JsonProperty("matches")]
-        public List<Dictionary<string, object>> Matches { get; set; } = new();
+        public List<FindMatch> Matches { get; set; } = new();
 
         /// <summary>
         /// Gets or sets the total count of matches found.
@@ -241,4 +280,18 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry.Parameters
         [JsonProperty("sha256")]
         public string Sha256 { get; set; }
     }
+    public class ResourceOperationOutcome
+    {
+        [JsonProperty("status")] public string Status { get; set; } = "completed";
+        [JsonProperty("complete")] public bool Complete { get; set; } = true;
+        [JsonProperty("reason")] public string Reason { get; set; }
+        [JsonProperty("detail")] public string Detail { get; set; }
+        [JsonProperty("bytesScanned")] public long BytesScanned { get; set; }
+        [JsonProperty("returnedBytes")] public long ReturnedBytes { get; set; }
+        [JsonProperty("workUnits")] public long WorkUnits { get; set; }
+        [JsonProperty("entriesVisited")] public int EntriesVisited { get; set; }
+        [JsonProperty("skippedEntries")] public int SkippedEntries { get; set; }
+        [JsonProperty("elapsedMs")] public long ElapsedMs { get; set; }
+    }
+
 }

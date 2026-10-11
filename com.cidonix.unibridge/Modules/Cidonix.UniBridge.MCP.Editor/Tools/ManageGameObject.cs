@@ -2351,26 +2351,23 @@ Returns:
                         continue;
                     }
 
-                    bool setResult = SetProperty(targetComponent, propName, propValue);
-                    if (!setResult)
+                    var write = WriteReflectionProperty(targetComponent, propName, propValue);
+                    if (!write.Written && !write.Attempted)
                     {
                         var availableProperties = ComponentResolver.GetAllComponentProperties(targetComponent.GetType());
                         var suggestions = ComponentResolver.GetAIPropertySuggestions(propName, availableProperties);
-                        var msg = suggestions.Any()
-                            ? $"Property '{propName}' not found. Did you mean: {string.Join(", ", suggestions)}? Available: [{string.Join(", ", availableProperties)}]"
-                            : $"Property '{propName}' not found. Available: [{string.Join(", ", availableProperties)}]";
-                        Debug.LogWarning($"[ManageGameObject] {msg}");
+                        var msg = write.Error ?? (suggestions.Any()
+                            ? $"Property '{propName}' not found. Did you mean: {string.Join(", ", suggestions)}?"
+                            : $"Property '{propName}' not found.");
                         failures.Add(msg);
                         skippedChanges?.Add(BuildSkippedPropertyReport(
                             compName, targetComponent, propName, msg, "reflection"));
                     }
                     else
                     {
-                        var readbackAvailable = TryReadComponentMember(
-                            targetComponent,
-                            propName,
-                            out var actualValue);
-                        var verified = readbackAvailable && PropertyValuesEqual(propValue, actualValue);
+                        var actualValue = ProjectReflectionReadback(write.ActualValue);
+                        var verified = write.Written && write.ReadbackAvailable &&
+                                       ReflectionPropertyValuesEqual(write.ExpectedValue, write.ActualValue);
                         var report = new
                         {
                             componentName = compName,
@@ -2382,14 +2379,11 @@ Returns:
                             status = verified ? "applied" : "skipped",
                             route = "reflection"
                         };
-
                         if (verified)
-                        {
                             appliedChanges?.Add(report);
-                        }
                         else
                         {
-                            failures.Add(
+                            failures.Add(write.Error ??
                                 $"Post-write readback failed for '{compName}.{propName}': " +
                                 $"requested {FormatReportValue(propValue)}, actual {FormatReportValue(actualValue)}.");
                             skippedChanges?.Add(report);
@@ -2717,32 +2711,10 @@ Returns:
 
         static bool TryReadComponentMember(object target, string memberName, out object value)
         {
-            value = null;
-            if (target == null || string.IsNullOrWhiteSpace(memberName) ||
-                memberName.Contains('.') || memberName.Contains('['))
-            {
-                return false;
-            }
-
-            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic |
-                        BindingFlags.IgnoreCase;
-            var type = target.GetType();
-            var property = type.GetProperty(memberName, flags);
-            if (property != null && property.CanRead)
-            {
-                value = property.GetValue(target);
-                return true;
-            }
-
-            var field = type.GetField(memberName, flags);
-            if (field == null)
-            {
-                return false;
-            }
-
-            value = field.GetValue(target);
-            return true;
+            string error;
+            return ReflectionPropertyPath.TryRead(target, memberName, out value, out error);
         }
+
 
         static bool TryApplyTextMeshProFont(
             GameObject targetGo,
@@ -3429,322 +3401,27 @@ Returns:
         /// </summary>
         static bool SetProperty(object target, string memberName, JToken value)
         {
-            Type type = target.GetType();
-            BindingFlags flags =
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase;
-
-            // Use shared serializer to avoid per-call allocation
-            var inputSerializer = InputSerializer;
-
-            try
-            {
-                // Handle special case for materials with dot notation (material.property)
-                // Examples: material.color, sharedMaterial.color, materials[0].color
-                if (memberName.Contains('.') || memberName.Contains('['))
-                {
-                    // Pass the inputSerializer down for nested conversions
-                    return SetNestedProperty(target, memberName, value, inputSerializer);
-                }
-
-                PropertyInfo propInfo = type.GetProperty(memberName, flags);
-                if (propInfo != null && propInfo.CanWrite)
-                {
-                    // Use the inputSerializer for conversion
-                    object convertedValue = ConvertJTokenToType(value, propInfo.PropertyType, inputSerializer);
-                    if (convertedValue != null || value.Type == JTokenType.Null) // Allow setting null
-                    {
-                        propInfo.SetValue(target, convertedValue);
-                        return true;
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"[SetProperty] Conversion failed for property '{memberName}' (Type: {propInfo.PropertyType.Name}) from token: {value.ToString(Formatting.None)}");
-                    }
-                }
-                else
-                {
-                    FieldInfo fieldInfo = type.GetField(memberName, flags);
-                    if (fieldInfo != null) // Check if !IsLiteral?
-                    {
-                        // Use the inputSerializer for conversion
-                        object convertedValue = ConvertJTokenToType(value, fieldInfo.FieldType, inputSerializer);
-                        if (convertedValue != null || value.Type == JTokenType.Null) // Allow setting null
-                        {
-                            fieldInfo.SetValue(target, convertedValue);
-                            return true;
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"[SetProperty] Conversion failed for field '{memberName}' (Type: {fieldInfo.FieldType.Name}) from token: {value.ToString(Formatting.None)}");
-                        }
-                    }
-                    else
-                    {
-                        // Try NonPublic [SerializeField] fields
-                        var npField = type.GetField(memberName, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                        if (npField != null && npField.GetCustomAttribute<SerializeField>() != null)
-                        {
-                            object convertedValue = ConvertJTokenToType(value, npField.FieldType, inputSerializer);
-                            if (convertedValue != null || value.Type == JTokenType.Null)
-                            {
-                                npField.SetValue(target, convertedValue);
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError(
-                    $"[SetProperty] Failed to set '{memberName}' on {type.Name}: {ex.Message}\nToken: {value.ToString(Formatting.None)}"
-                );
-            }
-            return false;
+            return WriteReflectionProperty(target, memberName, value).Written;
         }
 
-        /// <summary>
-        /// Sets a nested property using dot notation (e.g., "material.color") or array access (e.g., "materials[0]")
-        /// </summary>
-        // Pass the input serializer for conversions
-        //Using the serializer helper
-        static bool SetNestedProperty(object target, string path, JToken value, JsonSerializer inputSerializer)
+        static ReflectionPropertyPath.WriteResult WriteReflectionProperty(object target, string memberName, JToken value)
         {
-            try
-            {
-                // Split the path into parts (handling both dot notation and array indexing)
-                string[] pathParts = SplitPropertyPath(path);
-                if (pathParts.Length == 0)
-                    return false;
-
-                object currentObject = target;
-                Type currentType = currentObject.GetType();
-                BindingFlags flags =
-                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase;
-
-                // Traverse the path until we reach the final property
-                for (int i = 0; i < pathParts.Length - 1; i++)
-                {
-                    string part = pathParts[i];
-                    bool isArray = false;
-                    int arrayIndex = -1;
-
-                    // Check if this part contains array indexing
-                    if (part.Contains("["))
-                    {
-                        int startBracket = part.IndexOf('[');
-                        int endBracket = part.IndexOf(']');
-                        if (startBracket > 0 && endBracket > startBracket)
-                        {
-                            string indexStr = part.Substring(
-                                startBracket + 1,
-                                endBracket - startBracket - 1
-                            );
-                            if (int.TryParse(indexStr, out arrayIndex))
-                            {
-                                isArray = true;
-                                part = part.Substring(0, startBracket);
-                            }
-                        }
-                    }
-                    // Get the property/field
-                    PropertyInfo propInfo = currentType.GetProperty(part, flags);
-                    FieldInfo fieldInfo = null;
-                    if (propInfo == null)
-                    {
-                        fieldInfo = currentType.GetField(part, flags);
-                        if (fieldInfo == null)
-                        {
-                            Debug.LogWarning(
-                                $"[SetNestedProperty] Could not find property or field '{part}' on type '{currentType.Name}'"
-                            );
-                            return false;
-                        }
-                    }
-
-                    // Get the value
-                    currentObject =
-                        propInfo != null
-                            ? propInfo.GetValue(currentObject)
-                            : fieldInfo.GetValue(currentObject);
-                    //Need to stop if current property is null
-                    if (currentObject == null)
-                    {
-                        Debug.LogWarning(
-                            $"[SetNestedProperty] Property '{part}' is null, cannot access nested properties."
-                        );
-                        return false;
-                    }
-                    // If this part was an array or list, access the specific index
-                    if (isArray)
-                    {
-                        if (currentObject is Material[])
-                        {
-                            var materials = currentObject as Material[];
-                            if (arrayIndex < 0 || arrayIndex >= materials.Length)
-                            {
-                                Debug.LogWarning(
-                                    $"[SetNestedProperty] Material index {arrayIndex} out of range (0-{materials.Length - 1})"
-                                );
-                                return false;
-                            }
-                            currentObject = materials[arrayIndex];
-                        }
-                        else if (currentObject is System.Collections.IList)
-                        {
-                            var list = currentObject as System.Collections.IList;
-                            if (arrayIndex < 0 || arrayIndex >= list.Count)
-                            {
-                                Debug.LogWarning(
-                                    $"[SetNestedProperty] Index {arrayIndex} out of range (0-{list.Count - 1})"
-                                );
-                                return false;
-                            }
-                            currentObject = list[arrayIndex];
-                        }
-                        else
-                        {
-                            Debug.LogWarning(
-                                $"[SetNestedProperty] Property '{part}' is not an array or list, cannot access by index."
-                            );
-                            return false;
-                        }
-                    }
-                    currentType = currentObject.GetType();
-                }
-
-                // Set the final property
-                string finalPart = pathParts[pathParts.Length - 1];
-
-                // Special handling for Material properties (shader properties)
-                if (currentObject is Material material && finalPart.StartsWith("_"))
-                {
-                    // Use the serializer to convert the JToken value first
-                    if (value is JArray jArray)
-                    {
-                        // Try converting to known types that SetColor/SetVector accept
-                        if (jArray.Count == 4) {
-                            try { Color color = value.ToObject<Color>(inputSerializer); material.SetColor(finalPart, color); return true; } catch { }
-                            try { Vector4 vec = value.ToObject<Vector4>(inputSerializer); material.SetVector(finalPart, vec); return true; } catch { }
-                        } else if (jArray.Count == 3) {
-                            try { Color color = value.ToObject<Color>(inputSerializer); material.SetColor(finalPart, color); return true; } catch { } // ToObject handles conversion to Color
-                        } else if (jArray.Count == 2) {
-                            try { Vector2 vec = value.ToObject<Vector2>(inputSerializer); material.SetVector(finalPart, vec); return true; } catch { }
-                        }
-                    }
-                    else if (value.Type == JTokenType.Float || value.Type == JTokenType.Integer)
-                    {
-                        try { material.SetFloat(finalPart, value.ToObject<float>(inputSerializer)); return true; } catch { }
-                    }
-                    else if (value.Type == JTokenType.Boolean)
-                    {
-                        try { material.SetFloat(finalPart, value.ToObject<bool>(inputSerializer) ? 1f : 0f); return true; } catch { }
-                    }
-                    else if (value.Type == JTokenType.String)
-                    {
-                        // Try converting to Texture using the serializer/converter
-                        try {
-                            Texture texture = value.ToObject<Texture>(inputSerializer);
-                            if (texture != null) {
-                                material.SetTexture(finalPart, texture);
-                                return true;
-                            }
-                        } catch { }
-                    }
-
-                    Debug.LogWarning(
-                        $"[SetNestedProperty] Unsupported or failed conversion for material property '{finalPart}' from value: {value.ToString(Formatting.None)}"
-                    );
-                    return false;
-                }
-
-                // For standard properties (not shader specific)
-                PropertyInfo finalPropInfo = currentType.GetProperty(finalPart, flags);
-                if (finalPropInfo != null && finalPropInfo.CanWrite)
-                {
-                    // Use the inputSerializer for conversion
-                    object convertedValue = ConvertJTokenToType(value, finalPropInfo.PropertyType, inputSerializer);
-                    if (convertedValue != null || value.Type == JTokenType.Null)
-                    {
-                        finalPropInfo.SetValue(currentObject, convertedValue);
-                        return true;
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"[SetNestedProperty] Final conversion failed for property '{finalPart}' (Type: {finalPropInfo.PropertyType.Name}) from token: {value.ToString(Formatting.None)}");
-                    }
-                }
-                else
-                {
-                    FieldInfo finalFieldInfo = currentType.GetField(finalPart, flags);
-                    if (finalFieldInfo != null)
-                    {
-                        // Use the inputSerializer for conversion
-                        object convertedValue = ConvertJTokenToType(value, finalFieldInfo.FieldType, inputSerializer);
-                        if (convertedValue != null || value.Type == JTokenType.Null)
-                        {
-                            finalFieldInfo.SetValue(currentObject, convertedValue);
-                            return true;
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"[SetNestedProperty] Final conversion failed for field '{finalPart}' (Type: {finalFieldInfo.FieldType.Name}) from token: {value.ToString(Formatting.None)}");
-                        }
-                    }
-                    else
-                    {
-                        Debug.LogWarning(
-                            $"[SetNestedProperty] Could not find final writable property or field '{finalPart}' on type '{currentType.Name}'"
-                        );
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError(
-                    $"[SetNestedProperty] Error setting nested property '{path}': {ex.Message}\nToken: {value.ToString(Formatting.None)}"
-                );
-            }
-
-            return false;
+            return ReflectionPropertyPath.Write(target, memberName, value, InputSerializer, ConvertJTokenToType);
         }
 
-
-        /// <summary>
-        /// Split a property path into parts, handling both dot notation and array indexers
-        /// </summary>
-        static string[] SplitPropertyPath(string path)
+        static bool ReflectionPropertyValuesEqual(object expected, object actual)
         {
-            // Handle complex paths with both dots and array indexers
-            List<string> parts = new List<string>();
-            int startIndex = 0;
-            bool inBrackets = false;
-
-            for (int i = 0; i < path.Length; i++)
-            {
-                char c = path[i];
-
-                if (c == '[')
-                {
-                    inBrackets = true;
-                }
-                else if (c == ']')
-                {
-                    inBrackets = false;
-                }
-                else if (c == '.' && !inBrackets)
-                {
-                    // Found a dot separator outside of brackets
-                    parts.Add(path.Substring(startIndex, i - startIndex));
-                    startIndex = i + 1;
-                }
-            }
-            if (startIndex < path.Length)
-            {
-                parts.Add(path.Substring(startIndex));
-            }
-            return parts.ToArray();
+            if (expected is UnityEngine.Object || actual is UnityEngine.Object)
+                return expected is UnityEngine.Object && actual is UnityEngine.Object &&
+                       (UnityEngine.Object)expected == (UnityEngine.Object)actual;
+            return PropertyValuesEqual(expected, actual);
         }
+
+        static object ProjectReflectionReadback(object actual)
+        {
+            return actual is UnityEngine.Object ? BuildObjectReferenceInfo((UnityEngine.Object)actual) : actual;
+        }
+
 
         /// <summary>
         /// Simple JToken to Type conversion for common Unity types, using JsonSerializer.

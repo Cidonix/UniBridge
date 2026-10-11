@@ -2,7 +2,9 @@
     "name": "Cidonix.UniBridge.Tracing",
     "rootNamespace": "Cidonix.UniBridge.Tracing",
     "references": [],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,

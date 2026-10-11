@@ -46,16 +46,28 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("For RecordedFrames, read GC.Alloc metadata. Default true; disabled, missing or unsupported metadata is unknown rather than zero.", Required = false, Default = true)]
         public bool? IncludeMetadata { get; set; }
 
-        [McpDescription("For RecordedFrames, read already recorded callstacks for physical GC.Alloc samples. Default false. This does not enable callstack capture or recording; absent stacks stay explicitly unavailable.", Required = false, Default = false)]
+        [McpDescription("For RecordedFrames, read object identity/name and related GameObject metadata from the recorded capture only. Default false; never resolves live Editor objects. Unity 6.6 supports exact physical recorded EntityId; older SDKs report OBJECT_METADATA_API_UNSUPPORTED. Missing IDs/names remain unavailable, never inferred from marker text.", Required = false, Default = false)]
+        public bool? IncludeObjectMetadata { get; set; }
+
+        [McpDescription("For RecordedFrames with IncludeObjectMetadata=true, optionally read only these physical sampleId strings (frameIndex:threadId:sampleIndex) returned by a prior pass. At most 64; missing copied IDs are explicitly reported. This can skip earlier samples without consuming the metadata query budget.", Required = false)]
+        public string[] ObjectMetadataSampleIds { get; set; }
+
+        [McpDescription("For RecordedFrames with IncludeObjectMetadata, maximum physical samples queried across the whole request. Default 128, clamped to 1..512. Other selected samples report SAMPLE_LIMIT. Names and error text are bounded to 512 characters. Metadata availability is separate from raw CPU coverage.", Required = false, Default = 128)]
+        public int? MaxObjectMetadataSamples { get; set; }
+
+        [McpDescription("For RecordedFrames, read already recorded callstacks for physical samples selected by CallstackMarkers; omission keeps GC.Alloc only. Default false. This does not enable callstack capture or recording; absent stacks stay explicitly unavailable.", Required = false, Default = false)]
         public bool? IncludeCallstacks { get; set; }
 
         [McpDescription("For RecordedFrames with IncludeCallstacks=true, optionally query only these physical sampleId strings previously returned by RecordedFrames (frameIndex:threadId:sampleIndex). At most 64. This supports a second-pass drilldown without spending the query budget on earlier allocations; missing copied IDs are reported explicitly.", Required = false)]
         public string[] CallstackSampleIds { get; set; }
 
-        [McpDescription("For RecordedFrames with IncludeCallstacks, maximum physical allocation samples whose stacks are queried across the whole request. Default 32, clamped to 1..64; additional allocation samples report SAMPLE_LIMIT.", Required = false, Default = 32)]
+        [McpDescription("For RecordedFrames with IncludeCallstacks=true, exact supported marker names: GC.Alloc, WaitForJobGroupID, UnsafeUtility.Malloc(Persistent), JobHandle.Complete, UnsafeUtility.Malloc, Native.Alloc. At most 6 entries. Omit or pass an empty array for GC.Alloc only. Unknown or differently cased names are rejected before opening frame views. This only reads existing stacks and never changes capture flags.", Required = false)]
+        public string[] CallstackMarkers { get; set; }
+
+        [McpDescription("For RecordedFrames with IncludeCallstacks, maximum selected physical samples whose stacks are queried across the whole request. Default 32, clamped to 1..64; additional selected samples report SAMPLE_LIMIT.", Required = false, Default = 32)]
         public int? MaxCallstackSamples { get; set; }
 
-        [McpDescription("For RecordedFrames with IncludeCallstacks, maximum stack entries resolved per physical allocation sample. Default 32, clamped to 1..64; output reports recorded depth and truncation.", Required = false, Default = 32)]
+        [McpDescription("For RecordedFrames with IncludeCallstacks, maximum stack entries resolved per selected physical sample. Default 32, clamped to 1..64; output reports recorded depth and truncation.", Required = false, Default = 32)]
         public int? MaxCallstackDepth { get; set; }
 
         [McpDescription("For RecordedFrames, sort physical top samples by SelfTime, TotalTime or GcBytes. Filters and Top-N are applied after full copied-tree accounting.", Required = false, Default = RuntimeProfilerRecordedSort.SelfTime)]

@@ -1,0 +1,9 @@
+{
+  "name": "UniBridge.ResourceBudgetQualification",
+  "references": ["Cidonix.UniBridge.MCP.Editor"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
+  "autoReferenced": true,
+  "noEngineReferences": false
+}

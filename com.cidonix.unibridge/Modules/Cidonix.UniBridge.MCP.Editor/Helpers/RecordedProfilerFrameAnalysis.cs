@@ -23,6 +23,21 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
         public string GcMetadataStatus;
         public string CallstackStatus;
         public RecordedProfilerCallstack Callstack;
+        public RecordedProfilerObjectMetadata ObjectMetadata;
+    }
+
+    internal sealed class RecordedProfilerObjectMetadata
+    {
+        public string status;
+        public string capability;
+        public string identityKind = null;
+        public string objectId = null;
+        public string objectName = null;
+        public string relatedGameObjectId = null;
+        public string relatedGameObjectName = null;
+        public string relatedGameObjectStatus = null;
+        public bool textTruncated;
+        public string issue = null;
     }
 
     internal sealed class RecordedProfilerCallstackEntry
@@ -273,6 +288,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                 directChildren = node.Children.ToArray(), isGcAllocation = node.Raw.IsGcAllocation,
                 gcAllocationBytes = node.Raw.GcBytes, gcMetadataStatus = node.Raw.GcMetadataStatus,
                 callstackStatus = node.Raw.CallstackStatus, callstack = node.Raw.Callstack,
+                objectMetadata = node.Raw.ObjectMetadata,
                 topologyComplete = node.TopologyComplete,
                 issues = node.Issues.OrderBy(item => item, StringComparer.Ordinal).ToArray()
             };

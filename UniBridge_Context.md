@@ -11378,3 +11378,60 @@ Domovyk та Corgi оновлено до 0.2.76 (30 changed package files у к�
 ### 2026-10-11 — Усі шість пунктів доставлено
 
 Пункти 1–6 завершено й кваліфіковано окремо; версії 0.2.71–0.2.76 послідовно доставлено до Domovyk та Corgi. Повні Domovyk check-in: cs293, cs294, cs295, cs296, cs297, cs298; кожен підтверджено server byte comparison і порожнім pending status. Фінальний cs298 містить 31 файл (30 package files та Domovyk_context.md). Фінальна full-SHA звірка 23775 початкових авторських Assets/ProjectSettings файлів: errors0; точний PackageManagerSettings.asset baseline збережено також після fresh MCP health. Final Editor health успішний після cleanup. Усі дочірні процеси запускались від адміністратора; пункт12/CoreCLR та скасоване native-crash дослідження лишилися поза цією роботою. Source Git publication виконується разом із цим completion record; receipt буде у Temp/AssistantFinalPlan-20261011/final-publication.json.
+
+
+### 2026-10-11 — Assistant follow-up item 1 / 0.2.77
+
+Verify actual nested reflection property writes with a shared resolver and current-route readback Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Remaining Assistant audit item1 / UniBridge0.2.77
+
+Closed nested reflection write/readback mismatch with a shared public member/index resolver and fresh current-route readback. Verified actual reference paths, collection traversal, clamp mismatch, rejection before mutation and typed material shader properties. Portable resolver28/28 and existing math/schema49/49; complete Editor SDK compile4/4 configurations; real Windows x64 Mono Unity6000.6.5 native ordinary MCP10/10, owned scene closed and fixture quarantined. Fresh final compile0errors, no stale/missing assemblies or critical build-system issue; no authored scene save/discard. Domovyk and Corgi elevated hidden batch compilation2/2PASS; exact package0.2.77 installed. Original author-file baseline retained. Point12/CoreCLR and native crash investigation deferred.
+
+
+### 2026-10-11 — Assistant follow-up item 2 / 0.2.78
+
+Bound resource reads, searches and enumeration with cooperative cancellation and truthful partial outcomes Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Remaining Assistant audit item2 / UniBridge0.2.78
+
+Closed bounded ResourceTools reads/find/list with cancellation, hard observation budgets, regex match timeout, partial coverage and full stable-file SHA semantics. Exact source portable59/59, full Editor SDK compile4/4 configurations, actual Windows x64 Mono Unity6000.6.5 native6/6 and ordinary MCP11/11 PASS. Actual in-flight ReadResource operation21 cancelled after startedUtc, finished ~2.5ms after notification, no response before/after completion and scheduler idle without forced release or project mutation. First timing50ms receipt retained as FAIL pre-admission; final250ms positively proves in-flight cancellation. Owned Assets fixture quarantined with SHA/filename guards; final Editor compile0errors, fresh assemblies, no critical health issues or console errors/exceptions. Both destination elevated hidden batch compiles PASS; exact0.2.78 packages installed. Original author-file baseline preserved. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Assistant follow-up item 3 / 0.2.79
+
+Exclude internal bridge Runtime and Tracing assemblies from Player compilation while retaining their Editor identities Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Remaining Assistant audit item3 / UniBridge0.2.79
+
+Restricted internal MCP.Runtime and Tracing assemblies to Editor without changing assembly identities/consumers. BEFORE actual Windows x64 Mono Player succeeded with internal Runtime+Tracing physically present. AFTER actual Unity6000.6.5 Windows x64 Mono Player succeeded0errors/0warnings, all4 UniBridge Editor assemblies present, no UniBridge Player assemblies and no UniBridge DLL in physical Player payload. Durable build provenance reads the actual copied build snapshot, never a mutable source package. Test Editor refresh/ready/compile health passed with fresh outputs0errors; both destination elevated hidden batch compiles PASS. Exact0.2.79 packages installed. Original author-file baseline preserved and no author scenes saved/discarded. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Assistant follow-up item 4 / 0.2.80
+
+Add opt-in recorded job-wait and persistent native allocation callstacks with exact physical selectors and shared budgets Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Remaining Assistant audit item4 / UniBridge0.2.80
+
+Closed opt-in recorded job/native allocation callstacks with6 exact supported marker names and unchanged64-sample/depth budgets; omitted selector remains GC.Alloc only. Actual Unity6000.6.5 capture proved JobHandle.Complete has stack while the physical WaitForJobGroupID sample has none in both raw/hierarchy APIs; native names are UnsafeUtility.Malloc and Native.Alloc. Old Wait/Persistent labels remain exact supported names without aliasing or invented stacks. Positive actual4 markers include AllocateKnownBytes independently; GC-off and Wait-on missing are truthful. Final source100/100, SDK APIs5/5, full Editor SDK4/4 configurations, native25/25 and ordinary MCP16/16 PASS. Profiler original buffer/settings restored by one explicit finally command and native receipt; owned fixture quarantined with immutable repair-chain SHA guards. Earlier4 failed/diagnostic captures retained; no false PASS. Final Editor health0errors/exceptions and fresh assemblies; both destinations elevated hidden batch compiles PASS. Exact0.2.80 packages installed; original author-file baseline preserved. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Assistant follow-up item 5 / 0.2.81
+
+Add bounded opt-in captured sample object and related GameObject metadata with exact UInt64 identities and an explicit unsupported fallback on older raw APIs Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Remaining Assistant audit item5 / UniBridge0.2.81
+
+Closed bounded opt-in recorded sample object and related GameObject metadata. Capture EntityId UInt64 values remain invariant decimal strings; no live-object resolver, hierarchy remapping or int32 narrowing. Default metadata disabled/zero queries; at most64 exact physical selectors and512 samples per request, explicit missing/unsupported states and bounded text. Exact source119/119, legacy-API fallback108/108, five frozen SDK adapter compile profiles and four complete Editor SDK configurations PASS; older API checks are structural/fallback qualification, not native legacy execution. Actual Windows x64 Mono Unity6000.6.5 native11/11 and ordinary MCP6/6 PASS. Frozen owned capture retains exact object7696581429159 and related GameObject7696581429152, old names after live rename/destruction, truthful missing ID for a valid negative dynamic marker(-2147483647), and zero default queries. Unity object metadata belongs to the capture object table and is not guaranteed to be per-frame rename history; README clarifies this observed behavior. Earlier3 failed/diagnostic attempts retained; the fixture corrected its invalid-marker sentinel and froze its own saved capture without changing production semantics or relaxing expectations. One explicit finally command restored original Profiler capture0..2 and all four settings, with native receipt. Owned fixture quarantined after exact repair-chain/filename checks. Final Editor ready/not compiling, zero errors/exceptions/warnings, no critical/stale assemblies; original FeaturesPlatforms scene remains loaded, dirty, seven roots, no author save/discard. Exact0.2.81 packages installed in Domovyk and Corgi, both elevated hidden batch compiles PASS. Original23,775 author Assets/ProjectSettings files are checked again by full SHA before publication. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Завершено п'ять останніх пунктів Assistant / UniBridge0.2.81
+
+Усі п'ять пунктів закрито в заданому порядку, кожен після власних позитивних тестів доставлено до Domovyk та Corgi як0.2.77–0.2.81. Повні Domovyk changesets299,300,301,302,303 підтверджено порівнянням усіх server bytes і порожнім pending; фінальний cs303 містить14 файлів. Десять downstream elevated hidden batch компіляцій успішні. Фінальна звірка всіх843 source package files у Test/Domovyk/Corgi:0 розбіжностей; сім давніх Unity-generated.meta в кожному host збережено byte-for-byte відносно початкового host baseline. Перший суворий tree-equality receipt залишено як FAIL через ці відомі preexisting.meta; corrected baseline-aware receipt не дозволяє невідомих або змінених extras.
+
+Повний повторний SHA-check23,775 початкових авторських Assets/ProjectSettings files: Test9027, Domovyk5795, Corgi8953, errors0. Final native Mono6.6/MCP health: ready, compileErrors0, criticalBuildIssues0, staleAssemblies0, console errors/exceptions/warnings0; FeaturesPlatforms одна loaded dirty scene із7roots, авторську сцену не збережено/не відкинуто. Native profiler buffer і settings відновлені, усі власні Assets fixtures quarantined після SHA guard. Пункт12/CoreCLR та скасоване native-crash дослідження не змінювалися. Фінальний source commit/push містить лише scope цих п'яти пунктів та release/context/docs; immutable publication receipt створюється після перевірки remoteHEAD/clean status у Temp/AssistantRemaining5-20261011/final-publication.json.
