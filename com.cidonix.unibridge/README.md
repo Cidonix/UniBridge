@@ -222,6 +222,18 @@ AI agent/MCP client so it reloads the available Unity projects.
 
 ## Documentation
 
+### Recorded Profiler Counters In 0.2.74
+
+`UniBridge_RuntimeProfiler Action=RecordedCounters` reads bounded historical
+frame counters independently of the CPU hierarchy. It returns a frame table
+and summaries computed from available recorded values, including measured zero.
+Missing counters, unavailable descriptors and unsupported units remain explicit;
+they never become synthetic zero. The default catalogue covers main/render/GPU
+timing, GC allocation bytes and rendering counts; custom metric names are
+supported. Maximum request: 60 frames and 32 metrics. This requires the native
+recorded Profiler APIs and is not advertised as a legacy capability.
+Tests: `Tools~/RecordedProfilerRegression`.
+
 ### Unity Mathematical Values In 0.2.73
 
 Math JSON input, reflected property readback and output use the same isolated

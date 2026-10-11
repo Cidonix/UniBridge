@@ -11325,3 +11325,17 @@ Item3 schema integration correction: DTO schemas reject only converters that act
 Перевірки: 49 real-SDK source-linked math/schema checks; 146/146 BridgeIsolation (усі 13 pinned JSON goldens збережені); 5/5 exact legacy SDK compilations 5.3.2/5.6.5/5.6.7/2017.4/2018.4. Native x64 Mono Unity5.6.7f1: 52/52, administrator. Native Unity6000.6.5f1: 48/48, включно з 8 ordinary MCP записами/readback Camera.projectionMatrix та nonserialized Probe properties, exact installed package .73, negative inputs без mutation, long identities та збереження original loaded scene/dirty state. Усі чотири platform-symbol profiles повного Editor module мають 0 compile errors; це compile evidence, не foreign-hardware proof. Обидва downstream проєкти перевірено окремою admin Unity batch-компіляцією. Первинні авторські Assets/ProjectSettings файли збережені; owned scene закрита, imported fixture перенесений у quarantine.
 
 Первинний schema-guard збій та scene-activation FAIL тестового fixture збережені в evidence. Native fixture спрощено до власної additive DefaultGameObjects сцени з typed Camera і точним набором власних roots, без необхідності runtime SetActiveScene і без створення об'єктів у авторській сцені. Пункт 2 доставлено в Domovyk cs294: 27 server files звірено, pending empty. Receipt поточного повного check-in — Temp/AssistantFinalPlan-20261011/step3/dom-publication.json. Пункт 12/CoreCLR і скасоване native crash дослідження не змінювалися.
+
+
+### 2026-10-11 — Assistant follow-up item 4 / 0.2.74
+
+Read recorded Profiler frame counters with explicit availability, bounded tables and historical summaries. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-11 — Пункт 4 завершено / UniBridge 0.2.74
+
+RuntimeProfiler RecordedCounters читає bounded table фактично записаних Profiler frame counters, з exact metadata datatype/units та summary лише з доступних вимірювань. Справжній нуль зберігається; відсутній marker/value/frame не перетворюється на нуль. Обмеження: 60 frames, 32 counters; sparse history, часткові результати, cancellation/timeout, disposal native views і closed output schema перевірені. Default compact counters відокремлені від CPU sample tree.
+
+Перевірки: 35/35 source-linked regression checks; 53/53 native Unity6000.6.5f1 x64 Mono та два ordinary MCP запити custom/default counters до known capture, зі звіркою фактичних raw Count/Bytes і недоступного counter. Profiler buffer/flags відновлені; owned fixture перенесено у quarantine, opt-in native fixture збережено в Tools~. Повний Editor module: 271 source files, чотири platform-symbol profiles, 0 compile errors; обидва downstream проєкти окремо перевірені administrator Unity batch. Test Editor healthy, console errors/exceptions 0. Первісні Assets/ProjectSettings файли збережені.
+
+Portable runner тепер використовує справжній SDK CoreModule і повні актуальні McpJson/math converters. Первинний compile FAIL через відсутню math integration та наступний GetInstanceID/Unity6.6 obsolete API mismatch збережені в evidence; виправлено лише runner integration/symbol detection. Full Domovyk check-in і byte verification server files зафіксовано у Temp/AssistantFinalPlan-20261011/step4/dom-publication.json. Пункт 12/CoreCLR та скасоване native crash дослідження не змінювалися.

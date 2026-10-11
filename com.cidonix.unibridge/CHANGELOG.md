@@ -1,3 +1,7 @@
+## [0.2.74] - 2026-10-11
+
+- Read recorded Profiler frame counters with explicit availability, bounded tables and historical summaries.
+
 ## [0.2.73] - 2026-10-11
 
 - Canonical Unity mathematical values across JSON input, physical property readback and output, including Matrix4x4 and Vector4.

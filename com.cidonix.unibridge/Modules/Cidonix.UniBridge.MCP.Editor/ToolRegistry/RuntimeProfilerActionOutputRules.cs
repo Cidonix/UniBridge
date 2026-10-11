@@ -59,7 +59,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 ["Hierarchy"] = Family(Success(HierarchyData()), Error("PLAY_MODE_REQUIRED", play),
                     Error("NO_PROFILER_MARKERS_SELECTED", O(("available", I()), ("filtered", I()), ("includeCounters", B()),
                         ("categories", Strings()), ("markerFilters", Strings(true)), ("excludeMarkerFilters", Strings(true)), ("hint", S())))),
-                ["RecordedFrames"] = Family(Success(RecordedData("completed", true, null, false)), recordedErrors.ToArray())
+                ["RecordedFrames"] = Family(Success(RecordedData("completed", true, null, false)), recordedErrors.ToArray()),
+                ["RecordedCounters"] = RecordedCounterFamily()
             };
         }
 
@@ -145,5 +146,31 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             ("selectedFrameIndices", Integers()), ("readFrameIndices", Integers()), ("copiedSamples", I()), ("timedOut", B()),
             ("elapsedMs", N()), ("issues", Strings()), ("errorCode", C(errorCode)), ("selfTimeMethod", S()), ("gcScope", S()),
             ("savedPath", S(true)), ("hint", hint ? S() : C(null)), ("frames", A(RecordedFrame())));
+
+        static JObject RecordedCounterFamily()
+        {
+            var errors = new List<JObject> { Error("PLAY_MODE_REQUIRED", O(("hint", S()))),
+                Error("INVALID_RECORDED_COUNTER_REQUEST", O(("hint", S()))) };
+            foreach (var code in new[] { "NO_RECORDED_PROFILER_FRAMES", "RECORDED_FRAME_OUT_OF_RANGE", "RECORDED_COUNTER_DATA_UNAVAILABLE" })
+                errors.Add(Error(code, RecordedCounterData("unavailable", false, code)));
+            errors.Add(Error("RECORDED_COUNTER_DATA_PARTIAL", RecordedCounterData("partial", false, null)));
+            return Family(Success(RecordedCounterData("completed", true, null)), errors.ToArray());
+        }
+        static JObject RecordedCounterValue() => O(("key", S()), ("markerName", S()), ("category", S(true)),
+            ("unit", S(true)), ("recordedUnit", S(true)), ("dataType", S(true)), ("rawValue", S(true)),
+            ("value", N(true)), ("status", S()), ("issue", S(true)));
+        static JObject RecordedCounterSummary() => O(("key", S()), ("markerName", S()), ("unit", S(true)),
+            ("requestedFrames", I()), ("readFrames", I()), ("availableFrames", I()), ("unavailableFrames", I()),
+            ("min", N(true)), ("max", N(true)), ("avg", N(true)), ("median", N(true)), ("p95", N(true)),
+            ("last", N(true)), ("statuses", Strings()));
+        static JObject RecordedCounterData(string outcome, bool complete, string errorCode) => O(
+            ("schema", C("unibridge.runtimeProfiler.recordedCounters.v1")), ("dataSource", C("ProfilerDriver.RawFrameDataView")),
+            ("outcome", C(outcome)), ("complete", C(complete)),
+            ("available", O(("firstFrameIndex", I()), ("lastFrameIndex", I()))),
+            ("request", O(("FrameIndex", I(true)), ("frameCount", I()), ("metrics", Strings()), ("timeoutMs", I()))),
+            ("selectedFrameIndices", Integers()), ("readFrameIndices", Integers()), ("timedOut", B()), ("elapsedMs", N()),
+            ("issues", Strings()), ("errorCode", C(errorCode)), ("summaries", A(RecordedCounterSummary())),
+            ("frames", A(O(("frameIndex", I()), ("counters", A(RecordedCounterValue())), ("issues", Strings())), true)),
+            ("savedPath", S(true)), ("hint", S()));
     }
 }

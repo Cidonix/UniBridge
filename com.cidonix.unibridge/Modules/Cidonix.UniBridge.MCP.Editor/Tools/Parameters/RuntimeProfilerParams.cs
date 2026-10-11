@@ -9,7 +9,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         Sample,
         Hierarchy,
         Metrics,
-        RecordedFrames
+        RecordedFrames,
+        RecordedCounters
     }
 
     public enum RuntimeProfilerRecordedSort
@@ -21,13 +22,13 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
     public record RuntimeProfilerParams
     {
-        [McpDescription("Operation to perform: Snapshot, Sample, Hierarchy, Metrics, or RecordedFrames.", Required = false, Default = RuntimeProfilerAction.Snapshot)]
+        [McpDescription("Operation to perform: Snapshot, Sample, Hierarchy, Metrics, RecordedFrames, or RecordedCounters.", Required = false, Default = RuntimeProfilerAction.Snapshot)]
         public RuntimeProfilerAction Action { get; set; } = RuntimeProfilerAction.Snapshot;
 
-        [McpDescription("For RecordedFrames, first recorded frame index. Omit to read the latest FrameCount available recorded frames; indices follow actual Profiler history traversal.", Required = false)]
+        [McpDescription("For RecordedFrames/RecordedCounters, first recorded frame index. Omit to read the latest FrameCount available recorded frames; indices follow actual Profiler history traversal.", Required = false)]
         public int? FrameIndex { get; set; }
 
-        [McpDescription("For RecordedFrames, number of recorded frames to read. Default 1, clamped to 1..60; independent of SampleFrames editor ticks.", Required = false, Default = 1)]
+        [McpDescription("For RecordedFrames/RecordedCounters, number of recorded frames to read. Default 1, clamped to 1..60; independent of SampleFrames editor ticks.", Required = false, Default = 1)]
         public int? FrameCount { get; set; }
 
         [McpDescription("For RecordedFrames, persistent thread IDs as decimal strings, resolved to frame-local indices separately in each frame. Every requested physical ID must be observed in each frame; missing or unobserved IDs make coverage incomplete. ThreadNameFilters then selects the intersection; an observed name-excluded ID is not missing coverage.", Required = false)]
@@ -51,7 +52,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Optional human-readable sample name used for saved profiler files.", Required = false)]
         public string Name { get; set; }
 
-        [McpDescription("Profiler metrics to sample. Use aliases such as main_thread_ms, gc_alloc_bytes, batches_count, or category/name such as Internal/Main Thread.", Required = false)]
+        [McpDescription("Metrics for Sample, or counter keys/names for RecordedCounters. RecordedCounters accepts up to 32 keys/names: cpu_main_active_ms, cpu_render_active_ms, gpu_frame_ms, gc_alloc_bytes, draw_calls_count, batches_count, setpass_calls, triangles_count; unknown names remain explicit unavailable if not recorded. For Sample, use aliases such as main_thread_ms, gc_alloc_bytes, batches_count, or category/name such as Internal/Main Thread.", Required = false)]
         public string[] Metrics { get; set; }
 
         [McpDescription("For Hierarchy or RecordedFrames, profiler categories to inspect. Examples: Internal, Scripts, Render, Physics, Physics2D, Animation, Audio. Hierarchy defaults to common CPU categories; RecordedFrames omission includes all captured categories.", Required = false)]

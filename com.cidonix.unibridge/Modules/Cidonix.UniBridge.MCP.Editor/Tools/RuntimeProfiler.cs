@@ -50,6 +50,7 @@ Actions:
     Sample: In Play Mode by default, sample selected ProfilerRecorder metrics for a bounded number of editor update ticks. Returns compact averages/p95/max/last/spikes and can save full raw samples under Library/UniBridge/RuntimeProfiler.
     Hierarchy: Sample available profiler marker handles for one frame or a short window, returning top marker paths by time plus a synthetic hierarchy and optional saved JSON export.
     Metrics: List supported metric aliases and category/name pairs.
+    RecordedCounters: Read counters from existing recorded frames, with bounded tables and summaries. Missing values stay null; this action never starts recording.
     RecordedFrames: Read already recorded CPU frames and frame-local threads with actual parent/sample identity, total/self time, and recorded GC allocation metadata. Reads the existing Profiler buffer without enabling recording or loading/clearing captures.
 
 Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC memory spikes stutter frame time profiler hierarchy marker hierarchy frame export ProfilerRecorder runtime state.";
@@ -63,6 +64,8 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
             {
                 switch (parameters.Action)
                 {
+                    case RuntimeProfilerAction.RecordedCounters:
+                        return await RecordedCounters(parameters);
                     case RuntimeProfilerAction.RecordedFrames:
                         return await RecordedFrames(parameters);
                     case RuntimeProfilerAction.Metrics:
