@@ -1,3 +1,7 @@
+## [0.2.87] - 2026-10-12
+
+- Preserve declared serialized integer widths and Double precision in Component and ScriptableObject property reads and writes.
+
 ## [0.2.86] - 2026-10-12
 
 - Real local CLIP/ONNX semantic visual asset search with GUID-bound indexes, source hashes, bounded work and owned-worker cancellation.

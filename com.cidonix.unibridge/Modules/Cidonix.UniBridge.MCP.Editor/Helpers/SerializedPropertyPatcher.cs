@@ -214,15 +214,21 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
             switch (property.propertyType)
             {
                 case SerializedPropertyType.Integer:
+                    if (IsRenderingLayerMaskProperty(property))
+                    {
+                        after = ReadRenderingLayerMask(value);
+                        if (!dryRun) property.intValue = (int)after;
+                    }
+                    else
+                    {
+                        after = SerializedNumericValue.ConvertValue(property, value);
+                        if (!dryRun) SerializedNumericValue.Write(property, after);
+                    }
+                    break;
                 case SerializedPropertyType.ArraySize:
                 case SerializedPropertyType.FixedBufferSize:
-                    after = IsRenderingLayerMaskProperty(property)
-                        ? ReadRenderingLayerMask(value)
-                        : ReadInt(value);
-                    if (!dryRun)
-                    {
-                        property.intValue = Convert.ToInt32(after, CultureInfo.InvariantCulture);
-                    }
+                    after = ReadInt(value);
+                    if (!dryRun) property.intValue = (int)after;
                     break;
                 case SerializedPropertyType.LayerMask:
                     after = ReadLayerMask(value);
@@ -239,11 +245,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                     }
                     break;
                 case SerializedPropertyType.Float:
-                    after = ReadFloat(value);
-                    if (!dryRun)
-                    {
-                        property.floatValue = Convert.ToSingle(after, CultureInfo.InvariantCulture);
-                    }
+                    after = SerializedNumericValue.ConvertValue(property, value);
+                    if (!dryRun) SerializedNumericValue.Write(property, after);
                     break;
                 case SerializedPropertyType.String:
                     after = value == null || value.Type == JTokenType.Null ? null : value.ToString();
@@ -1383,9 +1386,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Helpers
                         : SerializeGenericProperty(property),
                 SerializedPropertyType.Integer => IsRenderingLayerMaskProperty(property)
                     ? SerializeNamedMask(property.intValue, GetRenderingLayerNames())
-                    : property.intValue,
+                    : SerializedNumericValue.Read(property),
                 SerializedPropertyType.Boolean => property.boolValue,
-                SerializedPropertyType.Float => property.floatValue,
+                SerializedPropertyType.Float => SerializedNumericValue.Read(property),
                 SerializedPropertyType.String => property.stringValue,
                 SerializedPropertyType.Color => SerializeColor(property.colorValue),
                 SerializedPropertyType.ObjectReference => SerializeObjectReference(property.objectReferenceValue),

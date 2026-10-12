@@ -11509,3 +11509,21 @@ Real Search cancellation observed an admitted running Editor request and actual 
 Release Git attributes preserve upstream CLIP/.NET license and notice bytes; only their original terminal blank-line diagnostic is exempted. Other whitespace checks remain enabled. Unix worker index modes are explicitly100755.
 Upstream worker license/notice entries also disable Git EOL conversion; the staged blobs are verified against unfiltered source bytes.
 License/notice whitespace checks recognize original CRLF terminators via cr-at-eol. Explicit targeted index renormalization applies the no-EOL-conversion attributes; production/source whitespace checks remain unchanged.
+
+
+### 2026-10-12 — Serialized numeric fix item 1 / 0.2.87
+
+Preserve declared serialized integer widths and Double precision in Component and ScriptableObject property reads and writes. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-12 — UniBridge 0.2.87: підтверджене виправлення точності serialized чисел
+
+У живому x64 Mono Unity 6000.6.5f1 версія 0.2.86 повернула success після запису Double 1.0000000000000004, але фізичне поле стало 1.0; допустиме Int64 9007199254740995 також відхилялося. Читання через SerializedProperty спотворювало широкі цілі числа та Double. Reproduce03 містить незалежні native CLR спостереження, реальний Component MCP, ScriptableObject MCP DryRun і точний shared production writer; це підтверджена проблема, а не припущення. Аналогічний недолік є в Assistant 2.20.0-pre.2, тому це самостійне виправлення UniBridge.
+
+Виправлено лише скалярні Integer/Float маршрути SerializedPropertyPatcher через SerializedNumericValue: numericType визначає точну ширину й native accessor; UInt64 не проходить через signed Int64; Double не звужується до Single. Перевірка діапазону і finite Double відбувається до setter. Збережено звичайну Int32/Float conversion policy, окремі enum, layer/rendering mask, Character, ArraySize/FixedBufferSize та векторні маршрути. Потрібні public API вже присутні в встановлених Unity 2022.3 SDK, раніше за minimum пакета Unity 6000.0.60f1.
+
+Кваліфікація: published source regression 45/45; повний сучасний Editor module 296 джерел, 4/4 platform-symbol SDK profiles; реальний x64 Mono 6.6 native MCP gate 143/143, без дефектів, включно з nested/list/arrays, UInt64 і відхиленням переповнення без зміни фізичних полів. ScriptableObject перевірено реальним MCP DryRun та фізичним shared production writer із SaveAssetIfDirty лише власного asset; full saved MCP branch з global SaveAssets не запускався, щоб не зберегти чужі dirty assets. Незмінені п'ять legacy adapter файлів скомпільовані genuine SDK/compiler 5.3.2f1, 5.6.5f1, 5.6.7f1, 2017.4.6f1 та 2018.4.8f1 — 5/5; це SDK compile proof, без native legacy Editor qualification або нових гарантій UInt64/Double JSON для legacy.
+
+Пакет 0.2.87 установлено в UniBridge_Test_Project, Domovyk та Corgi Engine v10. Domovyk/Corgi отримали свіжі Editor assemblies під elevated hidden batch Unity 6000.6.5f1, exit0, без compiler errors. Власні fixture/asset файли перевірені за GUID/hash і переміщені в ізольований quarantine. Авторська dirty FeaturesPlatforms сцена залишилася loaded із тими самими handles, active scene та 7 roots; SaveScene/global SaveAssets не викликалися. Усі запуски від адміністратора, без desktop/UI control. Початкові Assets/ProjectSettings перевіряються повним SHA перед публікацією.
+
+Підсумковий обмежений аудит Assistant 2.20.0-pre.2 проти UniBridge 0.2.86 не знайшов нових необхідних перенесень у transport/recovery/cancellation/schema/resources, semantic tooling/import/compilation/UPM/Profiler, context/settings/visual search/capture/snapshot safety. Cloud chat/generators/Figma, додаткові visual-index/UI/GPU modes та UPM Remove/Embed/Unembed — свідомі необов'язкові розширення продукту, не новий обов'язковий backlog цього порівняння. Цей цикл перенесень закрито. Пункт12 Unity7/CoreCLR і скасоване дослідження ProcessInfoCollector crash не зачіпалися.

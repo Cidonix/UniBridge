@@ -1,7 +1,7 @@
 {
   "name": "com.cidonix.unibridge",
   "displayName": "UniBridge",
-  "version": "0.2.86",
+  "version": "0.2.87",
   "unity": "6000.0",
   "unityRelease": "60f1",
   "description": "Local MCP tools that let AI coding agents inspect, edit, capture, and validate Unity Editor projects through a per-project bridge and relay.",
@@ -22,7 +22,7 @@
     "com.unity.2d.sprite": "1.0.0"
   },
   "_upm": {
-    "changelog": "### Improved\n\n- Real local CLIP/ONNX semantic visual asset search with GUID-bound indexes, source hashes, bounded work and owned-worker cancellation.\n"
+    "changelog": "### Improved\n\n- Preserve declared serialized integer widths and Double precision in Component and ScriptableObject property reads and writes.\n"
   },
   "documentationUrl": "https://github.com/Cidonix/UniBridge",
   "repository": {
