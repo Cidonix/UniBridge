@@ -1,0 +1,37 @@
+{
+  "revision": "6ef1ebc8b0766a7a8d11b146462c99cdf74dd22d",
+  "modelFingerprint": "cf01db9192c62826c46cf2ca9386d1ef12a6e535994960b0294eb7dbe53fd8eb",
+  "artifacts": [
+    {
+      "sha256": "73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a",
+      "name": "text_model_quantized.onnx",
+      "bytes": 64504507,
+      "remote": "onnx/text_model_quantized.onnx"
+    },
+    {
+      "sha256": "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299",
+      "name": "vision_model_quantized.onnx",
+      "bytes": 89117001,
+      "remote": "onnx/vision_model_quantized.onnx"
+    },
+    {
+      "sha256": "5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363",
+      "name": "vocab.json",
+      "bytes": 862328,
+      "remote": "vocab.json"
+    },
+    {
+      "sha256": "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+      "name": "merges.txt",
+      "bytes": 524619,
+      "remote": "merges.txt"
+    }
+  ],
+  "modelLanguage": "English",
+  "dimensions": 512,
+  "runtime": "Microsoft.ML.OnnxRuntime 1.23.2",
+  "baseUrl": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/6ef1ebc8b0766a7a8d11b146462c99cdf74dd22d/",
+  "modelId": "clip-vit-b32-int8-v1",
+  "provider": "Xenova/clip-vit-base-patch32",
+  "license": "MIT"
+}

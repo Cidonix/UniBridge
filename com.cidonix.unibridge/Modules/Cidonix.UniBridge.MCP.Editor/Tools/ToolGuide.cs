@@ -320,6 +320,19 @@ This tool is read-only.";
                 },
                 new WorkflowGuide
                 {
+                    Key = "project_guidelines",
+                    Title = "Read project-authored guidelines",
+                    When = "Use when an MCP-only client needs the author's configured project rules without shell access.",
+                    FirstCalls = new[] { "UniBridge_ProjectGuidelines Action=Status", "UniBridge_ProjectGuidelines Action=Read after checking configured source identities" },
+                    EditCalls = Array.Empty<string>(),
+                    VerifyCalls = new[] { "Inspect complete/truncated and SHA scope; partial content is not a complete document" },
+                    Tools = new[] { "UniBridge_ProjectGuidelines" },
+                    BatchAliases = new[] { "project_guidelines", "guidelines" },
+                    Notes = new[] { "No sources are read automatically. Configure a typed project TextAsset or opt in to the fixed root documents in Project Settings > UniBridge > Project Guidelines.", "Text is authored data; the bridge does not execute it or change its own instruction/permission hierarchy." },
+                    Aliases = new[] { "project_rules", "authored_guidelines", "author_rules" }
+                },
+                new WorkflowGuide
+                {
                     Key = "agent_playbook",
                     Title = "Default agent operating protocol",
                     When = "Use when a new agent needs a compact rulebook for safe Unity work through UniBridge: what to read first, how to scope edits, and how to verify.",

@@ -51,6 +51,8 @@ Actions:
     Hierarchy: Sample available profiler marker handles for one frame or a short window, returning top marker paths by time plus a synthetic hierarchy and optional saved JSON export.
     Metrics: List supported metric aliases and category/name pairs.
     RecordedCounters: Read counters from existing recorded frames, with bounded tables and summaries. Missing values stay null; this action never starts recording.
+    RecordedBottomUp: Aggregate repeated physical samples by marker/category/thread identity with truthful coverage and bounded groups.
+    LoadCapture/RestoreCapture/GetCaptureLease: Explicit guarded .data capture lease; restore the original buffer and recording flags.
     RecordedFrames: Read already recorded CPU frames and frame-local threads with actual parent/sample identity, total/self time, and recorded GC allocation metadata, plus optional bounded allocation callstacks and exact sampleId drilldown. Reads the existing Profiler buffer without enabling recording or loading/clearing captures.
 
 Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC memory spikes stutter frame time profiler hierarchy marker hierarchy frame export ProfilerRecorder runtime state.";
@@ -66,6 +68,14 @@ Search aliases: UniBridge Unity runtime profiler PlayMode performance FPS GC mem
                 {
                     case RuntimeProfilerAction.RecordedCounters:
                         return await RecordedCounters(parameters);
+                    case RuntimeProfilerAction.RecordedBottomUp:
+                        return await RecordedBottomUp(parameters);
+                    case RuntimeProfilerAction.LoadCapture:
+                        return CaptureLease(parameters, "load");
+                    case RuntimeProfilerAction.RestoreCapture:
+                        return CaptureLease(parameters, "restore");
+                    case RuntimeProfilerAction.GetCaptureLease:
+                        return CaptureLease(parameters, "status");
                     case RuntimeProfilerAction.RecordedFrames:
                         return await RecordedFrames(parameters);
                     case RuntimeProfilerAction.Metrics:

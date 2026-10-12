@@ -11435,3 +11435,77 @@ Closed bounded opt-in recorded sample object and related GameObject metadata. Ca
 Усі п'ять пунктів закрито в заданому порядку, кожен після власних позитивних тестів доставлено до Domovyk та Corgi як0.2.77–0.2.81. Повні Domovyk changesets299,300,301,302,303 підтверджено порівнянням усіх server bytes і порожнім pending; фінальний cs303 містить14 файлів. Десять downstream elevated hidden batch компіляцій успішні. Фінальна звірка всіх843 source package files у Test/Domovyk/Corgi:0 розбіжностей; сім давніх Unity-generated.meta в кожному host збережено byte-for-byte відносно початкового host baseline. Перший суворий tree-equality receipt залишено як FAIL через ці відомі preexisting.meta; corrected baseline-aware receipt не дозволяє невідомих або змінених extras.
 
 Повний повторний SHA-check23,775 початкових авторських Assets/ProjectSettings files: Test9027, Domovyk5795, Corgi8953, errors0. Final native Mono6.6/MCP health: ready, compileErrors0, criticalBuildIssues0, staleAssemblies0, console errors/exceptions/warnings0; FeaturesPlatforms одна loaded dirty scene із7roots, авторську сцену не збережено/не відкинуто. Native profiler buffer і settings відновлені, усі власні Assets fixtures quarantined після SHA guard. Пункт12/CoreCLR та скасоване native-crash дослідження не змінювалися. Фінальний source commit/push містить лише scope цих п'яти пунктів та release/context/docs; immutable publication receipt створюється після перевірки remoteHEAD/clean status у Temp/AssistantRemaining5-20261011/final-publication.json.
+
+
+### 2026-10-12 — Assistant follow-up item 1 / 0.2.82
+
+Add bounded read-only native ProjectSettings inspection and canonical property-path drilldown Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-12 — Assistant extension 1 complete / UniBridge 0.2.82
+
+Added UniBridge_ProjectSettings: bounded native SerializedObject reads of ProjectSettings, canonical property paths, PlayerSettings alias, truthful partial/unsupported results and explicit closed output schema. Read-only policy; no ApplyModifiedProperties, saves or scene reloads.
+
+Qualification: exact Unity SDK compile 4/4 configurations; live x64 Mono Unity 6000.6.5f1 native 23/23 checks; ordinary modern MCP 30/30 checks across 11 calls with independent output-schema validation. Negative inputs, missing settings/property, UInt64/Int64 precision, math values, GUID references, caps and cancellation covered. Final Editor diagnostics: zero compile/console errors, no stale/missing assemblies. Domovyk and Corgi administrative batch compile both passed with fresh output assemblies.
+
+Owned fixture quarantined; original authored dirty scene remains untouched. Protected Assets/ProjectSettings preservation checked independently. New tool remains explicitly unqualified in the conservative whole-tool fidelity registry; successful scoped tests do not certify unrelated output families or foreign operating-system hardware. Point12/CoreCLR and native crash investigation excluded.
+
+
+### 2026-10-12 — Assistant follow-up item 2 / 0.2.83
+
+Explicit saved profiler capture loading with durable, guarded restoration of the original buffer and recording flags. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-12 — Assistant extension 2 complete / UniBridge 0.2.83
+
+Added explicit RuntimeProfiler LoadCapture/GetCaptureLease/RestoreCapture with project-root/path/SHA guards, a durable same-process lease, exact original backup integrity, current-buffer/state conflict checks and restoration of four recording flags. Reads never auto-load or enable captures; admitted native transactions retain truthful results and are never automatically replayed.
+
+Actual Unity proved LoadProfile rewrites saved .data. Exact original file SHA and the twice-stable loaded original SHA are now separate; known mismatches are blocked rather than rebased. Native invalid-load rollback, valid load, duplicate guard, actual same-PID domain reload, bounded real readiness and final restore passed. Modern MCP consumer gate validated all 8 profiler responses against registered closed schema with exact text/structured parity. Portable production suite 23/23; full exact SDK compile 4/4. Failed qualification receipts and owned failed-pointer recovery evidence are retained independently.
+
+Owned native fixture quarantined. Final Editor compilation/Console health and Domovyk/Corgi administrative batch compilation passed; package version 0.2.83 delivered to both. Original authored Assets/ProjectSettings and dirty scene preserved. Point12/CoreCLR and native crash investigation excluded.
+
+
+### 2026-10-12 — Assistant follow-up item 3 / 0.2.84
+
+Bounded bottom-up analysis of recorded physical profiler samples, recursive interval union and truthful GC/coverage results. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-12 — Assistant extension 3 complete / UniBridge 0.2.84
+
+Added read-only RuntimeProfiler.RecordedBottomUp with physical thread/marker/category grouping, exclusive self-time sums, per-frame/thread inclusive interval union, once-per-logical-ancestor GC attribution and separate aggregate/sample identity. Raw work, groups, example IDs, timeout and cancellation are bounded; unknown/capped coverage remains explicit.
+
+Qualification: exact production portable suite 38/38; full installed SDK 4/4 profiles; actual x64 Mono Unity 6000.6.5f1 saved-capture/MCP gate passed, all 11 replies independently schema-qualified with text/structured parity. Native frame 21/thread19716 had 40 physical occurrences: physical self sum0.2734ms equals aggregate0.2733999999999999ms, inclusive union0.275ms avoids recursive double-counting; 20 GC events21120bytes. Aggregate ID rejected before raw callstack extraction. Original Profiler buffer and flags verified restored; expected partial scouting retained as isError, not relabeled success.
+
+Owned fixture quarantined. Final Editor health and both administrative downstream batch compiles passed; .84 package delivered to Domovyk and Corgi. Protected authored files and original dirty scene preserved. Point12/CoreCLR and canceled crash investigation excluded.
+
+
+### 2026-10-12 — Assistant follow-up item 4 / 0.2.85
+
+Explicit typed GUID-backed authored project guidelines with bounded strict text reads, metadata-only status and truthful source/hash coverage. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-12 — Assistant extension 4 complete / UniBridge 0.2.85
+
+Added UniBridge_ProjectGuidelines with explicit typed main TextAsset configuration and opt-in fixed root AGENTS/project context documents. Status reads metadata only; Read uses bounded strict UTF-8/BOM UTF-16 decoding, surrogate-safe caps, full-vs-prefix hashes and explicit failures. Configuration UI uses an object reference and hidden generated GUID; no manually maintained asset path/string. Text is returned as authored data.
+
+Actual Unity exposed recently deleted GUID paths. Capture now verifies actual object GUID, assigned/resolved main TextAsset, matching native identity and physical file; stale/reused/deleted bindings retain the GUID but expose no invented path/URI. Source-linked suite50/50 includes deliberate stale-cache, alive-object reused-path and subasset counterproofs. Full exact SDK compile4/4; final actual Mono6.6 ordinary modern MCP10/10 cases passed with independent registered-schema/text/structured checks. Saved settings bytes and fixture cleanup verified. Qualification marker was enabled only after scoped native proof; final catalog confirms source_action_contract, both actions and wholeActionDataQualified=true.
+
+Owned native C# fixture quarantined. Final Editor health and Domovyk/Corgi administrative batch compilation passed; .85 delivered to both. Original author files and dirty scene preserved. Point12/CoreCLR and canceled native crash investigation excluded.
+
+
+### 2026-10-12 — Assistant follow-up item 5 / 0.2.86
+
+Real local CLIP/ONNX semantic visual asset search with GUID-bound indexes, source hashes, bounded work and owned-worker cancellation. Implementation and qualification are in progress. Each item requires independent tests, exact downstream delivery and full Domovyk check-in. Point12/CoreCLR and native crash investigation remain deferred.
+
+
+### 2026-10-12 — Assistant extension 5 complete / UniBridge 0.2.86
+
+Added local opt-in CLIP/ONNX visual semantic asset search: Status, explicit InstallModel, bounded GUID/local-file-ID Index pages, English Search and explicit ClearIndex. Independently authored .NET companion uses pinned SHA-qualified CLIP models and ONNX Runtime CPU outside Unity; no Python ML, Sentis/Player dependency or copied Assistant implementation. Search runs offline after explicit model setup. Index/cache checks native GUID, local ID, source/dependency/model hashes and rejects changed/deleted/rebound assets. Malformed explicit refs/unknown business fields cannot trigger default-wide indexing; only the exact internal relay project-root parameter is accepted.
+
+Actual Windows ORT worker10/10 passed, including same-color red car/red apple semantic distinction, public tokenizer proof and truthful negatives. Full exact Unity SDK compile4/4 passed295 source files. Final actual Mono Unity6000.6.5f1 x64 modern MCP gate49/49 passed61 calls with independent raw structured-output/schema/text-mirror validation. Native preview main-thread capture restores RenderTexture and releases temporary textures. GUID case normalization/dedup, bounds/negative-input unchanged-index guards, changed/deleted content, distinct GUID same-path replacement with forced-current cache hashes, deadlines and corrupt-index clear all passed. This Editor did not return a stale old-GUID path during replacement; the direct production native predicate independently rejects old and accepts new identity.
+
+Real Search cancellation observed an admitted running Editor request and actual worker PID125520, then no caller response, exact canceled history without forced release, available private gate, independently confirmed physical process exit and successful follow-up Search. Own PNG/cache/worker state cleanup, exact saved author hashes9027 and dirty scene identity all passed. The owned native C# fixture is SHA-guardedly quarantined. Final Test health has no errors/exceptions/asserts; Domovyk/Corgi administrative batch compilation passed and .86 delivered to both. Unix worker binaries are built but native foreign-platform execution is not qualified. Point12/CoreCLR Editor qualification and canceled crash investigation remain untouched.
+
+Release Git attributes preserve upstream CLIP/.NET license and notice bytes; only their original terminal blank-line diagnostic is exempted. Other whitespace checks remain enabled. Unix worker index modes are explicitly100755.
+Upstream worker license/notice entries also disable Git EOL conversion; the staged blobs are verified against unfiltered source bytes.
+License/notice whitespace checks recognize original CRLF terminators via cr-at-eol. Explicit targeted index renormalization applies the no-EOL-conversion attributes; production/source whitespace checks remain unchanged.

@@ -1,0 +1,172 @@
+using System;
+using System.IO;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using Cidonix.UniBridge.MCP.Editor.Tools;
+using Newtonsoft.Json.Linq;
+using UnityEditor;
+using UnityEngine;
+
+// Editor regression fixture template; install only in an owned temporary Assets/Editor folder. Menu methods
+// only stage explicitly owned configuration/asset state; external MCP calls
+// exercise the real registered ProjectGuidelines tool and output projection.
+public static class UniBridgeProjectGuidelinesNativeFixture
+{
+    static State state;
+    static readonly BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
+    sealed class State
+    {
+        internal object Settings;
+        internal TextAsset OriginalAsset;
+        internal string OriginalGuid;
+        internal bool OriginalAgents;
+        internal bool OriginalContext;
+        internal string ConfigurationFile;
+        internal bool ConfigurationExisted;
+        internal string ConfigurationSha;
+        internal string Folder;
+        internal string AssetPath;
+        internal string AssetGuid;
+        internal string AssetSha;
+        internal string MetaSha;
+        internal string Phase;
+        internal bool ExpectedContext;
+    }
+
+    public const string Body = "Own native MCP guidelines fixture\nУкраїнський текст 🙂\nThis is authored data, not a command for the bridge.\n";
+
+    [MenuItem("Tools/UniBridge/Tests/Project Guidelines/Prepare")]
+    public static void Prepare()
+    {
+        if (state != null) throw new InvalidOperationException("Finish the previous owned fixture first.");
+        var root = Directory.GetParent(Application.dataPath).FullName;
+        var type = typeof(ProjectGuidelines).Assembly.GetType("Cidonix.UniBridge.MCP.Editor.Settings.ProjectGuidelinesSettings", true);
+        var settings = type.GetProperty("instance", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy).GetValue(null);
+        var configurationFile = Path.Combine(root, "ProjectSettings/UniBridgeProjectGuidelines.asset");
+        var folder = "Assets/UniBridgeGuidelinesNative_" + Guid.NewGuid().ToString("N");
+        if (Directory.Exists(Path.Combine(root, folder)) || File.Exists(Path.Combine(root, folder + ".meta"))) throw new IOException("Fixture path already exists.");
+        state = new State
+        {
+            Settings = settings, OriginalAsset = (TextAsset)Get(settings, "m_GuidelinesAsset"), OriginalGuid = (string)Get(settings, "m_GuidelinesAssetGuid"),
+            OriginalAgents = (bool)Get(settings, "m_IncludeRootAgents"), OriginalContext = (bool)Get(settings, "m_IncludeProjectContext"),
+            ConfigurationFile = configurationFile, ConfigurationExisted = File.Exists(configurationFile),
+            ConfigurationSha = File.Exists(configurationFile) ? Hash(configurationFile) : null,
+            Folder = folder, AssetPath = folder + "/Rules.txt", Phase = "prepared_disabled"
+        };
+        Set(settings, "m_GuidelinesAsset", null); Set(settings, "m_GuidelinesAssetGuid", null);
+        Set(settings, "m_IncludeRootAgents", false); Set(settings, "m_IncludeProjectContext", false);
+        AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+        File.WriteAllText(Path.Combine(root, state.AssetPath), Body, new UTF8Encoding(false));
+        AssetDatabase.ImportAsset(state.AssetPath, ImportAssetOptions.ForceSynchronousImport);
+        state.AssetGuid = AssetDatabase.AssetPathToGUID(state.AssetPath);
+        if (string.IsNullOrEmpty(state.AssetGuid) || AssetDatabase.LoadAssetAtPath<TextAsset>(state.AssetPath) == null) throw new InvalidOperationException("Owned TextAsset did not import.");
+        state.AssetSha = Hash(Path.Combine(root, state.AssetPath)); state.MetaSha = Hash(Path.Combine(root, state.AssetPath + ".meta"));
+        Report();
+    }
+
+    [MenuItem("Tools/UniBridge/Tests/Project Guidelines/Configure Asset")]
+    public static void ConfigureAsset()
+    {
+        RequireState();
+        RequireConfigurationOwnership();
+        var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(state.AssetPath);
+        if (asset == null || AssetDatabase.AssetPathToGUID(state.AssetPath) != state.AssetGuid) throw new InvalidOperationException("Owned asset unavailable.");
+        state.Settings.GetType().GetMethod("SetAsset", Fields).Invoke(state.Settings, new object[] { asset });
+        state.Phase = "asset_configured";
+        Report();
+    }
+
+    [MenuItem("Tools/UniBridge/Tests/Project Guidelines/Move Asset")]
+    public static void MoveAsset()
+    {
+        RequireState(); RequireConfigurationOwnership(); RequireAssetOwnership();
+        var destination = state.Folder + "/MovedRules.txt";
+        var error = AssetDatabase.MoveAsset(state.AssetPath, destination);
+        if (!string.IsNullOrEmpty(error)) throw new IOException(error);
+        state.AssetPath = destination;
+        if (AssetDatabase.AssetPathToGUID(destination) != state.AssetGuid) throw new InvalidOperationException("GUID changed during move.");
+        state.MetaSha = Hash(Path.Combine(Directory.GetParent(Application.dataPath).FullName, destination + ".meta"));
+        state.Phase = "asset_moved";
+        Report();
+    }
+
+    [MenuItem("Tools/UniBridge/Tests/Project Guidelines/Enable Context Document")]
+    public static void EnableContextDocument()
+    {
+        RequireState(); RequireConfigurationOwnership();
+        Set(state.Settings, "m_IncludeProjectContext", true);
+        state.ExpectedContext = true;
+        state.Phase = "context_enabled";
+        Report();
+    }
+
+    [MenuItem("Tools/UniBridge/Tests/Project Guidelines/Delete Asset")]
+    public static void DeleteAsset()
+    {
+        RequireState(); RequireConfigurationOwnership(); RequireAssetOwnership();
+        if (!AssetDatabase.DeleteAsset(state.AssetPath)) throw new IOException("Owned TextAsset deletion failed.");
+        state.Phase = "asset_deleted";
+        Report();
+    }
+
+    [MenuItem("Tools/UniBridge/Tests/Project Guidelines/Finish")]
+    public static void Finish()
+    {
+        RequireState(); RequireConfigurationOwnership();
+        if (AssetDatabase.LoadAssetAtPath<TextAsset>(state.AssetPath) != null)
+        {
+            RequireAssetOwnership();
+            if (!AssetDatabase.DeleteAsset(state.AssetPath)) throw new IOException("Owned TextAsset cleanup failed.");
+        }
+        var root = Directory.GetParent(Application.dataPath).FullName;
+        var folder = Path.GetFullPath(Path.Combine(root, state.Folder));
+        if (!folder.StartsWith(Path.GetFullPath(Path.Combine(root, "Assets")) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new IOException("Cleanup folder outside Assets.");
+        if (Directory.Exists(folder))
+        {
+            if (Directory.GetFileSystemEntries(folder).Length != 0) throw new IOException("Unknown files appeared in the owned fixture folder; retained.");
+            if (!AssetDatabase.DeleteAsset(state.Folder)) throw new IOException("Owned empty fixture folder cleanup failed.");
+        }
+        Set(state.Settings, "m_GuidelinesAsset", state.OriginalAsset); Set(state.Settings, "m_GuidelinesAssetGuid", state.OriginalGuid);
+        Set(state.Settings, "m_IncludeRootAgents", state.OriginalAgents); Set(state.Settings, "m_IncludeProjectContext", state.OriginalContext);
+        var existed = File.Exists(state.ConfigurationFile);
+        if (existed != state.ConfigurationExisted || existed && Hash(state.ConfigurationFile) != state.ConfigurationSha) throw new IOException("Saved author configuration changed; never overwritten by fixture.");
+        state.Phase = "cleanup_verified";
+        Report();
+        state = null;
+    }
+
+    static void RequireConfigurationOwnership()
+    {
+        var guid = (string)Get(state.Settings, "m_GuidelinesAssetGuid");
+        var currentAsset = (TextAsset)Get(state.Settings, "m_GuidelinesAsset");
+        var actualGuid = currentAsset != null ? AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(currentAsset)) : guid;
+        var allowed = state.Phase == "prepared_disabled" ? currentAsset == null && string.IsNullOrEmpty(guid)
+            : guid == state.AssetGuid && actualGuid == state.AssetGuid;
+        if (!allowed || (bool)Get(state.Settings, "m_IncludeRootAgents") || (bool)Get(state.Settings, "m_IncludeProjectContext") != state.ExpectedContext)
+            throw new InvalidOperationException("Concurrent guidelines configuration changed; author values retained.");
+    }
+    static void RequireAssetOwnership()
+    {
+        var root = Directory.GetParent(Application.dataPath).FullName;
+        if (AssetDatabase.AssetPathToGUID(state.AssetPath) != state.AssetGuid || Hash(Path.Combine(root, state.AssetPath)) != state.AssetSha || Hash(Path.Combine(root, state.AssetPath + ".meta")) != state.MetaSha)
+            throw new InvalidOperationException("Owned fixture asset or metadata changed; retained.");
+    }
+    static void RequireState() { if (state == null) throw new InvalidOperationException("Prepare the fixture first."); }
+    static object Get(object target, string name) => target.GetType().GetField(name, Fields).GetValue(target);
+    static void Set(object target, string name, object value) => target.GetType().GetField(name, Fields).SetValue(target, value);
+    static string Hash(string path) { using (var hash = SHA256.Create()) using (var stream = File.OpenRead(path)) return BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "").ToLowerInvariant(); }
+    static void Report()
+    {
+        var path = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Library/AgentValidation/ProjectGuidelinesNative/fixture.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        File.WriteAllText(path, new JObject
+        {
+            ["phase"] = state.Phase, ["assetPath"] = state.AssetPath, ["assetGuid"] = state.AssetGuid,
+            ["assetSha256"] = state.AssetSha, ["configurationExisted"] = state.ConfigurationExisted,
+            ["configurationSha256"] = state.ConfigurationSha, ["contextEnabled"] = state.ExpectedContext,
+            ["body"] = Body, ["configurationNotSavedByFixture"] = true
+        }.ToString(), new UTF8Encoding(false));
+        Debug.Log("[UniBridge Guidelines Native Fixture] " + state.Phase);
+    }
+}

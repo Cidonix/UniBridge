@@ -1,0 +1,51 @@
+using System;
+using System.Collections.Generic;
+
+// Explicit fake Unity Editor API seam: the actual production Settings.Capture and reader are linked.
+// In particular the database can retain GUID paths and typed objects after a physical file deletion.
+namespace UnityEngine
+{
+    public class Object { public string name; }
+    public sealed class TextAsset : Object { }
+    [AttributeUsage(AttributeTargets.Field)] public sealed class SerializeField : Attribute { }
+    [AttributeUsage(AttributeTargets.Field)] public sealed class HideInInspector : Attribute { }
+}
+namespace UnityEditor
+{
+    [AttributeUsage(AttributeTargets.Class)] public sealed class FilePathAttribute : Attribute
+    {
+        public enum Location { ProjectFolder }
+        public FilePathAttribute(string path, Location location) { }
+    }
+    public class ScriptableSingleton<T> where T : class
+    {
+        protected void Save(bool saveAsText) => throw new InvalidOperationException("Regression reads must not persist settings.");
+    }
+    public static class AssetDatabase
+    {
+        public static readonly Dictionary<string, string> GuidPaths = new(StringComparer.OrdinalIgnoreCase);
+        public static readonly Dictionary<string, string> PathGuids = new(StringComparer.OrdinalIgnoreCase);
+        public static readonly Dictionary<string, UnityEngine.Object> CurrentAssets = new(StringComparer.OrdinalIgnoreCase);
+        public static readonly Dictionary<UnityEngine.Object, string> ObjectPaths = new();
+        public static readonly Dictionary<UnityEngine.Object, string> ObjectGuids = new();
+        public static readonly HashSet<UnityEngine.Object> MainAssets = new();
+        public static void Reset() { GuidPaths.Clear(); PathGuids.Clear(); CurrentAssets.Clear(); ObjectPaths.Clear(); ObjectGuids.Clear(); MainAssets.Clear(); }
+        public static void Register(string guid, string path, UnityEngine.Object asset, bool main = true)
+        { GuidPaths[guid] = path; PathGuids[path] = guid; CurrentAssets[path] = asset; ObjectPaths[asset] = path; ObjectGuids[asset] = guid; if (main) MainAssets.Add(asset); }
+        public static string GetAssetPath(UnityEngine.Object asset) => ObjectPaths.TryGetValue(asset, out var path) ? path : "";
+        public static string AssetPathToGUID(string path) => PathGuids.TryGetValue(path, out var guid) ? guid : "";
+        public static string GUIDToAssetPath(string guid) => GuidPaths.TryGetValue(guid, out var path) ? path : "";
+        public static T LoadAssetAtPath<T>(string path) where T : UnityEngine.Object => CurrentAssets.TryGetValue(path, out var asset) ? asset as T : null;
+        public static bool IsMainAsset(UnityEngine.Object asset) => MainAssets.Contains(asset);
+        public static bool TryGetGUIDAndLocalFileIdentifier(UnityEngine.Object asset, out string guid, out long localId)
+        { localId = 1; return ObjectGuids.TryGetValue(asset, out guid); }
+    }
+}
+namespace Cidonix.UniBridge.MCP.Editor.Helpers
+{
+    internal static class ProjectPathResolver { internal static string ProjectRoot; }
+    internal static class VersionControlUtility
+    {
+        internal static object EnsureAssetEditable(string path, bool checkout, bool throwOnBlocked) => throw new InvalidOperationException("Regression reads must not checkout settings.");
+    }
+}

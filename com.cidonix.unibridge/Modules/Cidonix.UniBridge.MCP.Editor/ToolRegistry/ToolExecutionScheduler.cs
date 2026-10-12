@@ -58,6 +58,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         static readonly HashSet<string> ReadOnlyTools = new(StringComparer.Ordinal)
         {
             "UniBridge_AssetIntelligence",
+            "UniBridge_ProjectGuidelines",
             "UniBridge_BehaviourContext",
             "UniBridge_ContextSnapshot",
             "UniBridge_Discover",
@@ -79,6 +80,7 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
 
         static readonly HashSet<string> ReplaySafeTools = new(StringComparer.Ordinal)
         {
+            "UniBridge_ProjectGuidelines",
             "UniBridge_BehaviourContext",
             "UniBridge_ContextSnapshot",
             "UniBridge_Discover",
@@ -381,6 +383,18 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
             if (string.Equals(toolName, "UniBridge_ReadConsole", StringComparison.Ordinal))
                 return IsAction(parameters, "Clear", "MarkSession") ? ToolExecutionPolicy.Mutating : ToolExecutionPolicy.ReadOnly;
 
+            if (string.Equals(toolName, "UniBridge_RuntimeProfiler", StringComparison.Ordinal))
+            {
+                // Match typed enum assignment, including numeric payloads and repeated case aliases.
+                var actionToken = parameters?.Properties().LastOrDefault(property =>
+                    string.Equals(property.Name, "Action", StringComparison.OrdinalIgnoreCase) && property.Value.Type != JTokenType.Null)?.Value;
+                Tools.Parameters.RuntimeProfilerAction profilerAction;
+                if (actionToken != null && Enum.TryParse(actionToken.ToString(), true, out profilerAction) &&
+                    (profilerAction == Tools.Parameters.RuntimeProfilerAction.LoadCapture || profilerAction == Tools.Parameters.RuntimeProfilerAction.RestoreCapture))
+                    return ToolExecutionPolicy.Mutating;
+                return ToolExecutionPolicy.ReadOnly;
+            }
+
             if (string.Equals(toolName, "UniBridge_ManagePackages", StringComparison.Ordinal))
             {
                 // Match typed Json.NET assignment: case-insensitive Action properties are
@@ -426,6 +440,14 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     ? ToolExecutionPolicy.ReadOnly
                     : ToolExecutionPolicy.Mutating;
 
+            if (string.Equals(toolName, "UniBridge_VisualAssetSearch", StringComparison.Ordinal))
+            {
+                var action = parameters?.Value<string>("Action") ?? "Status";
+                if (action == "Status" || action == "Search") return ToolExecutionPolicy.ReadOnly;
+                if (action == "Index") return ToolExecutionPolicy.Capture;
+                return ToolExecutionPolicy.Mutating;
+            }
+
             if (ReadOnlyTools.Contains(toolName))
                 return ToolExecutionPolicy.ReadOnly;
 
@@ -439,14 +461,20 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
         {
             var policy = ResolvePolicy(toolName, null, handler);
             var mixedPackages = string.Equals(toolName, "UniBridge_ManagePackages", StringComparison.Ordinal);
+            var mixedProfiler = string.Equals(toolName, "UniBridge_RuntimeProfiler", StringComparison.Ordinal);
+            var mixedVisual = string.Equals(toolName, "UniBridge_VisualAssetSearch", StringComparison.Ordinal);
             return new
             {
                 policy = policy.ToString(),
                 replaySafe = HasWholeToolReadOnlyContract(toolName, handler),
-                readOnly = !mixedPackages && (policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer),
+                readOnly = !mixedPackages && !mixedProfiler && !mixedVisual && (policy == ToolExecutionPolicy.ReadOnly || policy == ToolExecutionPolicy.Observer),
                 exclusive = policy != ToolExecutionPolicy.ReadOnly && policy != ToolExecutionPolicy.Observer,
                 timeoutParameters = new[] { "ExecutionTimeoutMs", "SchedulerTimeoutMs" },
-                note = mixedPackages
+                note = mixedVisual
+                    ? "Status/Search are cancellable reads; Index uses bounded exclusive Capture execution. InstallModel/ClearIndex mutate generated caches. Started capture/cache work retains its actual result; no whole-tool mutation replay."
+                    : mixedProfiler
+                    ? "Existing read actions may run concurrently. LoadCapture/RestoreCapture use exclusive execution and never certify mutation replay."
+                    : mixedPackages
                     ? "List/Inspect/Search/ListSamples may run concurrently. Add and ImportSample use exclusive execution and must not be replayed."
                     : policy == ToolExecutionPolicy.Observer
                     ? "Observes editor state/events without holding the UniBridge execution gate."

@@ -1,0 +1,146 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Threading;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
+using Cidonix.UniBridge.MCP.Editor.Settings;
+using Cidonix.UniBridge.MCP.Editor.Tools.Parameters;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using UnityEditor;
+using UnityEngine;
+
+internal static class Program
+{
+    static readonly List<object> Cases = new();
+    sealed class Fixture
+    {
+        internal const string Guid = "0123456789abcdef0123456789abcdef";
+        internal const string PathInProject = "Assets/Rules.txt";
+        internal readonly string Root;
+        internal readonly TextAsset Asset = new() { name = "Rules" };
+        internal readonly ProjectGuidelinesSettings Settings = new();
+        internal string FullPath => Path.GetFullPath(Path.Combine(Root, PathInProject));
+        internal Fixture()
+        {
+            AssetDatabase.Reset();
+            Root = Path.Combine(Path.GetTempPath(), "UniBridgeGuidelinesSettings_" + System.Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(Root, "Assets"));
+            File.WriteAllText(FullPath, "Author guidance Україна🙂", new UTF8Encoding(false));
+            ProjectPathResolver.ProjectRoot = Root;
+            AssetDatabase.Register(Guid, PathInProject, Asset);
+            Settings.SetAsset(Asset);
+        }
+        internal void UseCachedGuidOnly() => typeof(ProjectGuidelinesSettings).GetField("m_GuidelinesAsset", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(Settings, null);
+        internal void SetSerializedAsset(TextAsset asset) => typeof(ProjectGuidelinesSettings).GetField("m_GuidelinesAsset", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(Settings, asset);
+        internal string GeneratedGuid => (string)typeof(ProjectGuidelinesSettings).GetField("m_GuidelinesAssetGuid", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(Settings);
+        internal void SetGeneratedGuid(string value) => typeof(ProjectGuidelinesSettings).GetField("m_GuidelinesAssetGuid", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(Settings, value);
+        internal JObject Read(ProjectGuidelinesConfiguration configuration) => McpJson.ObjectFromObject(ProjectGuidelinesReader.Execute(configuration,
+            new ProjectGuidelinesParams { Action = ProjectGuidelinesAction.Read }, CancellationToken.None));
+        internal void Rejected()
+        {
+            var configuration = Settings.Capture(); var source = configuration.Sources.Single();
+            Require(configuration.Configured && configuration.Issues.Length == 1);
+            Require(source.AssetGuid == Guid && source.SourceId == "asset:" + Guid);
+            Require(source.RelativePath == null && source.AbsolutePath == null);
+            var result = Read(configuration); var row = result["data"]["sources"][0];
+            Require(!result.Value<bool>("success") && result.Value<string>("code") == "GUIDELINES_READ_FAILED");
+            Require(row["uri"].Type == JTokenType.Null && row["relativePath"].Type == JTokenType.Null && row.Value<string>("assetGuid") == Guid);
+        }
+    }
+    static int Main(string[] args)
+    {
+        if (args.Length != 2 || args[0] != "--report" || File.Exists(args[1])) throw new ArgumentException("Use --report <fresh path>.");
+        Case("current_typed_asset_guid_and_file_resolve", () =>
+        {
+            var fixture = new Fixture(); var configuration = fixture.Settings.Capture(); var source = configuration.Sources.Single();
+            Require(source.RelativePath == Fixture.PathInProject && source.AbsolutePath == fixture.FullPath && configuration.Issues.Length == 0);
+            Require(fixture.Read(configuration).Value<bool>("success"));
+        });
+        Case("deleted_cached_guid_path_without_typed_asset_is_unresolved", () =>
+        {
+            var fixture = new Fixture(); fixture.UseCachedGuidOnly(); File.Delete(fixture.FullPath);
+            AssetDatabase.CurrentAssets.Remove(Fixture.PathInProject);
+            Require(AssetDatabase.GUIDToAssetPath(Fixture.Guid) == Fixture.PathInProject);
+            fixture.Rejected();
+        });
+        Case("deleted_cached_guid_path_and_typed_object_do_not_invent_uri", () =>
+        {
+            var fixture = new Fixture(); fixture.UseCachedGuidOnly(); File.Delete(fixture.FullPath);
+            Require(AssetDatabase.LoadAssetAtPath<TextAsset>(Fixture.PathInProject) != null && AssetDatabase.GUIDToAssetPath(Fixture.Guid) == Fixture.PathInProject);
+            fixture.Rejected();
+        });
+        Case("physical_file_with_wrong_current_type_is_unresolved", () =>
+        {
+            var fixture = new Fixture(); fixture.UseCachedGuidOnly();
+            AssetDatabase.CurrentAssets[Fixture.PathInProject] = new UnityEngine.Object { name = "Different type" };
+            Require(File.Exists(fixture.FullPath)); fixture.Rejected();
+        });
+        Case("current_typed_asset_must_match_configured_guid", () =>
+        {
+            var fixture = new Fixture(); fixture.UseCachedGuidOnly();
+            AssetDatabase.Register("fedcba9876543210fedcba9876543210", Fixture.PathInProject, new TextAsset { name = "Replacement" });
+            Require(File.Exists(fixture.FullPath)); fixture.Rejected();
+        });
+        Case("live_moved_guid_has_current_resolvable_uri", () =>
+        {
+            var fixture = new Fixture(); const string moved = "Assets/MovedRules.txt";
+            File.Move(fixture.FullPath, Path.Combine(fixture.Root, moved));
+            AssetDatabase.CurrentAssets.Remove(Fixture.PathInProject); AssetDatabase.PathGuids.Remove(Fixture.PathInProject);
+            AssetDatabase.Register(Fixture.Guid, moved, fixture.Asset);
+            var configuration = fixture.Settings.Capture(); Require(configuration.Sources.Single().RelativePath == moved);
+            var result = fixture.Read(configuration); Require(result.Value<bool>("success"));
+            Require(result["data"]["sources"][0].Value<string>("uri") == "unity://path/" + moved);
+        });
+        Case("cached_guid_with_real_current_typed_asset_remains_supported", () =>
+        {
+            var fixture = new Fixture(); fixture.UseCachedGuidOnly(); var configuration = fixture.Settings.Capture();
+            Require(configuration.Sources.Single().RelativePath == Fixture.PathInProject && fixture.Read(configuration).Value<bool>("success"));
+        });
+        Case("stale_alive_object_reused_path_cannot_rebind_guid_in_assignment_or_capture", () =>
+        {
+            var fixture = new Fixture(); const string replacementGuid = "fedcba9876543210fedcba9876543210";
+            AssetDatabase.Register(replacementGuid, Fixture.PathInProject, new TextAsset { name = "Replacement" });
+            Require(AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(fixture.Asset)) == replacementGuid);
+            Require(AssetDatabase.TryGetGUIDAndLocalFileIdentifier(fixture.Asset, out string objectGuid, out long _) && objectGuid == Fixture.Guid);
+            fixture.Rejected();
+            fixture.Settings.SetAsset(fixture.Asset);
+            Require(fixture.GeneratedGuid == Fixture.Guid);
+            fixture.UseCachedGuidOnly(); fixture.Rejected();
+        });
+        Case("live_typed_object_identity_wins_incorrect_generated_guid_cache", () =>
+        {
+            var fixture = new Fixture(); fixture.SetGeneratedGuid("fedcba9876543210fedcba9876543210");
+            var configuration = fixture.Settings.Capture(); var source = configuration.Sources.Single();
+            Require(source.AssetGuid == Fixture.Guid && source.RelativePath == Fixture.PathInProject && fixture.Read(configuration).Value<bool>("success"));
+        });
+        Case("text_asset_subasset_cannot_assign_or_read_parent_source_file", () =>
+        {
+            var fixture = new Fixture(); var subasset = new TextAsset { name = "Subasset guidance" }; const string parent = "Assets/Parent.asset";
+            File.WriteAllText(Path.Combine(fixture.Root, parent), "%YAML parent asset contents", new UTF8Encoding(false));
+            AssetDatabase.Register(Fixture.Guid, parent, subasset, main: false);
+            var rejected = false; try { fixture.Settings.SetAsset(subasset); } catch (ArgumentException) { rejected = true; }
+            Require(rejected && ReferenceEquals(fixture.Settings.GuidelinesAsset, fixture.Asset) && fixture.GeneratedGuid == Fixture.Guid);
+            fixture.SetSerializedAsset(subasset); fixture.Rejected();
+        });
+        Case("assigned_subasset_cannot_resolve_parent_main_text_asset_with_shared_guid", () =>
+        {
+            var fixture = new Fixture(); var subasset = new TextAsset { name = "Subasset under main text" };
+            AssetDatabase.Register(Fixture.Guid, Fixture.PathInProject, subasset, main: false);
+            AssetDatabase.CurrentAssets[Fixture.PathInProject] = fixture.Asset;
+            Require(AssetDatabase.IsMainAsset(fixture.Asset) && !AssetDatabase.IsMainAsset(subasset));
+            Require(ReferenceEquals(AssetDatabase.LoadAssetAtPath<TextAsset>(Fixture.PathInProject), fixture.Asset));
+            fixture.SetSerializedAsset(subasset); fixture.Rejected();
+        });
+        var passed = Cases.All(item => (bool)item.GetType().GetProperty("passed").GetValue(item));
+        File.WriteAllText(args[1], McpJson.SerializeObject(new { passed, total = Cases.Count, cases = Cases,
+            source = "actual Settings.Capture/reader linked with explicit Unity Editor database seam; no native execution" }, Formatting.Indented));
+        Console.WriteLine($"Guidelines settings: {Cases.Count} cases, passed={passed}, report={args[1]}");
+        return passed ? 0 : 1;
+    }
+    static void Case(string name, Action action) { try { action(); Cases.Add(new { name, passed = true, error = (string)null }); } catch (Exception error) { Cases.Add(new { name, passed = false, error = error.Message }); } }
+    static void Require(bool condition) { if (!condition) throw new Exception("Assertion failed."); }
+}

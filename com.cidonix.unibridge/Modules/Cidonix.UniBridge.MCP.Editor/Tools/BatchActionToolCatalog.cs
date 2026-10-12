@@ -12,6 +12,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
     {
         static readonly HashSet<string> s_AllowedTools = new(StringComparer.Ordinal)
         {
+            "UniBridge_ProjectGuidelines",
             "UniBridge_ManageGameObject",
             "UniBridge_ManageAsset",
             "UniBridge_ManageAssetImporter",
@@ -64,6 +65,8 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools
 
         static readonly Dictionary<string, string> s_ToolAliases = new(StringComparer.OrdinalIgnoreCase)
         {
+            ["project_guidelines"] = "UniBridge_ProjectGuidelines",
+            ["guidelines"] = "UniBridge_ProjectGuidelines",
             ["game_object"] = "UniBridge_ManageGameObject",
             ["gameobject"] = "UniBridge_ManageGameObject",
             ["go"] = "UniBridge_ManageGameObject",

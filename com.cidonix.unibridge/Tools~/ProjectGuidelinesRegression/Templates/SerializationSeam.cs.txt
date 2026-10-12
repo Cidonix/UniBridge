@@ -1,0 +1,11 @@
+using System.Collections.Generic;
+using Newtonsoft.Json;
+namespace Cidonix.UniBridge.MCP.Runtime.Serialization
+{
+    // Guidelines only contain scalar/string/array DTO fields; production math
+    // converters are irrelevant here. The source McpJson serializer is retained.
+    internal static class UnityValueSerialization
+    {
+        internal static void AddMathConverter(IList<JsonConverter> converters) { }
+    }
+}

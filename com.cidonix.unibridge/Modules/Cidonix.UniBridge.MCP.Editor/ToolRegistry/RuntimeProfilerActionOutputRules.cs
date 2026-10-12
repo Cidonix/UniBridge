@@ -65,8 +65,38 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                     Error("NO_PROFILER_MARKERS_SELECTED", O(("available", I()), ("filtered", I()), ("includeCounters", B()),
                         ("categories", Strings()), ("markerFilters", Strings(true)), ("excludeMarkerFilters", Strings(true)), ("hint", S())))),
                 ["RecordedFrames"] = Family(Success(RecordedData("completed", true, null, false)), recordedErrors.ToArray()),
-                ["RecordedCounters"] = RecordedCounterFamily()
+                ["RecordedCounters"] = RecordedCounterFamily(),
+                ["LoadCapture"] = CaptureLeaseFamily(),
+                ["RestoreCapture"] = CaptureLeaseFamily(),
+                ["GetCaptureLease"] = CaptureLeaseFamily(),
+                ["RecordedBottomUp"] = RecordedBottomUpFamily()
             };
+        }
+
+        static JObject RecordedBottomUpFamily()
+        {
+            var group = O(("groupId", S()), ("threadId", S()), ("threadName", S(true)), ("threadGroupName", S(true)), ("name", S(true)), ("category", S(true)),
+                ("markerId", I()), ("categoryId", I()), ("physicalCallCount", I()), ("framesObserved", I()),
+                ("inclusiveTimeMs", N()), ("knownSelfTimeMs", N()), ("selfTimeMs", N(true)), ("selfTimeComplete", B()),
+                ("rawCoverageComplete", B()), ("gcSumOverflow", B()), ("knownGcAllocationBytes", I()), ("gcAllocationBytes", I(true)),
+                ("gcAllocationEvents", I()), ("unknownGcAllocationEvents", I()), ("sampleIds", Strings()), ("issues", Strings()), ("sampleIdsTruncated", B()));
+            var data = O(("schema", C("unibridge.runtimeProfiler.recordedBottomUp.v1")), ("dataSource", S()), ("outcome", S()), ("complete", B()),
+                ("errorCode", S(true)), ("timedOut", B()), ("elapsedMs", N()), ("available", O(("firstFrameIndex", I()), ("lastFrameIndex", I()))),
+                ("request", O(("FrameIndex", I(true)), ("frameCount", I()), ("ThreadIds", Strings(true)), ("ThreadNameFilters", Strings(true)),
+                    ("maxGroups", I()), ("sortBy", S()), ("MarkerFilters", Strings(true)), ("ExcludeMarkerFilters", Strings(true)), ("ProfilerCategories", Strings(true)))),
+                ("selectedFrameIndices", Integers()), ("readFrameIndices", Integers()), ("copiedSamples", I()), ("observedGroups", I()), ("physicalSamples", I()),
+                ("groupsTruncated", B()), ("identity", S()), ("inclusiveTimeMethod", S()), ("gcScope", S()), ("issues", Strings()), ("groups", A(group)), ("savedPath", S(true)));
+            return Family(Success((JObject)data.DeepClone()), O(("success", C(false)), ("code", S()), ("error", S()), ("data", data)), Error("PLAY_MODE_REQUIRED", O(("hint", S()))));
+        }
+
+        static JObject CaptureLeaseFamily()
+        {
+            var data = O(("schema", C("unibridge.runtimeProfiler.captureLease.v1")), ("outcome", S()), ("leaseId", S(true)),
+                ("state", S()), ("projectRoot", S()), ("editorPid", I()), ("capturePath", S(true)), ("captureSha256", S(true)),
+                ("originalSha256", S(true)), ("originalLoadedSha256", S(true)), ("loadedSha256", S(true)), ("hadOriginalFrames", B()), ("restorationVerified", B()),
+                ("recordingEnabled", B()), ("profileEditor", B()), ("allocationCallstacks", B()), ("memoryRecordMode", I()),
+                ("receiptPath", S(true)), ("errorCode", S(true)), ("issues", Strings()));
+            return Family(Success((JObject)data.DeepClone()), O(("success", C(false)), ("code", S()), ("error", S()), ("data", data)));
         }
 
         static JObject MetricsData() => O(("defaults", Strings()),

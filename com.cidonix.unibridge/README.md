@@ -807,3 +807,27 @@ All UniBridge assemblies are restricted to the Editor. MCP.Runtime and Tracing r
 ## Recorded sample object metadata
 
 RuntimeProfiler RecordedFrames leaves captured object queries disabled by default. IncludeObjectMetadata reads Unity6.6 raw captured sample identity and recorded UnityObjectInfo only; it never resolves a capture ID against the live scene. UInt64 captured IDs are invariant decimal strings tagged EntityId.UInt64, with captured names, related GameObject information and explicit missing/unavailable statuses. ObjectMetadataSampleIds selects at most64 physical identities; one request shares MaxObjectMetadataSamples (default128, hard512). Older raw SDKs report OBJECT_METADATA_API_UNSUPPORTED without a guessed hierarchy mapping or int32 conversion. Names describe Unity's capture object table, which may update when an object is renamed; they are not a per-frame rename history. A saved capture preserves its own recorded table.
+
+## Native ProjectSettings inspection
+
+`UniBridge_ProjectSettings` provides read-only `List` and `Inspect` of the current native Unity settings objects. Use a logical name returned by List, or the PlayerSettings alias, then an exact returned serialized PropertyPath for drilldown. Scalar values preserve signed/unsigned64, double precision, mathematical values and typed object identity. Global property, array, depth, text and time limits are explicit; partial coverage is separate from failure. Values describe the current SerializedObject rather than saved YAML. The tool does not apply or save modifications. See `Tools~/ProjectSettingsRegression` for actual Mono and ordinary MCP positive/negative qualification; the optional independent schema gate requires a compatible jsonschema installation passed with `--validator-path`.
+
+## Explicit saved Profiler captures
+
+`UniBridge_RuntimeProfiler` exposes `LoadCapture`, `GetCaptureLease` and `RestoreCapture`. Loading requires an exact project root, project-relative `.data` filename and SHA-256. The stopped original buffer and recording flags are preserved in a durable same-Editor-process lease. Restore requires its exact lease ID; changed current bytes or flags block replacement. Existing read actions never load or enable a capture automatically.
+
+Unity can rewrite `.data` when loading it. Exact backup-file integrity and the separately qualified, stable loaded-buffer SHA are checked independently. Failed native loads restore the original buffer and flags; uncertain recovery remains an error with retained receipts. Domain reload preserves the lease. See `Tools~/ProfilerExtensionsRegression` for source and actual Mono/MCP qualification.
+
+## Recorded bottom-up analysis
+
+`RuntimeProfiler.RecordedBottomUp` groups copied recorded samples by physical thread, marker and category. Self time sums physical exclusive time; inclusive time uses interval union within each frame/thread to avoid counting recursive occurrences twice. Each GC allocation is attributed once to each distinct ancestor group, so totals of different caller groups must not be added together. Aggregate IDs are separate from physical sample IDs. Unknown and capped coverage remains explicit; frames, raw samples, groups, example IDs, time and cancellation are bounded.
+
+## Project-authored guidelines
+
+Configure an optional typed `TextAsset` in Project Settings > UniBridge > Project Guidelines, or explicitly opt in to the fixed root `AGENTS.md` and project context document. `UniBridge_ProjectGuidelines.Status` reads metadata only; `Read` returns bounded, strictly decoded text with GUID identity, truncation and whole-file versus prefix SHA scope. Moves retain the configured asset identity. No sources are enabled automatically, and the bridge treats their text as authored data. See `Tools~/ProjectGuidelinesRegression`.
+
+## Local semantic visual search
+
+`UniBridge_VisualAssetSearch` ranks actual asset previews using a separate local CLIP/ONNX CPU worker. English visual-content queries use the model's 75-token content window; cosine scores describe similarity. Asset names and filenames are not ranking inputs. Explicit `InstallModel` with `AllowDownload=true` installs pinned, verified public model files once; Status and queries are offline. Model files live outside the package and no Player assembly or Sentis dependency is added.
+
+Indexing uses GUID/local-file-ID references, deterministic paging, source/dependency hashes and disposable bounded Library cache. Search excludes changed, deleted or rebound identities. Status/Search are cancellable reads; admitted Index capture retains its actual result, with a separate deadline. Worker termination and temporary graphics resources are owned and checked. See `Tools~/VisualSemanticRegression` for source fixtures, actual worker inference and Mono/MCP qualification. Windows x64 is the native qualified target; the shipped Unix executables require independent native qualification.

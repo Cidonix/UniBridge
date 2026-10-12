@@ -34,6 +34,8 @@ crashlytics-build.properties
 # Relay build outputs
 UniBridge.Relay/bin/
 UniBridge.Relay/obj/
+UniBridge.VisualWorker/bin/
+UniBridge.VisualWorker/obj/
 
 # Local recovery/scratch data
 RelayRecovery/

@@ -10,7 +10,11 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         Hierarchy,
         Metrics,
         RecordedFrames,
-        RecordedCounters
+        RecordedCounters,
+        LoadCapture,
+        RestoreCapture,
+        GetCaptureLease,
+        RecordedBottomUp
     }
 
     public enum RuntimeProfilerRecordedSort
@@ -22,7 +26,7 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
     public record RuntimeProfilerParams
     {
-        [McpDescription("Operation to perform: Snapshot, Sample, Hierarchy, Metrics, RecordedFrames, or RecordedCounters.", Required = false, Default = RuntimeProfilerAction.Snapshot)]
+        [McpDescription("Operation to perform: Snapshot, Sample, Hierarchy, Metrics, RecordedFrames, RecordedCounters, LoadCapture, RestoreCapture, GetCaptureLease, or RecordedBottomUp.", Required = false, Default = RuntimeProfilerAction.Snapshot)]
         public RuntimeProfilerAction Action { get; set; } = RuntimeProfilerAction.Snapshot;
 
         [McpDescription("For RecordedFrames/RecordedCounters, first recorded frame index. Omit to read the latest FrameCount available recorded frames; indices follow actual Profiler history traversal.", Required = false)]
@@ -76,6 +80,18 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
         [McpDescription("Optional human-readable sample name used for saved profiler files.", Required = false)]
         public string Name { get; set; }
 
+        [McpDescription("For LoadCapture only, exact project-relative .data capture path. The file is copied and its hash checked before the active buffer is replaced. Reads never load captures implicitly.", Required = false)]
+        public string CapturePath { get; set; }
+
+        [McpDescription("For LoadCapture only, exact SHA256 of CapturePath; required to reject changed or mistaken captures.", Required = false)]
+        public string CaptureSha256 { get; set; }
+
+        [McpDescription("For LoadCapture/RestoreCapture, exact expected absolute project root; required and matched to the live project.", Required = false)]
+        public string ExpectedProjectRoot { get; set; }
+
+        [McpDescription("For RestoreCapture, the exact owned leaseId returned by LoadCapture. A lease survives domain reload in the same Editor process; concurrent changes block restoration.", Required = false)]
+        public string CaptureLeaseId { get; set; }
+
         [McpDescription("Metrics for Sample, or counter keys/names for RecordedCounters. RecordedCounters accepts up to 32 keys/names: cpu_main_active_ms, cpu_render_active_ms, gpu_frame_ms, gc_alloc_bytes, draw_calls_count, batches_count, setpass_calls, triangles_count; unknown names remain explicit unavailable if not recorded. For Sample, use aliases such as main_thread_ms, gc_alloc_bytes, batches_count, or category/name such as Internal/Main Thread.", Required = false)]
         public string[] Metrics { get; set; }
 
@@ -120,6 +136,9 @@ namespace Cidonix.UniBridge.MCP.Editor.Tools.Parameters
 
         [McpDescription("For Hierarchy or RecordedFrames, maximum top marker samples returned inline. Default 40, clamped to 1..300.", Required = false, Default = 40)]
         public int? MaxHierarchySamples { get; set; }
+
+        [McpDescription("For RecordedBottomUp, maximum logical groups returned. Default 40, clamped 1..300; at most 512 groups are accumulated. Group IDs are aggregate identities, not physical sample IDs. Sum self time and interval-union inclusive time avoid recursive double counting.", Required = false, Default = 40)]
+        public int? MaxBottomUpGroups { get; set; }
 
         [McpDescription("For Hierarchy or RecordedFrames, maximum output hierarchy depth. RecordedFrames retains real physical ancestry and marks depth truncation. Default 5, clamped to 1..12.", Required = false, Default = 5)]
         public int? MaxHierarchyDepth { get; set; }

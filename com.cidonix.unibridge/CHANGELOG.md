@@ -1,3 +1,23 @@
+## [0.2.86] - 2026-10-12
+
+- Real local CLIP/ONNX semantic visual asset search with GUID-bound indexes, source hashes, bounded work and owned-worker cancellation.
+
+## [0.2.85] - 2026-10-12
+
+- Explicit typed GUID-backed authored project guidelines with bounded strict text reads, metadata-only status and truthful source/hash coverage.
+
+## [0.2.84] - 2026-10-12
+
+- Bounded bottom-up analysis of recorded physical profiler samples, recursive interval union and truthful GC/coverage results.
+
+## [0.2.83] - 2026-10-12
+
+- Explicit saved profiler capture loading with durable, guarded restoration of the original buffer and recording flags.
+
+## [0.2.82] - 2026-10-12
+
+- Add bounded read-only native ProjectSettings inspection and canonical property-path drilldown
+
 ## [0.2.81] - 2026-10-11
 
 - Add bounded opt-in captured sample object and related GameObject metadata with exact UInt64 identities and an explicit unsupported fallback on older raw APIs

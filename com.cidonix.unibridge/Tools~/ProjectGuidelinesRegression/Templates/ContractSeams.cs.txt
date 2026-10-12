@@ -1,0 +1,28 @@
+using System;
+using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
+namespace Cidonix.UniBridge.MCP.Editor.Helpers
+{
+    internal static class ProjectContextGuard { internal static JObject BuildProjectContext() => new JObject(); }
+}
+namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
+{
+    internal static class StructuredOutputProjection { internal static JObject Project(JObject value) => value; }
+    internal sealed class OutputContract
+    {
+        internal Dictionary<string, JObject> ActionSchemas;
+        internal JObject Schema;
+        internal string DefaultAction;
+        internal string ActionSelector;
+        internal string[] ActionParameterNames;
+        internal string ActionLookupPolicy;
+        internal bool ActionParameterCaseInsensitive;
+        internal Dictionary<string, string> NumericActions;
+        internal bool UnknownActionUsesDefault;
+        internal string UnknownActionDefault;
+        internal JObject UnknownActionSchema;
+        internal Type ActionEnumType;
+        internal string ActionNormalization;
+        internal Dictionary<string, string> ActionAliases;
+    }
+}

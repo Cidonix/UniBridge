@@ -60,7 +60,8 @@ namespace Cidonix.UniBridge.MCP.Editor.ToolRegistry
                 // This marker covers the reviewed built-in action contracts, not
                 // every possible runtime branch or a caller-supplied owner name.
                 actionContract.BuiltInActionDataQualified = string.Equals(
-                    executeMethod.GetCustomAttribute<McpToolAttribute>()?.Name, owner, StringComparison.Ordinal);
+                    executeMethod.GetCustomAttribute<McpToolAttribute>()?.Name, owner, StringComparison.Ordinal) &&
+                    (owner != Tools.ProjectGuidelines.ToolName || ProjectGuidelinesActionOutputRules.RuntimeQualified);
                 return actionContract;
             }
             if (provider != null)

@@ -1,0 +1,5 @@
+# Preserve the original upstream license and notice formatting.
+UniBridge.VisualWorker/LICENSE-*.txt -text whitespace=cr-at-eol,-blank-at-eof
+UniBridge.VisualWorker/ThirdPartyNotices-*.txt -text whitespace=cr-at-eol,-blank-at-eof
+com.cidonix.unibridge/VisualWorker~/LICENSE-*.txt -text whitespace=cr-at-eol,-blank-at-eof
+com.cidonix.unibridge/VisualWorker~/ThirdPartyNotices-*.txt -text whitespace=cr-at-eol,-blank-at-eof

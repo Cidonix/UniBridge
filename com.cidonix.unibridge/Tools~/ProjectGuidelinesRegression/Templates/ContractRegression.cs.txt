@@ -1,0 +1,52 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using Cidonix.UniBridge.MCP.Editor.Helpers;
+using Cidonix.UniBridge.MCP.Editor.ToolRegistry;
+using Cidonix.UniBridge.MCP.Editor.Tools.Parameters;
+using Newtonsoft.Json.Linq;
+
+internal static class Program
+{
+    static readonly List<object> Cases = new();
+    static int Main(string[] args)
+    {
+        if (args.Length != 2 || args[0] != "--report" || File.Exists(args[1])) throw new ArgumentException("Use --report <fresh path>.");
+        var root = Path.Combine(Path.GetTempPath(), "UniBridgeGuidelinesContracts_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var file = Path.Combine(root, "Rules.md");
+        File.WriteAllText(file, "Author rules🙂", new UTF8Encoding(false));
+        var configuration = new ProjectGuidelinesConfiguration { ProjectRoot = root, ConfigurationPath = "ProjectSettings/UniBridgeProjectGuidelines.asset", Configured = true,
+            Sources = new[] { new ProjectGuidelinesSource { Kind = "text_asset", AssetGuid = "0123456789abcdef0123456789abcdef", SourceId = "asset:0123456789abcdef0123456789abcdef", DisplayName = "Rules", RelativePath = "Rules.md", AbsolutePath = file } } };
+        var rules = ProjectGuidelinesActionOutputRules.Build();
+        JObject Producer(ProjectGuidelinesParams input) => McpJson.ObjectFromObject(ProjectGuidelinesReader.Execute(configuration, input, CancellationToken.None));
+        var read = Producer(new() { Action = ProjectGuidelinesAction.Read });
+        var status = Producer(new());
+        Case("current_read_response_conforms", () => Accept(read, rules["Read"]));
+        Case("current_status_response_conforms", () => Accept(status, rules["Status"]));
+        Case("invalid_budget_error_conforms", () => Accept(Producer(new() { Action = ProjectGuidelinesAction.Read, MaxFileBytes = 3 }), rules["Read"]));
+        Case("unknown_action_error_conforms", () => Accept(Producer(new() { Action = (ProjectGuidelinesAction)999 }), ProjectGuidelinesActionOutputRules.UnknownAction()));
+        Case("unconfigured_read_error_conforms", () => Accept(McpJson.ObjectFromObject(ProjectGuidelinesReader.Execute(new ProjectGuidelinesConfiguration(), new() { Action = ProjectGuidelinesAction.Read }, CancellationToken.None)), rules["Read"]));
+        Case("partial_char_response_conforms", () => Accept(Producer(new() { Action = ProjectGuidelinesAction.Read, MaxCharsPerSource = 1 }), rules["Read"]));
+        Case("reject_extra_data_member", () => { var value = (JObject)read.DeepClone(); value["data"]["unexpected"] = true; Reject(value, rules["Read"]); });
+        Case("reject_extra_source_member", () => { var value = (JObject)read.DeepClone(); value["data"]["sources"][0]["unexpected"] = true; Reject(value, rules["Read"]); });
+        Case("reject_wrong_action", () => Reject(status, rules["Read"]));
+        Case("reject_wrong_source_field_type", () => { var value = (JObject)read.DeepClone(); value["data"]["sources"][0]["bytesRead"] = "no"; Reject(value, rules["Read"]); });
+        Case("reject_missing_source_identity", () => { var value = (JObject)read.DeepClone(); ((JObject)value["data"]["sources"][0]).Remove("sourceId"); Reject(value, rules["Read"]); });
+        Case("reject_wrong_schema_identity", () => { var value = (JObject)read.DeepClone(); value["data"]["schema"] = "wrong"; Reject(value, rules["Read"]); });
+        Case("reject_overlarge_text", () => { var value = (JObject)read.DeepClone(); value["data"]["sources"][0]["text"] = new string('A', 65537); Reject(value, rules["Read"]); });
+        Case("reject_four_sources", () => { var value = (JObject)read.DeepClone(); var source = value["data"]["sources"][0]; value["data"]["sources"] = new JArray(Enumerable.Range(0, 4).Select(_ => source.DeepClone())); Reject(value, rules["Read"]); });
+        Case("exact_action_contract_coverage", () => Require(rules.Count == 2 && rules.ContainsKey("Status") && rules.ContainsKey("Read")));
+        var passed = Cases.All(item => (bool)item.GetType().GetProperty("passed").GetValue(item));
+        File.WriteAllText(args[1], McpJson.SerializeObject(new { passed, total = Cases.Count, cases = Cases, source = "source-linked reader/action rules + McpJson/ActionOutputSchema/ActionOutputValidation.Check" }, Newtonsoft.Json.Formatting.Indented));
+        Console.WriteLine($"Guidelines contracts: {Cases.Count} cases, passed={passed}, report={args[1]}");
+        return passed ? 0 : 1;
+    }
+    static void Accept(JObject value, JObject rule) { var schema = ActionOutputSchema.Compose(new[] { rule }); var errors = ActionOutputValidation.Check(value, schema, (JObject)schema["$defs"]); if (errors.Count != 0) throw new Exception(errors[0].ToString()); }
+    static void Reject(JObject value, JObject rule) { var schema = ActionOutputSchema.Compose(new[] { rule }); Require(ActionOutputValidation.Check(value, schema, (JObject)schema["$defs"]).Count != 0); }
+    static void Case(string name, Action action) { try { action(); Cases.Add(new { name, passed = true, error = (string)null }); } catch (Exception error) { Cases.Add(new { name, passed = false, error = error.Message }); } }
+    static void Require(bool condition) { if (!condition) throw new Exception("Assertion failed."); }
+}

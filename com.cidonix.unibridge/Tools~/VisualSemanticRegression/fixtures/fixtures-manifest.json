@@ -1,0 +1,45 @@
+{
+  "artifacts": [
+    {
+      "name": "101.png",
+      "bytes": 1609,
+      "sha256": "447b82634049fad2943f5374a68baa58026e82babf85cbeea3f79a14b688060f"
+    },
+    {
+      "name": "101.tensor",
+      "bytes": 602112,
+      "sha256": "02c8c438171f0e4b3fc856fb7a91359cfee42c15229029451bcc618719843f25"
+    },
+    {
+      "name": "102.png",
+      "bytes": 1460,
+      "sha256": "7696ce18c238621dd1ea085db1938a7c0d0510929434a48ade319aa3efbdb08d"
+    },
+    {
+      "name": "102.tensor",
+      "bytes": 602112,
+      "sha256": "2ea3832de4991e1d77ca671d1c762ca75c1324256ec9afa9e58977d454b187fd"
+    },
+    {
+      "name": "103.png",
+      "bytes": 1720,
+      "sha256": "c5de397e1fa331ee2adc94c0a9d2cdd44a8ca16463eb5132143ad914f3e92d86"
+    },
+    {
+      "name": "103.tensor",
+      "bytes": 602112,
+      "sha256": "d6297119a50546b9d31646632584ee04d81dc22081d07bcb09d1d5c71c540936"
+    },
+    {
+      "name": "104.png",
+      "bytes": 1697,
+      "sha256": "a5f77bd93b26eabe02c9c2b472b94b6bda77379ba4013359875adb2e29c5aaed"
+    },
+    {
+      "name": "104.tensor",
+      "bytes": 602112,
+      "sha256": "f20eed198b0a91363f4be801ba3ea5f2433ff7ed044619dd1392221f1eec136d"
+    }
+  ],
+  "source": "independently authored procedural drawing pixels; opaque identities; no filenames in model input"
+}
