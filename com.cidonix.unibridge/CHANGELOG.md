@@ -1,3 +1,7 @@
+## [0.2.88] - 2026-10-12
+
+- Preserve owning Unity compilation context in strict script edits; qualify Windows x64 Unity 7 alpha8 CoreCLR catalog, collectible unload, Roslyn and Play lifecycle.
+
 ## [0.2.87] - 2026-10-12
 
 - Preserve declared serialized integer widths and Double precision in Component and ScriptableObject property reads and writes.

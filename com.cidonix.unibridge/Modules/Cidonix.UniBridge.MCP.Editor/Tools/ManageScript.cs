@@ -486,7 +486,7 @@ Returns:
 
             // Validate syntax with detailed error reporting using GUI setting
             ValidationLevel validationLevel = GetValidationLevelFromGUI();
-            bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors);
+            bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors, fullPath);
             var obsoleteApiHints = AnalyzeObsoleteApiHints(contents, validationLevel, fullPath);
             var inputApiHints = AnalyzeInputApiHints(contents, validationLevel, fullPath);
             if (!isValid)
@@ -592,7 +592,7 @@ Returns:
 
             // Validate syntax with detailed error reporting using GUI setting
             ValidationLevel validationLevel = GetValidationLevelFromGUI();
-            bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors);
+            bool isValid = ValidateScriptSyntax(contents, validationLevel, out string[] validationErrors, fullPath);
             var obsoleteApiHints = AnalyzeObsoleteApiHints(contents, validationLevel, fullPath);
             var inputApiHints = AnalyzeInputApiHints(contents, validationLevel, fullPath);
             if (!isValid)
@@ -1703,7 +1703,7 @@ Returns:
                     );
                 }
 
-                if (!ValidateScriptSyntax(working, level, out var errors))
+                if (!ValidateScriptSyntax(working, level, out var errors, fullPath))
                     return Response.Error("validation_failed", new { status = "validation_failed", diagnostics = errors ?? Array.Empty<string>(), obsoleteApiHints, inputApiHints });
                 else if (errors != null && errors.Length > 0)
                     Debug.LogWarning($"Script validation warnings for {name}:\n" + string.Join("\n", errors));
